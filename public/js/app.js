@@ -243,6 +243,8 @@
       document.getElementById('settingMapSeed').value = appState.mapConfig?.seed || '1337420';
       document.getElementById('settingMapSize').value = appState.mapConfig?.size || 4250;
       document.getElementById('settingBmToken').value = getBmToken();
+      const whEl = document.getElementById('settingDiscordWebhook');
+      if (whEl) whEl.value = appState.discordWebhookUrl || '';
       modal.classList.add('open');
     });
 
@@ -254,8 +256,24 @@
       document.getElementById('openSettingsBtn').click();
     });
 
+    document.getElementById('testDiscordWebhookBtn')?.addEventListener('click', async () => {
+      const wh = document.getElementById('settingDiscordWebhook')?.value.trim();
+      if (!wh) {
+        alert('Paste your Discord Webhook URL first!');
+        return;
+      }
+      appState.discordWebhookUrl = wh;
+      const ok = await sendDiscordAlert(
+        '🔔 Rust Tactical Companion Connected!',
+        `Squad **${appState.squadName}** live alerts are now linked to this Discord channel.`,
+        0x22c55e
+      );
+      if (ok) alert('Discord test message sent!');
+    });
+
     document.getElementById('saveSettingsBtn').addEventListener('click', () => {
       appState.squadName = document.getElementById('settingSquadName').value.trim() || 'RUST SQUAD ALPHA';
+      appState.discordWebhookUrl = document.getElementById('settingDiscordWebhook')?.value.trim() || '';
       appState.mapConfig = {
         ...appState.mapConfig,
         customImageUrl: document.getElementById('settingMapImageUrl').value.trim(),
@@ -269,6 +287,36 @@
       renderAll();
       modal.classList.remove('open');
     });
+  }
+
+  async function sendDiscordAlert(title, description, color = 0xcd412b) {
+    const webhookUrl = appState.discordWebhookUrl || '';
+    try {
+      if (isServerConnected) {
+        const res = await fetch('/api/discord', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Squad-Pin': getSquadPin()
+          },
+          body: JSON.stringify({ webhookUrl, title, description, color })
+        });
+        if (res.ok) return true;
+      }
+      if (webhookUrl && webhookUrl.startsWith('https://discord')) {
+        const direct = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: `Rust Tactical Companion [${appState.squadName}]`,
+            embeds: [{ title, description, color, timestamp: new Date().toISOString() }]
+          })
+        });
+        return direct.ok;
+      }
+    } catch (_) {}
+    alert('Configure your Discord Webhook URL in ⚙️ SQUAD / PIN settings first!');
+    return false;
   }
 
   // =========================================================================
@@ -830,6 +878,19 @@
       appState.raidQueue = [];
       syncStateToServer();
       renderRaidPlanner();
+    });
+
+    document.getElementById('discordRaidPlanBtn')?.addEventListener('click', async () => {
+      if (!appState.raidQueue || appState.raidQueue.length === 0) return;
+      let totalSulfur = 0;
+      const lines = appState.raidQueue.map((item) => {
+        const res = resolveQueueItemLoadout(item);
+        totalSulfur += res.totalSulfur;
+        return `• **${item.qty}x ${res.target.name}** → ${res.chosenLabel} (**${res.totalSulfur.toLocaleString()} Sulfur**)`;
+      });
+      lines.push(`\n🟡 **Total Sulfur Required:** ${totalSulfur.toLocaleString()} (${Math.ceil(totalSulfur / 450)} nodes w/ Pure Ore Tea)`);
+      const ok = await sendDiscordAlert('💣 Squad Raid Plan & Sulfur Shopping List', lines.join('\n'), 0xeab308);
+      if (ok) alert('Raid plan posted to Discord!');
     });
 
     document.getElementById('solveCustomHpBtn')?.addEventListener('click', solveCustomRemainingHp);
@@ -2393,6 +2454,217 @@
   }
 
   // =========================================================================
+  // MODULE 6: RECYCLER (60% vs 40%), DIESEL EXCAVATOR & BASE DECAY LAB
+  // =========================================================================
+  const recyclerCounts = {
+    tech_trash: 4,
+    rifle_body: 2,
+    smg_body: 2,
+    semi_body: 5,
+    gears: 8,
+    spring: 6,
+    pipe: 10,
+    sheet_metal: 6,
+    road_signs: 8,
+    sewing_kit: 10
+  };
+
+  function renderRecyclerCalculator() {
+    const grid = document.getElementById('recyclerComponentsGrid');
+    const summary = document.getElementById('recyclerTotalsComparison');
+    if (!grid || !summary) return;
+
+    let radScrap = 0, radHqm = 0, radMetal = 0, radCloth = 0;
+    let safeScrap = 0, safeHqm = 0, safeMetal = 0, safeCloth = 0;
+
+    grid.innerHTML = (DATA.recyclerComponents || [])
+      .map((c) => {
+        const qty = recyclerCounts[c.id] || 0;
+        radScrap += qty * c.rad.scrap;
+        radHqm += qty * c.rad.hqm;
+        radMetal += qty * c.rad.metal;
+        radCloth += qty * c.rad.cloth;
+
+        safeScrap += qty * c.safe.scrap;
+        safeHqm += qty * c.safe.hqm;
+        safeMetal += qty * c.safe.metal;
+        safeCloth += qty * c.safe.cloth;
+
+        return `
+          <div class="target-card ${qty > 0 ? 'selected' : ''}" style="cursor:default;">
+            <div class="target-card-top">
+              <span class="target-name" style="font-size:13px;">${c.name}</span>
+              <span style="font-family:var(--font-mono); font-weight:800; color:var(--sulfur-yellow); font-size:14px;">x${qty}</span>
+            </div>
+            <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary);">
+              Rad: ${c.rad.scrap ? c.rad.scrap + ' Scrap ' : ''}${c.rad.hqm ? c.rad.hqm + ' HQM ' : ''}${c.rad.cloth ? c.rad.cloth + ' Cloth' : ''}
+            </div>
+            <div style="display:flex; gap:4px; margin-top:4px;">
+              <button class="btn btn-sm rec-mod-btn" data-cid="${c.id}" data-delta="-1" style="flex:1;">-1</button>
+              <button class="btn btn-sm btn-primary rec-mod-btn" data-cid="${c.id}" data-delta="1" style="flex:1;">+1</button>
+              <button class="btn btn-sm rec-mod-btn" data-cid="${c.id}" data-delta="5" style="flex:1;">+5</button>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    grid.querySelectorAll('.rec-mod-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cid = btn.getAttribute('data-cid');
+        const delta = parseInt(btn.getAttribute('data-delta'), 10);
+        recyclerCounts[cid] = Math.max(0, (recyclerCounts[cid] || 0) + delta);
+        renderRecyclerCalculator();
+      });
+    });
+
+    const bonusScrap = radScrap - safeScrap;
+    const bonusHqm = radHqm - safeHqm;
+
+    summary.innerHTML = `
+      <div class="grid-2" style="gap:12px;">
+        <div style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.45); border-radius:6px; padding:12px;">
+          <div style="font-family:var(--font-display); font-weight:700; color:#4ade80; margin-bottom:6px;">
+            ☢️ MONUMENT RECYCLER (60% Yield • 120% Speed)
+          </div>
+          <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; color:#fff; flex-wrap:wrap; gap:8px;">
+            <span>⚙️ <strong>${radScrap.toLocaleString()}</strong> Scrap</span>
+            <span>💎 <strong>${radHqm.toLocaleString()}</strong> HQM</span>
+            <span>🔩 <strong>${radMetal.toLocaleString()}</strong> Metal</span>
+            <span>🌿 <strong>${radCloth.toLocaleString()}</strong> Cloth</span>
+          </div>
+          <div style="margin-top:6px; font-size:11px; color:#4ade80; font-family:var(--font-mono);">
+            ⚡ Radtown Bonus: +${bonusScrap.toLocaleString()} Extra Scrap & +${bonusHqm} HQM vs Outpost!
+          </div>
+        </div>
+
+        <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.35); border-radius:6px; padding:12px;">
+          <div style="font-family:var(--font-display); font-weight:700; color:var(--sulfur-yellow); margin-bottom:6px;">
+            🛡️ SAFE ZONE RECYCLER (40% Yield • Outpost/Bandit)
+          </div>
+          <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; color:#fff; flex-wrap:wrap; gap:8px;">
+            <span>⚙️ <strong>${safeScrap.toLocaleString()}</strong> Scrap</span>
+            <span>💎 <strong>${safeHqm.toLocaleString()}</strong> HQM</span>
+            <span>🔩 <strong>${safeMetal.toLocaleString()}</strong> Metal</span>
+            <span>🌿 <strong>${safeCloth.toLocaleString()}</strong> Cloth</span>
+          </div>
+          <div style="margin-top:6px; font-size:11px; color:var(--text-secondary);">
+            100% Safe from PvP, but loses ${bonusScrap.toLocaleString()} Scrap on this haul.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDieselCalculator() {
+    const count = Math.max(1, parseInt(document.getElementById('dieselCountInput')?.value, 10) || 10);
+    const out = document.getElementById('dieselYieldResult');
+    if (!out) return;
+
+    const runtimeMin = count * 2;
+    const excSulfur = count * 2000;
+    const excHqm = count * 100;
+    const excMetal = count * 5000;
+    const excStone = count * 10000;
+    const airdrops = Math.floor(count / 5);
+    const rocketsEq = (excSulfur / 1400).toFixed(1);
+    const c4Eq = (excSulfur / 2200).toFixed(1);
+    const pumpjackLgf = count * 240;
+
+    out.innerHTML = `
+      <div class="resource-grid" style="margin-top:0;">
+        <div class="resource-box highlight-sulfur">
+          <div class="resource-val" style="color:var(--sulfur-yellow);">${excSulfur.toLocaleString()}</div>
+          <div class="resource-label">Excavator Sulfur</div>
+        </div>
+        <div class="resource-box">
+          <div class="resource-val" style="color:#f87171;">${rocketsEq} / ${c4Eq}</div>
+          <div class="resource-label">Rockets / C4 Craftable</div>
+        </div>
+        <div class="resource-box">
+          <div class="resource-val" style="color:#60a5fa;">${excHqm.toLocaleString()} HQM</div>
+          <div class="resource-label">Or Excavator HQM</div>
+        </div>
+        <div class="resource-box">
+          <div class="resource-val" style="color:#4ade80;">${pumpjackLgf.toLocaleString()} LGF</div>
+          <div class="resource-label">Or Pumpjack Fuel</div>
+        </div>
+      </div>
+      <div style="margin-top:10px; font-size:12px; color:var(--text-secondary); font-family:var(--font-mono);">
+        ⏱️ Runtime: <strong>${runtimeMin} mins</strong> • 📦 Supply Drops Triggered: <strong>${airdrops}x</strong> • (Or ${excMetal.toLocaleString()} Metal Frags / ${excStone.toLocaleString()} Stone)
+      </div>
+    `;
+  }
+
+  function renderDecayCalculator() {
+    const tierId = document.getElementById('decayTierSelect')?.value || 'metal';
+    const curHp = Math.max(1, parseInt(document.getElementById('decayCurrentHpInput')?.value, 10) || 180);
+    const grid = document.getElementById('decayGridInput')?.value.trim().toUpperCase() || 'Q14';
+    const out = document.getElementById('decayResultBox');
+    if (!out) return;
+
+    const rate = (DATA.decayRates || []).find((r) => r.id === tierId) || DATA.decayRates[0];
+    const clampedHp = Math.min(rate.maxHp, curHp);
+    const hpPerSecond = rate.maxHp / (rate.fullDecayHours * 3600);
+    const secondsRemaining = Math.round(clampedHp / hpPerSecond);
+
+    out.innerHTML = `
+      <div style="background:var(--bg-card); border:1px solid var(--rust-orange); border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+            ${rate.name} (${clampedHp} / ${rate.maxHp} HP) at [${grid}]
+          </div>
+          <div style="font-family:var(--font-display); font-size:20px; font-weight:700; color:#fff;">
+            💥 Crumbles in <span style="color:var(--sulfur-yellow);">${formatDuration(secondsRemaining)}</span>
+          </div>
+        </div>
+        <button id="startDecayTimerBtn" class="btn btn-primary btn-sm">
+          ⏱️ Start Squad Decay Timer
+        </button>
+      </div>
+    `;
+
+    out.querySelector('#startDecayTimerBtn')?.addEventListener('click', () => {
+      startSquadTimer(`🏚️ Decaying ${rate.name} [${grid}]`, secondsRemaining, '#eab308');
+      if (appState.discordWebhookUrl) {
+        sendDiscordAlert(
+          `🏚️ Decaying Base Tracked at [${grid}]`,
+          `**${rate.name}** (${clampedHp}/${rate.maxHp} HP) will crumble in **${formatDuration(secondsRemaining)}**!`,
+          0xeab308
+        );
+      }
+    });
+  }
+
+  function initRecyclerDieselDecayModule() {
+    document.getElementById('clearRecyclerBtn')?.addEventListener('click', () => {
+      Object.keys(recyclerCounts).forEach((k) => (recyclerCounts[k] = 0));
+      renderRecyclerCalculator();
+    });
+
+    document.getElementById('dieselCountInput')?.addEventListener('input', renderDieselCalculator);
+    document.getElementById('startExcavatorTimerBtn')?.addEventListener('click', () => {
+      const count = Math.max(1, parseInt(document.getElementById('dieselCountInput')?.value, 10) || 10);
+      startSquadTimer(`🛢️ Giant Excavator (${count}x Diesel)`, count * 120, '#eab308');
+    });
+
+    const decaySel = document.getElementById('decayTierSelect');
+    if (decaySel && DATA.decayRates) {
+      decaySel.innerHTML = DATA.decayRates
+        .map((r) => `<option value="${r.id}">${r.name} (Max ${r.maxHp} HP • ${r.fullDecayHours}h Decay)</option>`)
+        .join('');
+      decaySel.value = 'metal';
+    }
+    decaySel?.addEventListener('change', renderDecayCalculator);
+    document.getElementById('decayCurrentHpInput')?.addEventListener('input', renderDecayCalculator);
+    document.getElementById('decayGridInput')?.addEventListener('input', renderDecayCalculator);
+
+    renderRecyclerCalculator();
+    renderDieselCalculator();
+    renderDecayCalculator();
+  }
+
+  // =========================================================================
   // MASTER RENDER & INITIALIZATION
   // =========================================================================
   function renderAll() {
@@ -2409,6 +2681,9 @@
     renderTimersTick();
     renderSavedClonesAndTeas();
     solveBestCrossbreed();
+    renderRecyclerCalculator();
+    renderDieselCalculator();
+    renderDecayCalculator();
     renderBattleMetricsDashboard();
   }
 
@@ -2418,6 +2693,7 @@
     initMapModule();
     initTimerModule();
     initGeneticsModule();
+    initRecyclerDieselDecayModule();
     initBattleMetricsModule();
     renderAll();
     initSquadSSE();

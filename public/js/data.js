@@ -1527,5 +1527,40 @@ window.RUST_DATA = {
       duration: '30 Mins',
       notes: 'Pure Wood Tea + Chainsaw fills a full inventory of wood for charcoal furnaces in 3 minutes.'
     }
+  ],
+
+  // =========================================================================
+  // 7. RECYCLER COMPONENT YIELDS (RADTOWN 60% vs SAFE ZONE 40%)
+  // =========================================================================
+  recyclerComponents: [
+    { id: 'tech_trash', name: 'Tech Trash', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'rifle_body', name: 'Rifle Body', rad: { scrap: 30, hqm: 3, metal: 0, cloth: 0 }, safe: { scrap: 20, hqm: 2, metal: 0, cloth: 0 } },
+    { id: 'smg_body', name: 'SMG Body', rad: { scrap: 18, hqm: 3, metal: 0, cloth: 0 }, safe: { scrap: 12, hqm: 2, metal: 0, cloth: 0 } },
+    { id: 'semi_body', name: 'Semi Auto Body', rad: { scrap: 18, hqm: 3, metal: 90, cloth: 0 }, safe: { scrap: 12, hqm: 2, metal: 60, cloth: 0 } },
+    { id: 'computer', name: 'Targeting Computer', rad: { scrap: 36, hqm: 2, metal: 60, cloth: 0 }, safe: { scrap: 24, hqm: 1, metal: 40, cloth: 0 } },
+    { id: 'cctv', name: 'CCTV Camera', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'fuse', name: 'Electric Fuse', rad: { scrap: 24, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
+    { id: 'gears', name: 'Gears', rad: { scrap: 12, hqm: 0, metal: 15, cloth: 0 }, safe: { scrap: 8, hqm: 0, metal: 10, cloth: 0 } },
+    { id: 'spring', name: 'Metal Spring', rad: { scrap: 12, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 8, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'pipe', name: 'Metal Pipe', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'sheet_metal', name: 'Sheet Metal', rad: { scrap: 10, hqm: 2, metal: 120, cloth: 0 }, safe: { scrap: 6, hqm: 1, metal: 80, cloth: 0 } },
+    { id: 'road_signs', name: 'Road Signs', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'sewing_kit', name: 'Sewing Kit', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 45 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 30 } },
+    { id: 'rope', name: 'Rope', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 18 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 12 } },
+    { id: 'tarp', name: 'Tarp', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 60 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 40 } },
+    { id: 'propane', name: 'Empty Propane Tank', rad: { scrap: 1, hqm: 0, metal: 60, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 40, cloth: 0 } },
+    { id: 'blade', name: 'Metal Blade', rad: { scrap: 2, hqm: 0, metal: 18, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 12, cloth: 0 } }
+  ],
+
+  // =========================================================================
+  // 8. BUILDING DECAY RATES & GIANT EXCAVATOR DIESEL YIELDS
+  // =========================================================================
+  decayRates: [
+    { id: 'stone', name: 'Stone Wall / Foundation', maxHp: 500, fullDecayHours: 5 },
+    { id: 'metal', name: 'Sheet Metal Wall / Foundation', maxHp: 1000, fullDecayHours: 8 },
+    { id: 'armored', name: 'Armored (HQM) Wall / Foundation', maxHp: 2000, fullDecayHours: 12 },
+    { id: 'wood', name: 'Wood Wall / Foundation', maxHp: 250, fullDecayHours: 3 },
+    { id: 'garage_door', name: 'Garage Door', maxHp: 600, fullDecayHours: 8 },
+    { id: 'sheet_door', name: 'Sheet Metal Door', maxHp: 250, fullDecayHours: 8 }
   ]
 };

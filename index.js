@@ -105,6 +105,7 @@ const DEFAULT_STATE = {
       }
     ]
   },
+  discordWebhookUrl: '',
   updatedAt: Date.now()
 };
 
@@ -239,6 +240,51 @@ function checkPin(req, res) {
   return true;
 }
 
+function sendDiscordWebhook(webhookUrl, title, description, color = 0xcd412b) {
+  return new Promise((resolve, reject) => {
+    const targetUrl = webhookUrl || squadState.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
+    if (!targetUrl || !targetUrl.startsWith('https://discord')) {
+      return reject(new Error('No valid Discord Webhook URL configured'));
+    }
+    const parsed = new URL(targetUrl);
+    const payload = JSON.stringify({
+      username: `Rust Tactical Companion [${squadState.squadName || 'SQUAD'}]`,
+      embeds: [
+        {
+          title,
+          description,
+          color,
+          timestamp: new Date().toISOString(),
+          footer: { text: 'Rust Tactical Companion • Pterodactyl Live Sync' }
+        }
+      ]
+    });
+
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        },
+        timeout: 6000
+      },
+      (res) => {
+        res.on('data', () => {});
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(true);
+          else reject(new Error(`Discord HTTP ${res.statusCode}`));
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -370,6 +416,18 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { server: detail, history: history.data || [] });
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    // 7. Discord Webhook Notification Endpoint
+    if (pathname === '/api/discord' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      try {
+        await sendDiscordWebhook(body.webhookUrl, body.title, body.description, body.color);
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
       }
     }
 

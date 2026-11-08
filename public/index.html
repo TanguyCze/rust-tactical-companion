@@ -64,6 +64,9 @@
       <button class="nav-tab" data-tab="tab-genetics">
         🌱 Genetics & Tea Lab <span class="nav-badge">6-GENE</span>
       </button>
+      <button class="nav-tab" data-tab="tab-recycler">
+        ♻️ Recycler, Diesel & Decay <span class="nav-badge">SCRAP + BOOM</span>
+      </button>
       <button class="nav-tab" data-tab="tab-battlemetrics">
         📡 BattleMetrics Raid Intel <span class="nav-badge">LIVE POP</span>
       </button>
@@ -135,7 +138,10 @@
                 <div class="panel-title">💣 Squad Multi-Target Raid Planner</div>
                 <div class="panel-subtitle">Synced live with your squad — build your full breach path & compare Combo vs Pure Sulfur</div>
               </div>
-              <button id="clearRaidQueueBtn" class="btn btn-sm">Clear Plan</button>
+              <div style="display:flex; gap:6px;">
+                <button id="discordRaidPlanBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Send to Discord</button>
+                <button id="clearRaidQueueBtn" class="btn btn-sm">Clear Plan</button>
+              </div>
             </div>
 
             <!-- Quick Add Bar -->
@@ -465,7 +471,74 @@
     </section>
 
     <!-- ==================================================================
-         TAB 5: BATTLEMETRICS SERVER INTEL & BEST TIME TO RAID
+         TAB 5: RECYCLER, DIESEL EXCAVATOR & BASE DECAY LAB
+         ================================================================== -->
+    <section id="tab-recycler" class="tab-panel">
+      <div class="grid-2">
+        <!-- Left Column: Component Recycler Calculator (Monument 60% vs Safe Zone 40%) -->
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">♻️ Component Recycler Calculator (Monument 60% vs Safe Zone 40%)</div>
+              <div class="panel-subtitle">Click components to add them — compares Radtown Monument vs Outpost/Bandit recycler output</div>
+            </div>
+            <button id="clearRecyclerBtn" class="btn btn-sm">Reset</button>
+          </div>
+
+          <div id="recyclerTotalsComparison" style="margin-bottom: 16px;"></div>
+          <div id="recyclerComponentsGrid" class="target-grid"></div>
+        </div>
+
+        <!-- Right Column: Giant Excavator Diesel Calculator + Decaying Base Wall Timer -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <!-- Giant Excavator & Quarry Diesel Barrel Calculator -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🛢️ Diesel Barrel & Giant Excavator Yield Calculator</div>
+                <div class="panel-subtitle">1 Diesel = 2 mins runtime at Giant Excavator (2,000 Sulfur Ore or 100 HQM per barrel!)</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;">
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DIESEL BARRELS COUNT</label>
+                <input id="dieselCountInput" type="number" class="input" value="10" min="1" max="100" style="width: 130px;" />
+              </div>
+              <button id="startExcavatorTimerBtn" class="btn btn-primary">⏱️ Start Excavator Run Timer</button>
+            </div>
+            <div id="dieselYieldResult"></div>
+          </div>
+
+          <!-- Decaying Base Wall Countdown Calculator -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🏚️ Decaying Clan Base Countdown Calculator</div>
+                <div class="panel-subtitle">Found a decaying base? Enter the wall tier & current HP to know the exact minute it crumbles</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;">
+              <div style="flex: 1; min-width: 170px;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">WALL / DOOR TIER</label>
+                <select id="decayTierSelect" class="select" style="width: 100%;"></select>
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">CURRENT HP</label>
+                <input id="decayCurrentHpInput" type="number" class="input" value="180" min="1" max="2000" style="width: 110px;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">GRID COORD</label>
+                <input id="decayGridInput" type="text" class="input" value="Q14" placeholder="Q14" style="width: 80px;" />
+              </div>
+            </div>
+            <div id="decayResultBox"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         TAB 6: BATTLEMETRICS SERVER INTEL & BEST TIME TO RAID
          ================================================================== -->
     <section id="tab-battlemetrics" class="tab-panel">
       <div class="grid-2">
@@ -573,7 +646,12 @@
           <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATTLEMETRICS API TOKEN (Optional for higher rate limits)</label>
           <input id="settingBmToken" type="password" class="input" style="width: 100%;" placeholder="Optional Personal Access Token" />
         </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DISCORD WEBHOOK URL (For Squad Raid & Timer Alerts)</label>
+          <input id="settingDiscordWebhook" type="text" class="input" style="width: 100%;" placeholder="https://discord.com/api/webhooks/..." />
+        </div>
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button id="testDiscordWebhookBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Test Discord Ping</button>
           <button id="saveSettingsBtn" class="btn btn-primary">💾 Save & Sync with Squad</button>
         </div>
       </div>
