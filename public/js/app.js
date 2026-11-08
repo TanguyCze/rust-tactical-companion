@@ -1004,7 +1004,7 @@
   }
 
   // =========================================================================
-  // MODULE 2: RUST+ LIVE MAP, VENDING MACHINES, MONUMENTS & BUILD SPOTS
+  // MODULE 2: RUST+ DESKTOP STYLE LIVE MAP, MONUMENTS, SHOPS & IOT
   // =========================================================================
   let mapZoom = 1.0;
   let mapOffsetX = 0;
@@ -1014,27 +1014,57 @@
   let dragStartY = 0;
   let pointerMoved = false;
   let customMapImg = null;
-  let liveEventsSimEnabled = true;
+  let liveEventsSimEnabled = false;
   let selectedVendingId = null;
 
   const mapLayers = {
-    liveEvents: true,
+    grid: false,
     teamGps: true,
-    vending: true,
     monuments: true,
-    cardFlow: true,
-    buildSpots: true,
-    farmZones: true,
-    squadPins: true
+    deaths: true,
+    noBuild: false,
+    godRocks: true,
+    tunnels: true,
+    cargoPath: true,
+    icebergsWells: true,
+    vending: true,
+    liveEvents: false,
+    cardFlow: false,
+    buildSpots: false,
+    farmZones: false,
+    squadPins: true,
+    monumentNames: false
   };
 
+  // Map Rust prefab IDs from map_data.2d.v1.json to our DATA.monuments IDs
+  function prefabToMonumentAtlasId(prefabId) {
+    const p = String(prefabId || '').toLowerCase();
+    if (p.includes('launch_site')) return 'launch_site';
+    if (p.includes('nuclear_missile_silo') || p.includes('missile_silo')) return 'missile_silo';
+    if (p.includes('military_tunnel')) return 'military_tunnels';
+    if (p.includes('oilrig_1')) return 'large_oil_rig';
+    if (p.includes('oilrig_2')) return 'small_oil_rig';
+    if (p.includes('excavator')) return 'giant_excavator';
+    if (p.includes('water_treatment')) return 'water_treatment';
+    if (p.includes('trainyard')) return 'train_yard';
+    if (p.includes('powerplant')) return 'power_plant';
+    if (p.includes('airfield')) return 'airfield';
+    if (p.includes('arctic_research')) return 'arctic_research';
+    if (p.includes('radtown_1')) return 'radtown';
+    if (p.includes('radtown_small') || p.includes('sewer')) return 'sewer_branch';
+    if (p.includes('sphere_tank')) return 'the_dome';
+    if (p.includes('underwater_lab')) return 'underwater_labs';
+    if (p.includes('satellite_dish')) return 'satellite_dish';
+    if (p.includes('ferry_terminal')) return 'ferry_terminal';
+    if (p.includes('harbor')) return 'harbor';
+    if (p.includes('lighthouse')) return 'lighthouse';
+    if (p.includes('gas_station')) return 'gas_station';
+    if (p.includes('supermarket')) return 'supermarket';
+    return null;
+  }
+
   function loadCustomMapImageIfConfigured() {
-    const url = appState.mapConfig?.customImageUrl;
-    if (!url) {
-      customMapImg = null;
-      drawTacticalMap();
-      return;
-    }
+    const url = appState.mapConfig?.customImageUrl || 'img/default-server-map.jpg';
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -1042,8 +1072,17 @@
       drawTacticalMap();
     };
     img.onerror = () => {
-      customMapImg = null;
-      drawTacticalMap();
+      if (url !== 'img/default-server-map.jpg') {
+        const fallback = new Image();
+        fallback.onload = () => {
+          customMapImg = fallback;
+          drawTacticalMap();
+        };
+        fallback.src = 'img/default-server-map.jpg';
+      } else {
+        customMapImg = null;
+        drawTacticalMap();
+      }
     };
     img.src = url;
   }
@@ -1055,107 +1094,472 @@
     return `${colLetter}${row}`;
   }
 
+  // Helper to get the island square bounds inside the canvas
+  function getIslandRect(W, H) {
+    const S = Math.min(W, H) * 0.75;
+    const ix = (W - S) / 2;
+    const iy = (H - S) / 2;
+    return { ix, iy, S };
+  }
+
+  function worldToIslandScreen(wx, wy, W, H, mapSize) {
+    const { ix, iy, S } = getIslandRect(W, H);
+    const nx = (wx + mapSize / 2) / mapSize;
+    const ny = 1 - (wy + mapSize / 2) / mapSize;
+    return {
+      px: ix + nx * S,
+      py: iy + ny * S,
+      nx,
+      ny
+    };
+  }
+
+  function normalizedToIslandScreen(nx, ny, W, H) {
+    const { ix, iy, S } = getIslandRect(W, H);
+    return {
+      px: ix + nx * S,
+      py: iy + ny * S
+    };
+  }
+
+  // Crisp vector glyph renderer inside Rust+ Desktop circular monument badges
+  function drawMonumentBadge(ctx, px, py, kind, badgeRadius, extraLetter = '', isSelected = false) {
+    ctx.save();
+
+    if (isSelected) {
+      ctx.beginPath();
+      ctx.arc(px, py, badgeRadius + 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.38)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#60a5fa';
+      ctx.stroke();
+    }
+
+    let bg = '#d14334'; // Authentic Rust+ Desktop Red
+    if (kind === 'safezone' || kind === 'outpost' || kind === 'fishing') bg = '#2ea043'; // Green
+    else if (kind === 'well' || kind === 'oasis' || kind === 'swamp') bg = '#d97706'; // Orange
+    else if (kind === 'tunnel') bg = '#2d3748'; // Dark Slate Shield
+    else if (kind === 'iceberg') bg = '#0ea5e9'; // Cyan Blue Teardrop
+
+    // Drop shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1.5;
+
+    if (kind === 'iceberg') {
+      // Teardrop pin shape for Icebergs
+      ctx.beginPath();
+      ctx.arc(px, py - 2, badgeRadius * 0.82, Math.PI * 0.85, Math.PI * 0.15, false);
+      ctx.lineTo(px, py + badgeRadius * 0.95);
+      ctx.closePath();
+      ctx.fillStyle = bg;
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(px, py, badgeRadius, 0, Math.PI * 2);
+      ctx.fillStyle = bg;
+      ctx.fill();
+      ctx.lineWidth = kind === 'tunnel' ? 1.5 : 1;
+      ctx.strokeStyle = kind === 'tunnel' ? '#94a3b8' : 'rgba(0, 0, 0, 0.35)';
+      ctx.stroke();
+    }
+
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const r = badgeRadius * 0.52;
+
+    if (kind === 'god_rock' || kind === 'anvil_rock') {
+      // White Rock Arch / Cave Silhouette
+      ctx.beginPath();
+      ctx.arc(px, py + r * 0.45, r * 0.95, Math.PI, 0, false);
+      ctx.lineTo(px + r * 0.95, py + r * 0.7);
+      ctx.lineTo(px + r * 0.4, py + r * 0.7);
+      ctx.arc(px, py + r * 0.65, r * 0.4, 0, Math.PI, true);
+      ctx.lineTo(px - r * 0.95, py + r * 0.7);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw S / M / L letter badge on top-left of circle (exact match to screenshot!)
+      if (extraLetter) {
+        ctx.font = '800 8.5px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = '#7f1d1d';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(extraLetter, px - badgeRadius * 0.52, py - badgeRadius * 0.32);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(extraLetter, px - badgeRadius * 0.52, py - badgeRadius * 0.32);
+      }
+    } else if (kind === 'rocket') {
+      // Diagonal Rocket Icon (Launch Site / Missile Silo)
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 1.1);
+      ctx.quadraticCurveTo(r * 0.55, -r * 0.2, r * 0.4, r * 0.7);
+      ctx.lineTo(-r * 0.4, r * 0.7);
+      ctx.quadraticCurveTo(-r * 0.55, -r * 0.2, 0, -r * 1.1);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.4, r * 0.4);
+      ctx.lineTo(-r * 0.85, r * 0.9);
+      ctx.lineTo(r * 0.85, r * 0.9);
+      ctx.lineTo(r * 0.4, r * 0.4);
+      ctx.fill();
+      ctx.restore();
+    } else if (kind === 'factory') {
+      // Factory / Cooling Tower (Power Plant, Water Treatment, Train Yard, Radtown)
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.9, py + r * 0.85);
+      ctx.lineTo(px - r * 0.9, py - r * 0.1);
+      ctx.lineTo(px - r * 0.3, py + r * 0.25);
+      ctx.lineTo(px - r * 0.3, py - r * 0.1);
+      ctx.lineTo(px + r * 0.25, py + r * 0.25);
+      ctx.lineTo(px + r * 0.35, py - r * 0.85);
+      ctx.lineTo(px + r * 0.85, py - r * 0.85);
+      ctx.lineTo(px + r * 0.95, py + r * 0.85);
+      ctx.closePath();
+      ctx.fill();
+    } else if (kind === 'dome') {
+      // Sphere Tank / Dome
+      ctx.beginPath();
+      ctx.arc(px, py, r * 0.85, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.85, py);
+      ctx.lineTo(px + r * 0.85, py);
+      ctx.moveTo(px, py - r * 0.85);
+      ctx.lineTo(px, py + r * 0.85);
+      ctx.stroke();
+    } else if (kind === 'radar') {
+      // Satellite Dish
+      ctx.beginPath();
+      ctx.arc(px - r * 0.1, py + r * 0.1, r * 0.75, Math.PI * 0.75, Math.PI * 1.75);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.1, py + r * 0.1);
+      ctx.lineTo(px + r * 0.65, py - r * 0.65);
+      ctx.moveTo(px - r * 0.5, py + r * 0.85);
+      ctx.lineTo(px + r * 0.3, py + r * 0.85);
+      ctx.stroke();
+    } else if (kind === 'lighthouse' || kind === 'harbor') {
+      // Lighthouse / Harbor Tower
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.45, py + r * 0.9);
+      ctx.lineTo(px - r * 0.25, py - r * 0.6);
+      ctx.lineTo(px + r * 0.25, py - r * 0.6);
+      ctx.lineTo(px + r * 0.45, py + r * 0.9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px, py - r * 0.75, r * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (kind === 'quarry') {
+      // Mining Quarry / Excavator Pickaxe
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.75, py + r * 0.75);
+      ctx.lineTo(px + r * 0.65, py - r * 0.65);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px + r * 0.25, py - r * 0.25, r * 0.65, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+    } else if (kind === 'oilrig') {
+      // Oil Derrick
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.65, py + r * 0.85);
+      ctx.lineTo(px, py - r * 0.9);
+      ctx.lineTo(px + r * 0.65, py + r * 0.85);
+      ctx.moveTo(px - r * 0.45, py + r * 0.2);
+      ctx.lineTo(px + r * 0.45, py + r * 0.2);
+      ctx.moveTo(px - r * 0.85, py + r * 0.85);
+      ctx.lineTo(px + r * 0.85, py + r * 0.85);
+      ctx.stroke();
+    } else if (kind === 'outpost' || kind === 'safezone') {
+      // Safezone Crosshair / Shield
+      ctx.beginPath();
+      ctx.arc(px, py, r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (kind === 'fishing') {
+      // Anchor / Boat
+      ctx.beginPath();
+      ctx.moveTo(px, py - r * 0.7);
+      ctx.lineTo(px, py + r * 0.7);
+      ctx.arc(px, py + r * 0.2, r * 0.55, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    } else if (kind === 'tunnel') {
+      // Underground Train Tunnel Shield
+      ctx.beginPath();
+      ctx.rect(px - r * 0.65, py - r * 0.65, r * 1.3, r * 1.1);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.45, py + r * 0.85);
+      ctx.lineTo(px + r * 0.45, py + r * 0.85);
+      ctx.stroke();
+    } else if (kind === 'iceberg') {
+      ctx.beginPath();
+      ctx.moveTo(px - r * 0.55, py - 2);
+      ctx.lineTo(px + r * 0.55, py - 2);
+      ctx.stroke();
+    } else {
+      // Generic Monument Building / Bunker Icon
+      ctx.beginPath();
+      ctx.rect(px - r * 0.65, py - r * 0.45, r * 1.3, r * 1.1);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function classifyWorldMonument(prefabId, category) {
+    const p = String(prefabId || '').toLowerCase();
+    if (category === 'safezone') {
+      if (p.includes('compound')) return { kind: 'outpost', r: 11.5, label: 'Outpost' };
+      if (p.includes('fishing_village')) return { kind: 'fishing', r: 9.5, label: 'Fishing Village' };
+      if (p.includes('stables')) return { kind: 'factory', r: 10.5, label: 'Ranch / Stables' };
+      return { kind: 'safezone', r: 10, label: 'Safe Zone' };
+    }
+    if (p.includes('launch_site')) return { kind: 'rocket', r: 12, label: 'Launch Site' };
+    if (p.includes('nuclear_missile_silo')) return { kind: 'rocket', r: 11.5, label: 'Missile Silo' };
+    if (p.includes('sphere_tank')) return { kind: 'dome', r: 11, label: 'The Dome' };
+    if (p.includes('satellite_dish')) return { kind: 'radar', r: 11, label: 'Satellite Dish' };
+    if (p.includes('lighthouse')) return { kind: 'lighthouse', r: 10.5, label: 'Lighthouse' };
+    if (p.includes('harbor') || p.includes('ferry_terminal')) {
+      return { kind: 'harbor', r: 11, label: p.includes('ferry') ? 'Ferry Terminal' : 'Harbor' };
+    }
+    if (p.includes('oilrig')) {
+      return { kind: 'oilrig', r: 11.5, label: p.includes('oilrig_1') ? 'Large Oil Rig' : 'Small Oil Rig' };
+    }
+    if (p.includes('underwater_lab')) return { kind: 'dome', r: 10.5, label: 'Underwater Lab' };
+    if (p.includes('excavator') || p.includes('mining_quarry') || p.includes('warehouse')) {
+      return { kind: 'quarry', r: 10.5, label: p.includes('excavator') ? 'Giant Excavator' : 'Mining Quarry' };
+    }
+    if (p.includes('water_well')) return { kind: 'well', r: 8.5, label: 'Water Well' };
+    if (p.includes('jungle')) return { kind: 'swamp', r: 9, label: 'Jungle Ruins' };
+    return {
+      kind: 'factory',
+      r: 11,
+      label: p
+        .replace(/_\d+$/, '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+    };
+  }
+
   function drawTacticalMap() {
     const canvas = document.getElementById('tacticalMapCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
+    const world = window.RUST_WORLD_MAP || { size: 3500 };
+    const mapSize = world.size || 3500;
+    const { ix, iy, S } = getIslandRect(W, H);
 
     ctx.save();
     ctx.clearRect(0, 0, W, H);
+
+    // 1. Exact Rust+ Desktop Ocean Background (#0b3a4a = rgb(11, 58, 74))
+    ctx.fillStyle = '#0b3a4a';
+    ctx.fillRect(0, 0, W, H);
 
     // Apply Pan & Zoom
     ctx.translate(W / 2 + mapOffsetX, H / 2 + mapOffsetY);
     ctx.scale(mapZoom, mapZoom);
     ctx.translate(-W / 2, -H / 2);
 
-    // 1. Deep Ocean Base
-    const oceanGrad = ctx.createRadialGradient(W * 0.5, H * 0.5, W * 0.1, W * 0.5, H * 0.5, W * 0.65);
-    oceanGrad.addColorStop(0, '#13334c');
-    oceanGrad.addColorStop(1, '#071524');
-    ctx.fillStyle = oceanGrad;
-    ctx.fillRect(0, 0, W, H);
+    // Fill extended ocean bounds when zoomed out or panned
+    ctx.fillStyle = '#0b3a4a';
+    ctx.fillRect(-W * 2, -H * 2, W * 5, H * 5);
 
+    // 2. High-Resolution Island Terrain Render
     if (customMapImg) {
-      ctx.drawImage(customMapImg, 0, 0, W, H);
-    } else {
-      // Draw Procedural Rust Island with Authentic Biomes (Snow North, Temperate Mid, Desert South)
+      ctx.drawImage(customMapImg, ix, iy, S, S);
+    }
+
+    // 3. Layer: Coastal Cargo Ship Dotted Contour Path & Offshore Oil Rig Rings
+    if (mapLayers.cargoPath && Array.isArray(world.cargoPaths)) {
       ctx.save();
-      ctx.beginPath();
-      const cx = W * 0.5;
-      const cy = H * 0.5;
-      const rx = W * 0.39;
-      const ry = H * 0.39;
-      const points = 36;
-      for (let i = 0; i <= points; i++) {
-        const angle = (i / points) * Math.PI * 2;
-        const wobble =
-          1 +
-          0.06 * Math.sin(angle * 3 + 1.2) +
-          0.04 * Math.cos(angle * 5 - 0.7) +
-          0.025 * Math.sin(angle * 8);
-        const px = cx + Math.cos(angle) * rx * wobble;
-        const py = cy + Math.sin(angle) * ry * wobble;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.34)';
+      ctx.lineWidth = 1.15 / Math.sqrt(mapZoom);
+      ctx.setLineDash([2.5, 3.5]);
 
-      // Sandy Coast Outline
-      ctx.lineWidth = 18;
-      ctx.strokeStyle = '#c2a675';
-      ctx.stroke();
-      ctx.clip();
+      world.cargoPaths.forEach((pathPts) => {
+        if (!Array.isArray(pathPts) || pathPts.length < 2) return;
+        ctx.beginPath();
+        pathPts.forEach((pt, idx) => {
+          const { px, py } = worldToIslandScreen(pt[0], pt[1], W, H, mapSize);
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      });
 
-      // Biome vertical gradient: Snow (top) -> Forest/Temperate (middle) -> Arid Desert (bottom)
-      const biomeGrad = ctx.createLinearGradient(0, H * 0.1, 0, H * 0.9);
-      biomeGrad.addColorStop(0.0, '#dce6f2');
-      biomeGrad.addColorStop(0.28, '#9ab0bd');
-      biomeGrad.addColorStop(0.36, '#3b5e3c');
-      biomeGrad.addColorStop(0.66, '#43693d');
-      biomeGrad.addColorStop(0.75, '#a8844c');
-      biomeGrad.addColorStop(1.0, '#c29253');
-      ctx.fillStyle = biomeGrad;
-      ctx.fillRect(0, 0, W, H);
+      // Dotted perimeter rings around Offshore Oil Rigs (exact match to screenshot!)
+      (world.monuments || [])
+        .filter((m) => String(m.i).includes('oilrig'))
+        .forEach((rig) => {
+          const { px, py } = worldToIslandScreen(rig.x, rig.y, W, H, mapSize);
+          const ringR = (260 / mapSize) * S;
+          ctx.beginPath();
+          ctx.arc(px, py, ringR, 0, Math.PI * 2);
+          ctx.stroke();
 
-      // Ring Road Network
-      ctx.beginPath();
-      ctx.ellipse(W * 0.5, H * 0.5, W * 0.24, H * 0.24, 0.2, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(70, 58, 46, 0.75)';
-      ctx.lineWidth = 5;
-      ctx.stroke();
+          // Tiny red approach marker on the perimeter ring
+          const dotAngle = rig.x < 0 ? Math.PI : Math.PI * 1.18;
+          ctx.save();
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(px + Math.cos(dotAngle) * ringR, py + Math.sin(dotAngle) * ringR, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ef4444';
+          ctx.fill();
+          ctx.restore();
+        });
 
       ctx.restore();
     }
 
-    // 2. Draw 26x26 Tactical Grid (A0 - Z25)
-    const cells = 26;
-    const cellW = W / cells;
-    const cellH = H / cells;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.lineWidth = 1;
-    ctx.font = '600 9px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-
-    for (let i = 0; i <= cells; i++) {
+    // 4. Layer: Underground Train Tunnel Network (Dark Rail Lines on Terrain)
+    if (mapLayers.tunnels && Array.isArray(world.tunnelNodes)) {
+      ctx.save();
+      const nodes = world.tunnelNodes;
+      ctx.strokeStyle = 'rgba(20, 24, 31, 0.85)';
+      ctx.lineWidth = 2.6;
       ctx.beginPath();
-      ctx.moveTo(i * cellW, 0);
-      ctx.lineTo(i * cellW, H);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(0, i * cellH);
-      ctx.lineTo(W, i * cellH);
-      ctx.stroke();
-
-      if (i < cells) {
-        ctx.fillText(String.fromCharCode(65 + i), i * cellW + 10, 12);
-        ctx.fillText(String(i), 3, i * cellH + 20);
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+          if (d > 5 && d <= 185) {
+            const p1 = worldToIslandScreen(nodes[i].x, nodes[i].y, W, H, mapSize);
+            const p2 = worldToIslandScreen(nodes[j].x, nodes[j].y, W, H, mapSize);
+            ctx.moveTo(p1.px, p1.py);
+            ctx.lineTo(p2.px, p2.py);
+          }
+        }
       }
+      ctx.stroke();
+      ctx.restore();
     }
 
-    // 3. Layer: Card Progression Flow (Green -> Blue -> Red -> Elite)
+    // 5. Layer: No-Build Monument Spheres (building_blocked.json)
+    if (mapLayers.noBuild && Array.isArray(world.noBuildSpheres)) {
+      ctx.save();
+      world.noBuildSpheres.forEach((sp) => {
+        const { px, py } = worldToIslandScreen(sp.x, sp.y, W, H, mapSize);
+        const radPx = (sp.r / mapSize) * S;
+        ctx.beginPath();
+        ctx.arc(px, py, radPx, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+        ctx.fill();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = 'rgba(248, 113, 113, 0.8)';
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    // 6. Layer: 26x26 Tactical Grid (Toggled via "⊞ Grid" button in top bar)
+    if (mapLayers.grid) {
+      const cells = 26;
+      const cellW = S / cells;
+      const cellH = S / cells;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
+      ctx.lineWidth = 0.8;
+      ctx.font = '600 8.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+
+      for (let i = 0; i <= cells; i++) {
+        ctx.beginPath();
+        ctx.moveTo(ix + i * cellW, iy);
+        ctx.lineTo(ix + i * cellW, iy + S);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(ix, iy + i * cellH);
+        ctx.lineTo(ix + S, iy + i * cellH);
+        ctx.stroke();
+
+        if (i < cells) {
+          ctx.fillText(String.fromCharCode(65 + i), ix + i * cellW + 4, iy + 10);
+          ctx.fillText(String(i), ix + 3, iy + i * cellH + 18);
+        }
+      }
+      ctx.restore();
+    }
+
+    // 7. Layer: Icebergs, Oases, Swamps & Water Wells
+    if (mapLayers.icebergsWells && Array.isArray(world.extraMonuments)) {
+      world.extraMonuments.forEach((em) => {
+        if (em.name.includes('God Rock') || em.name.includes('Anvil Rock')) return;
+        const { px, py } = worldToIslandScreen(em.x, em.y, W, H, mapSize);
+        if (em.name === 'Iceberg') {
+          drawMonumentBadge(ctx, px, py, 'iceberg', 7.5);
+        } else if (em.name === 'Water Well') {
+          drawMonumentBadge(ctx, px, py, 'well', 8);
+        } else if (em.name === 'Oasis' || em.name.includes('Swamp') || em.name === 'Lake') {
+          drawMonumentBadge(ctx, px, py, 'safezone', 8.5);
+        }
+      });
+    }
+
+    // 8. Layer: Underground Train Tunnel Entrances (Dark Slate Badges)
+    if ((mapLayers.monuments || mapLayers.tunnels) && Array.isArray(world.tunnelEntrances)) {
+      world.tunnelEntrances.forEach((te) => {
+        const { px, py } = worldToIslandScreen(te.x, te.y, W, H, mapSize);
+        drawMonumentBadge(ctx, px, py, 'tunnel', 7.5);
+      });
+    }
+
+    // 9. Layer: God Rocks (S / M / L) & Anvil Rocks
+    if (mapLayers.godRocks && Array.isArray(world.extraMonuments)) {
+      world.extraMonuments.forEach((em) => {
+        if (!em.name.includes('God Rock') && !em.name.includes('Anvil Rock')) return;
+        const { px, py } = worldToIslandScreen(em.x, em.y, W, H, mapSize);
+        let letter = '';
+        if (em.name.startsWith('Small')) letter = 'S';
+        else if (em.name.startsWith('Medium')) letter = 'M';
+        else if (em.name.startsWith('Large')) letter = 'L';
+        drawMonumentBadge(ctx, px, py, 'god_rock', 10.5, letter);
+      });
+    }
+
+    // 10. Layer: Major Monuments & Safezones (Red & Green Circular Badges)
+    if (mapLayers.monuments && Array.isArray(world.monuments)) {
+      world.monuments.forEach((m) => {
+        if (String(m.i).includes('water_well')) {
+          if (!mapLayers.icebergsWells) return;
+        }
+        const { px, py } = worldToIslandScreen(m.x, m.y, W, H, mapSize);
+        const info = classifyWorldMonument(m.i, m.c);
+        const atlasId = prefabToMonumentAtlasId(m.i);
+        const isSelected = atlasId && atlasId === selectedMonumentId;
+
+        drawMonumentBadge(ctx, px, py, info.kind, info.r, '', isSelected);
+
+        if (mapLayers.monumentNames || isSelected) {
+          ctx.save();
+          ctx.font = '700 9.5px "Inter", sans-serif';
+          const textW = ctx.measureText(info.label).width + 8;
+          ctx.fillStyle = 'rgba(15, 19, 25, 0.88)';
+          ctx.fillRect(px - textW / 2, py + info.r + 3, textW, 13);
+          ctx.fillStyle = '#f8fafc';
+          ctx.textAlign = 'center';
+          ctx.fillText(info.label, px, py + info.r + 12.5);
+          ctx.restore();
+        }
+      });
+    }
+
+    // 11. Layer: Keycard Progression Flow (Optional)
     if (mapLayers.cardFlow) {
       const flowPairs = [
         ['lighthouse', 'sewer_branch', '#22c55e'],
@@ -1166,384 +1570,173 @@
         ['ferry_terminal', 'power_plant', '#3b82f6'],
         ['water_treatment', 'launch_site', '#ef4444'],
         ['train_yard', 'military_tunnels', '#ef4444'],
-        ['power_plant', 'missile_silo', '#ef4444'],
-        ['arctic_research', 'large_oil_rig', '#ef4444']
+        ['power_plant', 'missile_silo', '#ef4444']
       ];
-
       flowPairs.forEach(([fromId, toId, color]) => {
         const m1 = DATA.monuments.find((m) => m.id === fromId);
         const m2 = DATA.monuments.find((m) => m.id === toId);
         if (!m1 || !m2) return;
-        const x1 = m1.defaultPos.x * W;
-        const y1 = m1.defaultPos.y * H;
-        const x2 = m2.defaultPos.x * W;
-        const y2 = m2.defaultPos.y * H;
-
+        const p1 = normalizedToIslandScreen(m1.defaultPos.x, m1.defaultPos.y, W, H);
+        const p2 = normalizedToIslandScreen(m2.defaultPos.x, m2.defaultPos.y, W, H);
         ctx.save();
         ctx.beginPath();
-        ctx.setLineDash([6, 6]);
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(p1.px, p1.py);
+        ctx.lineTo(p2.px, p2.py);
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.65;
         ctx.stroke();
         ctx.restore();
       });
     }
 
-    // 4. Layer: Farming Node Hotspots
-    if (mapLayers.farmZones) {
-      DATA.farmZones.forEach((fz) => {
-        const fx = fz.x * W;
-        const fy = fz.y * H;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(fx, fy, 26, 0, Math.PI * 2);
-        ctx.fillStyle = fz.type === 'Sulfur' ? 'rgba(234, 179, 8, 0.22)' : 'rgba(56, 189, 248, 0.2)';
-        ctx.fill();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = fz.type === 'Sulfur' ? '#eab308' : '#38bdf8';
-        ctx.stroke();
-
-        ctx.font = '700 10px "JetBrains Mono", monospace';
-        ctx.fillStyle = '#fef08a';
-        ctx.textAlign = 'center';
-        ctx.fillText(`⛏️ ${fz.type.toUpperCase()}`, fx, fy + 4);
-        ctx.restore();
-      });
-    }
-
-    // 5. Layer: Suggested Best Building Spots
+    // 12. Layer: Meta Build Spots & Sulfur Nodes (Optional)
     if (mapLayers.buildSpots) {
-      const squadFilter = document.getElementById('spotSquadFilter')?.value || 'all';
-      const styleFilter = document.getElementById('spotStyleFilter')?.value || 'all';
-
       DATA.buildSpots.forEach((spot) => {
-        const matchSquad = squadFilter === 'all' || spot.squadSize.includes(squadFilter);
-        const matchStyle = styleFilter === 'all' || spot.playstyle.includes(styleFilter);
-        if (!matchSquad || !matchStyle) return;
-
-        const sx = spot.x * W;
-        const sy = spot.y * H;
+        const { px, py } = normalizedToIslandScreen(spot.x, spot.y, W, H);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(sx, sy, 22, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.25)';
+        ctx.arc(px, py, 16, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.28)';
         ctx.fill();
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.8;
         ctx.setLineDash([4, 3]);
         ctx.strokeStyle = '#c084fc';
         ctx.stroke();
-
-        ctx.font = '700 10px "Chakra Petch", sans-serif';
-        ctx.fillStyle = '#f3e8ff';
-        ctx.textAlign = 'center';
-        ctx.fillText(`🏰 ${spot.tier}`, sx, sy - 26);
         ctx.restore();
       });
     }
 
-    // 6. Layer: Monuments & Keycard Tiers
-    if (mapLayers.monuments) {
-      DATA.monuments.forEach((m) => {
-        const mx = m.defaultPos.x * W;
-        const my = m.defaultPos.y * H;
-        const isSelected = m.id === selectedMonumentId;
-
-        let tierColor = '#22c55e';
-        if (m.tier === 1) tierColor = '#22c55e';
-        else if (m.tier === 2) tierColor = '#3b82f6';
-        else if (m.tier === 3) tierColor = '#ef4444';
-        else tierColor = '#84cc16';
-
-        ctx.save();
-        if (isSelected) {
-          ctx.beginPath();
-          ctx.arc(mx, my, 18, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(205, 65, 43, 0.38)';
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#fff';
-          ctx.stroke();
-        }
-
-        ctx.beginPath();
-        ctx.arc(mx, my, 9, 0, Math.PI * 2);
-        ctx.fillStyle = tierColor;
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#090b0e';
-        ctx.stroke();
-
-        // Label box
-        ctx.font = '700 10px "Chakra Petch", sans-serif';
-        const label = m.name.replace('Abandoned ', '').replace('Oxum\'s ', '');
-        const textW = ctx.measureText(label).width + 10;
-        ctx.fillStyle = 'rgba(9, 11, 14, 0.85)';
-        ctx.fillRect(mx - textW / 2, my + 11, textW, 15);
-        ctx.strokeStyle = tierColor;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(mx - textW / 2, my + 11, textW, 15);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, mx, my + 22);
-        ctx.restore();
-      });
-    }
-
-    // 7. Layer: Shared Squad Map Markers
-    if (mapLayers.squadPins && Array.isArray(appState.markers)) {
-      appState.markers.forEach((pin) => {
-        const px = pin.x * W;
-        const py = pin.y * H;
-        let icon = '📍';
-        let pinColor = '#f97316';
-        if (pin.type === 'raid') {
-          icon = '🎯';
-          pinColor = '#ef4444';
-        } else if (pin.type === 'base') {
-          icon = '🏠';
-          pinColor = '#22c55e';
-        } else if (pin.type === 'farm') {
-          icon = '⛏️';
-          pinColor = '#eab308';
-        } else if (pin.type === 'danger') {
-          icon = '⚠️';
-          pinColor = '#f97316';
-        }
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(px, py, 12, 0, Math.PI * 2);
-        ctx.fillStyle = pinColor;
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#fff';
-        ctx.stroke();
-
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(icon, px, py + 4);
-
-        ctx.font = '700 10px "JetBrains Mono", monospace';
-        const tag = `${pin.label} [${pin.grid}]`;
-        const tw = ctx.measureText(tag).width + 10;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
-        ctx.fillRect(px - tw / 2, py - 27, tw, 14);
-        ctx.fillStyle = pinColor;
-        ctx.fillText(tag, px, py - 17);
-        ctx.restore();
-      });
-    }
-
-    // 8. Layer: Rust+ Vending Machines (NPC + Player Shops with Search Highlight!)
+    // 13. Layer: Vending Machine Search Highlights
     if (mapLayers.vending && appState.rustPlus && Array.isArray(appState.rustPlus.vendingMachines)) {
       const searchQ = (document.getElementById('vendingSearchInput')?.value || '').trim().toLowerCase();
-      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+      if (searchQ.length > 0 || selectedVendingId) {
+        const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+        appState.rustPlus.vendingMachines.forEach((vm) => {
+          const matchesSearch =
+            searchQ.length > 0 &&
+            (vm.name.toLowerCase().includes(searchQ) ||
+              (vm.orders || []).some(
+                (o) => o.item.toLowerCase().includes(searchQ) || o.costItem.toLowerCase().includes(searchQ)
+              ));
+          const isSel = vm.id === selectedVendingId;
+          if (!matchesSearch && !isSel) return;
 
-      appState.rustPlus.vendingMachines.forEach((vm) => {
-        const vx = vm.x * W;
-        const vy = vm.y * H;
-        const matchesSearch =
-          searchQ.length > 0 &&
-          (vm.name.toLowerCase().includes(searchQ) ||
-            (vm.orders || []).some(
-              (o) => o.item.toLowerCase().includes(searchQ) || o.costItem.toLowerCase().includes(searchQ)
-            ));
-        const isSelectedVm = vm.id === selectedVendingId;
-
-        ctx.save();
-        if (matchesSearch || isSelectedVm) {
+          const { px, py } = normalizedToIslandScreen(vm.x, vm.y, W, H);
+          ctx.save();
           ctx.beginPath();
-          ctx.arc(vx, vy, 18 + pulse * 8, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(34, 197, 94, 0.32)';
+          ctx.arc(px, py, 14 + pulse * 6, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.35)';
           ctx.fill();
-          ctx.lineWidth = 2.5;
+          ctx.lineWidth = 2;
           ctx.strokeStyle = '#4ade80';
           ctx.stroke();
-        }
+          drawMonumentBadge(ctx, px, py, 'safezone', 9.5);
+          ctx.restore();
+        });
+      }
+    }
 
+    // 14. Layer: Shared Squad Map Pins
+    if (mapLayers.squadPins && Array.isArray(appState.markers)) {
+      appState.markers.forEach((pin) => {
+        const { px, py } = normalizedToIslandScreen(pin.x, pin.y, W, H);
+        ctx.save();
         ctx.beginPath();
-        ctx.arc(vx, vy, 10, 0, Math.PI * 2);
-        ctx.fillStyle = vm.type === 'npc' ? '#0d9488' : '#16a34a';
+        ctx.arc(px, py, 8.5, 0, Math.PI * 2);
+        ctx.fillStyle = pin.type === 'raid' ? '#ef4444' : pin.type === 'base' ? '#22c55e' : '#eab308';
         ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#fff';
         ctx.stroke();
-
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('🛒', vx, vy + 3.5);
-
-        if (matchesSearch || isSelectedVm) {
-          ctx.font = '700 10px "JetBrains Mono", monospace';
-          const lbl = `🛒 ${vm.name} [${vm.grid}]`;
-          const lw = ctx.measureText(lbl).width + 10;
-          ctx.fillStyle = 'rgba(9, 11, 14, 0.92)';
-          ctx.fillRect(vx - lw / 2, vy - 26, lw, 14);
-          ctx.strokeStyle = '#4ade80';
-          ctx.strokeRect(vx - lw / 2, vy - 26, lw, 14);
-          ctx.fillStyle = '#4ade80';
-          ctx.fillText(lbl, vx, vy - 16);
-        }
         ctx.restore();
       });
     }
 
-    // 9. Layer: Rust+ Live Moving Events (Cargo Ship, Patrol Helicopter, Chinook CH47 & Locked Crates)
-    if (mapLayers.liveEvents && liveEventsSimEnabled) {
+    // 15. Layer: Simulated Cargo Ship & Patrol Helicopter (when enabled)
+    if (mapLayers.liveEvents || liveEventsSimEnabled) {
       const t = Date.now() / 1000;
-
-      // A) Cargo Ship orbiting the outer island perimeter
       const cargoAngle = (t * 0.035) % (Math.PI * 2);
-      const cargoNx = 0.5 + Math.cos(cargoAngle) * 0.44;
-      const cargoNy = 0.5 + Math.sin(cargoAngle) * 0.44;
-      const cx = cargoNx * W;
-      const cy = cargoNy * H;
-      const cargoGrid = normalizedToGrid(cargoNx, cargoNy);
-
+      const cPos = normalizedToIslandScreen(0.5 + Math.cos(cargoAngle) * 0.48, 0.5 + Math.sin(cargoAngle) * 0.48, W, H);
       ctx.save();
-      // Wake trail
       ctx.beginPath();
-      ctx.arc(W * 0.5, H * 0.5, W * 0.44, cargoAngle - 0.25, cargoAngle);
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
-      ctx.lineWidth = 4;
-      ctx.stroke();
-
-      // Ship hull
-      ctx.translate(cx, cy);
-      ctx.rotate(cargoAngle + Math.PI / 2);
+      ctx.arc(cPos.px, cPos.py, 10, 0, Math.PI * 2);
       ctx.fillStyle = '#0284c7';
-      ctx.strokeStyle = '#e0f2fe';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, -16);
-      ctx.lineTo(9, 12);
-      ctx.lineTo(-9, 12);
-      ctx.closePath();
       ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
-      ctx.restore();
-
-      ctx.save();
-      ctx.font = '700 10px "JetBrains Mono", monospace';
+      ctx.font = '700 9px "JetBrains Mono", monospace';
       ctx.fillStyle = '#38bdf8';
       ctx.textAlign = 'center';
-      ctx.fillText(`🚢 CARGO [${cargoGrid}]`, cx, cy - 20);
+      ctx.fillText('🚢 CARGO', cPos.px, cPos.py - 13);
       ctx.restore();
-
-      const cargoHud = document.getElementById('rustPlusCargoDisplay');
-      if (cargoHud) cargoHud.textContent = `🚢 Cargo: ACTIVE [${cargoGrid}]`;
-
-      // B) Patrol Helicopter roaming across major monuments
-      const heliAngle = t * 0.11;
-      const heliNx = 0.5 + Math.sin(heliAngle) * 0.26;
-      const heliNy = 0.46 + Math.cos(heliAngle * 1.4) * 0.22;
-      const hx = heliNx * W;
-      const hy = heliNy * H;
-      const heliGrid = normalizedToGrid(heliNx, heliNy);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(hx, hy, 26, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
-      ctx.setLineDash([4, 4]);
-      ctx.stroke();
-
-      // Spinning Rotor Blades
-      ctx.save();
-      ctx.translate(hx, hy);
-      ctx.rotate(t * 14);
-      ctx.strokeStyle = '#f87171';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(-14, 0);
-      ctx.lineTo(14, 0);
-      ctx.moveTo(0, -14);
-      ctx.lineTo(0, 14);
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.font = '700 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#f87171';
-      ctx.textAlign = 'center';
-      ctx.fillText(`🚁 PATROL HELI [${heliGrid}]`, hx, hy - 30);
-      ctx.restore();
-
-      const heliHud = document.getElementById('rustPlusHeliDisplay');
-      if (heliHud) heliHud.textContent = `🚁 Patrol Heli: ROAMING [${heliGrid}]`;
-
-      // C) Active Locked Crates on Small & Large Oil Rig
-      [
-        { nx: 0.06, ny: 0.45, name: 'LOCKED CRATE' },
-        { nx: 0.94, ny: 0.25, name: 'LOCKED CRATE' }
-      ].forEach((cr) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cr.nx * W, cr.ny * H - 16, 7, 0, Math.PI * 2);
-        ctx.fillStyle = '#eab308';
-        ctx.fill();
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('🔒', cr.nx * W, cr.ny * H - 13);
-        ctx.restore();
-      });
     }
 
-    // 10. Layer: Rust+ Live Squad GPS & Death Markers
-    if (mapLayers.teamGps && appState.rustPlus && Array.isArray(appState.rustPlus.teamMembers)) {
-      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
-
-      appState.rustPlus.teamMembers.forEach((tm) => {
-        // Draw Death Marker if present
-        if (tm.deathX && tm.deathY) {
-          const dx = tm.deathX * W;
-          const dy = tm.deathY * H;
+    // 16. Layer: Rust+ In-Game Map Notes & Squad Players (Smiguel, Kanki)
+    if (mapLayers.teamGps) {
+      // Draw in-game Map Notes (e.g. black circle with white pillar next to Smiguel in screenshot)
+      if (Array.isArray(world.mapNotes)) {
+        world.mapNotes.slice(0, 2).forEach((mn) => {
+          const { px, py } = worldToIslandScreen(mn.x, mn.y, W, H, mapSize);
           ctx.save();
-          ctx.font = '700 13px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('💀', dx, dy + 4);
-          ctx.font = '700 9px "JetBrains Mono", monospace';
-          ctx.fillStyle = '#f87171';
-          ctx.fillText(`${tm.name} Death [${tm.deathGrid}]`, dx, dy - 10);
+          ctx.beginPath();
+          ctx.arc(px - 14, py + 2, 8.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#0f172a';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.stroke();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(px - 15.5, py - 3.5, 3, 11);
           ctx.restore();
-        }
+        });
+      }
 
-        const tx = tm.x * W;
-        const ty = tm.y * H;
+      const players =
+        Array.isArray(world.teamMembers) && world.teamMembers.length > 0
+          ? world.teamMembers.map((tm) => {
+              const pos = worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
+              return {
+                name: tm.name,
+                steamId: tm.steamId,
+                px: pos.px,
+                py: pos.py,
+                online: tm.online !== false
+              };
+            })
+          : (appState.rustPlus?.teamMembers || []).map((tm) => {
+              const pos = normalizedToIslandScreen(tm.x, tm.y, W, H);
+              return {
+                name: tm.name,
+                steamId: tm.id,
+                px: pos.px,
+                py: pos.py,
+                online: tm.isOnline
+              };
+            });
+
+      // Draw primary active player label & avatar badge (like "Smiguel" in top-right of island)
+      players.forEach((pl, idx) => {
+        // If Kanki & Smiguel are at the exact same base spot, draw Smiguel on top so labels don't overlap
+        if (idx > 0 && Math.hypot(pl.px - players[0].px, pl.py - players[0].py) < 8) return;
 
         ctx.save();
-        if (tm.isOnline) {
-          ctx.beginPath();
-          ctx.arc(tx, ty, 10 + pulse * 6, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(74, 222, 128, 0.55)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-
         ctx.beginPath();
-        ctx.arc(tx, ty, 7, 0, Math.PI * 2);
-        ctx.fillStyle = tm.isOnline ? '#22c55e' : '#64748b';
+        ctx.arc(pl.px, pl.py, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#f59e0b';
         ctx.fill();
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.8;
         ctx.strokeStyle = '#ffffff';
         ctx.stroke();
 
-        ctx.font = '700 10px "JetBrains Mono", monospace';
-        const tag = `● ${tm.name} [${tm.grid}]`;
-        const tw = ctx.measureText(tag).width + 8;
-        ctx.fillStyle = 'rgba(9, 11, 14, 0.88)';
-        ctx.fillRect(tx - tw / 2, ty - 22, tw, 13);
-        ctx.fillStyle = tm.isOnline ? '#4ade80' : '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.fillText(tag, tx, ty - 12);
+        ctx.font = '700 10.5px "Inter", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(pl.name, pl.px + 10, pl.py + 3.5);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(pl.name, pl.px + 10, pl.py + 3.5);
         ctx.restore();
       });
     }
@@ -1731,6 +1924,65 @@
   function renderRustPlusSidebar() {
     if (!appState.rustPlus) return;
 
+    const world = window.RUST_WORLD_MAP || {};
+    const mapSize = world.size || 3500;
+
+    // 0. RustPlusDesk Left Sidebar: Server Title & 2-Column Player Cards
+    const titleEl = document.getElementById('rpdServerNameTitle');
+    if (titleEl) {
+      titleEl.textContent =
+        appState.rustPlus.config?.serverName ||
+        world.serverName ||
+        "[EU] Willjum's Casual Solo/Duo Monthly";
+    }
+
+    const playersGridEl = document.getElementById('rpdPlayersGrid');
+    if (playersGridEl) {
+      const playersList =
+        Array.isArray(world.teamMembers) && world.teamMembers.length > 0
+          ? world.teamMembers.map((tm, i) => ({
+              name: tm.name,
+              steamShort: String(tm.steamId || '').slice(0, 11) + '...',
+              wx: tm.x,
+              wy: tm.y,
+              online: tm.online !== false,
+              avatarBg: i === 0 ? 'linear-gradient(135deg, #f59e0b, #dc2626)' : 'linear-gradient(135deg, #cbd5e1, #334155)',
+              avatarIcon: i === 0 ? '🤠' : '🥷'
+            }))
+          : (appState.rustPlus.teamMembers || []).map((tm, i) => ({
+              name: tm.name,
+              steamShort: '765611980' + (25 + i) + '...',
+              wx: tm.x * mapSize,
+              wy: (1 - tm.y) * mapSize,
+              online: tm.isOnline !== false,
+              avatarBg: 'linear-gradient(135deg, #f59e0b, #dc2626)',
+              avatarIcon: '🤠'
+            }));
+
+      playersGridEl.innerHTML = playersList
+        .map(
+          (pl, idx) => `
+          <div class="rpd-player-card" data-pwx="${pl.wx}" data-pwy="${pl.wy}" title="Click to center on ${pl.name}">
+            <div class="rpd-online-ring" style="${pl.online ? '' : 'border-color:#64748b;'}"></div>
+            <div class="rpd-avatar" style="background:${pl.avatarBg};">${pl.avatarIcon}</div>
+            <div class="rpd-player-meta">
+              <div class="rpd-player-name">${pl.name}</div>
+              <div class="rpd-player-steam">${pl.steamShort}</div>
+            </div>
+          </div>
+        `
+        )
+        .join('');
+
+      playersGridEl.querySelectorAll('.rpd-player-card').forEach((card) => {
+        card.addEventListener('click', () => {
+          const wx = parseFloat(card.getAttribute('data-pwx'));
+          const wy = parseFloat(card.getAttribute('data-pwy'));
+          centerMapOnWorldPos(wx, wy, 1.75);
+        });
+      });
+    }
+
     // 1. Vending Machine Search & List
     const vmListEl = document.getElementById('vendingMachinesList');
     const searchQ = (document.getElementById('vendingSearchInput')?.value || '').trim().toLowerCase();
@@ -1844,30 +2096,159 @@
     }
   }
 
+  function centerMapOnWorldPos(wx, wy, targetZoom = 1.65) {
+    const canvas = document.getElementById('tacticalMapCanvas');
+    if (!canvas) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    const mapSize = window.RUST_WORLD_MAP?.size || 3500;
+    const { px, py } = worldToIslandScreen(wx, wy, W, H, mapSize);
+    mapZoom = targetZoom;
+    mapOffsetX = (W / 2 - px) * mapZoom;
+    mapOffsetY = (H / 2 - py) * mapZoom;
+    drawTacticalMap();
+  }
+
+  function updateActiveLayerCountBadge() {
+    const countEl = document.getElementById('rpdActiveLayerCount');
+    if (!countEl) return;
+    const subKeys = ['godRocks', 'tunnels', 'cargoPath', 'icebergsWells', 'vending', 'liveEvents', 'cardFlow', 'buildSpots', 'monumentNames'];
+    const activeCount = subKeys.filter((k) => Boolean(mapLayers[k])).length;
+    countEl.textContent = String(activeCount);
+  }
+
+  function openInspectorToSubtab(subtabId) {
+    const inspector = document.getElementById('rpdFloatingInspector');
+    inspector?.classList.add('open');
+    document.querySelectorAll('#mapSideSubtabs .filter-pill').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-subtab') === subtabId);
+    });
+    document.querySelectorAll('.map-subtab-content').forEach((el) => {
+      el.style.display = el.id === subtabId ? 'block' : 'none';
+    });
+  }
+
   function initMapModule() {
     const canvas = document.getElementById('tacticalMapCanvas');
     if (!canvas) return;
 
-    // Layer toggles
-    document.querySelectorAll('#mapLayerToggles .filter-pill').forEach((btn) => {
+    // 1. Top Toolbar Layer Pills (Grid, Players, Monuments, Deaths, No Build)
+    document.querySelectorAll('#mapLayerToggles .rpd-pill[data-layer]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const layer = btn.getAttribute('data-layer');
+        if (!layer) return;
         mapLayers[layer] = !mapLayers[layer];
         btn.classList.toggle('active', mapLayers[layer]);
         drawTacticalMap();
       });
     });
 
-    // Side subtabs
+    // 2. Layers (7) Popover & Sublayer Checkboxes
+    const layersBtn = document.getElementById('rpdLayersPopoverBtn');
+    const layersPopover = document.getElementById('rpdLayersPopover');
+    layersBtn?.addEventListener('click', (evt) => {
+      evt.stopPropagation();
+      layersPopover?.classList.toggle('open');
+    });
+    document.addEventListener('click', (evt) => {
+      if (layersPopover?.classList.contains('open') && !layersPopover.contains(evt.target) && evt.target !== layersBtn) {
+        layersPopover.classList.remove('open');
+      }
+    });
+    document.querySelectorAll('.rpd-sublayer-cb').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const key = cb.getAttribute('data-sublayer');
+        if (!key) return;
+        mapLayers[key] = cb.checked;
+        if (key === 'liveEvents') {
+          liveEventsSimEnabled = cb.checked;
+        }
+        updateActiveLayerCountBadge();
+        drawTacticalMap();
+      });
+    });
+    updateActiveLayerCountBadge();
+
+    // 3. 2D | 3D | Mini Segmented Control
+    document.querySelectorAll('#rpdViewModeGroup .rpd-view-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#rpdViewModeGroup .rpd-view-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const mode = btn.getAttribute('data-viewmode');
+        if (mode === '3d') {
+          canvas.classList.add('view-3d');
+        } else {
+          canvas.classList.remove('view-3d');
+        }
+        if (mode === 'mini') {
+          mapZoom = 0.78;
+          mapOffsetX = 0;
+          mapOffsetY = 0;
+        } else if (mapZoom < 0.9) {
+          mapZoom = 1.0;
+        }
+        drawTacticalMap();
+      });
+    });
+
+    // 4. Floating HUD & Inspector Drawer Toggles
+    const inspector = document.getElementById('rpdFloatingInspector');
+    document.getElementById('rpdFloatingMonumentsBtn')?.addEventListener('click', () => {
+      if (inspector?.classList.contains('open')) {
+        inspector.classList.remove('open');
+      } else {
+        openInspectorToSubtab('sub-monuments');
+      }
+    });
+    document.getElementById('toggleInspectorDrawerBtn')?.addEventListener('click', () => {
+      inspector?.classList.toggle('open');
+    });
+    document.getElementById('rpdCloseInspectorBtn')?.addEventListener('click', () => {
+      inspector?.classList.remove('open');
+    });
+    document.querySelectorAll('[data-open-subtab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-open-subtab');
+        if (target) openInspectorToSubtab(target);
+      });
+    });
+
+    // Side subtabs inside floating inspector
     document.querySelectorAll('#mapSideSubtabs .filter-pill').forEach((btn) => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('#mapSideSubtabs .filter-pill').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
         const target = btn.getAttribute('data-subtab');
-        document.querySelectorAll('.map-subtab-content').forEach((el) => {
-          el.style.display = el.id === target ? 'block' : 'none';
-        });
+        if (target) openInspectorToSubtab(target);
       });
+    });
+
+    // 5. Floating Bottom-Left Team Chat Drawer
+    const chatDrawer = document.getElementById('rpdTeamChatDrawer');
+    document.getElementById('rpdTeamChatToggleBtn')?.addEventListener('click', () => {
+      chatDrawer?.classList.toggle('open');
+    });
+    document.getElementById('rpdCloseChatDrawerBtn')?.addEventListener('click', () => {
+      chatDrawer?.classList.remove('open');
+    });
+
+    // 6. Center on Player & Fullscreen Buttons
+    document.getElementById('rpdCenterPlayerBtn')?.addEventListener('click', () => {
+      const world = window.RUST_WORLD_MAP || {};
+      if (Array.isArray(world.teamMembers) && world.teamMembers[0]) {
+        centerMapOnWorldPos(world.teamMembers[0].x, world.teamMembers[0].y, 1.65);
+      } else {
+        mapZoom = 1.0;
+        mapOffsetX = 0;
+        mapOffsetY = 0;
+        drawTacticalMap();
+      }
+    });
+    document.getElementById('rpdFullscreenBtn')?.addEventListener('click', () => {
+      const ws = document.getElementById('rpdMainWorkspace') || document.documentElement;
+      if (!document.fullscreenElement) {
+        ws.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
     });
 
     // Vending search live filter
@@ -1902,7 +2283,7 @@
       inp.value = '';
       const msgObj = {
         id: 'tc-' + Date.now(),
-        author: appState.squadName || 'Tang',
+        author: appState.squadName || 'Smiguel',
         text,
         time: new Date().toTimeString().slice(0, 5),
         color: '#4ade80'
@@ -1926,20 +2307,12 @@
       if (e.key === 'Enter') sendTeamChatMessage();
     });
 
-    // Toggle Live Event Simulation
-    const simBtn = document.getElementById('toggleLiveEventsSimBtn');
-    simBtn?.addEventListener('click', () => {
-      liveEventsSimEnabled = !liveEventsSimEnabled;
-      simBtn.textContent = liveEventsSimEnabled ? '⚡ Live Event Sim: ON' : '⏸️ Live Event Sim: PAUSED';
-      drawTacticalMap();
-    });
-
-    // Rust+ Pairing Modal
+    // Rust+ Pairing Modal Triggers (Manage servers "..." + Pairing Listener "..." + Top nav button)
     const rpModal = document.getElementById('rustPlusModal');
-    document.getElementById('openRustPlusModalBtn')?.addEventListener('click', () => {
+    function openRustPlusPairingModal() {
       const cfg = appState.rustPlus?.config || {};
-      document.getElementById('rpServerIp').value = cfg.ip || '';
-      document.getElementById('rpServerPort').value = cfg.port || '28082';
+      document.getElementById('rpServerIp').value = cfg.ip || window.RUST_WORLD_MAP?.host || '';
+      document.getElementById('rpServerPort').value = cfg.port || String(window.RUST_WORLD_MAP?.port || '28017');
       document.getElementById('rpPlayerId').value = cfg.playerId || '';
       document.getElementById('rpPlayerToken').value = cfg.playerToken || '';
       const fcmBadge = document.getElementById('fcmListenerBadge');
@@ -1948,7 +2321,11 @@
         fcmBadge.className = appState.rustPlus?.fcmListening ? 'keycard-tag keycard-Green' : 'keycard-tag keycard-Fuse';
       }
       rpModal?.classList.add('open');
-    });
+    }
+
+    document.getElementById('openRustPlusModalBtn')?.addEventListener('click', openRustPlusPairingModal);
+    document.getElementById('rpdPairingMenuBtn')?.addEventListener('click', openRustPlusPairingModal);
+    document.getElementById('rpdServerDropdownBtn')?.addEventListener('click', openRustPlusPairingModal);
 
     document.getElementById('closeRustPlusModalBtn')?.addEventListener('click', () => {
       rpModal?.classList.remove('open');
@@ -2214,7 +2591,11 @@
       const H = canvas.height;
       const wx = (sx - W / 2 - mapOffsetX) / mapZoom + W / 2;
       const wy = (sy - H / 2 - mapOffsetY) / mapZoom + H / 2;
-      return { nx: wx / W, ny: wy / H };
+      const island = getIslandRect(W, H);
+      return {
+        nx: (wx - island.ox) / island.S,
+        ny: (wy - island.oy) / island.S
+      };
     }
 
     canvas.addEventListener('mousedown', (evt) => {
@@ -2228,8 +2609,10 @@
       if (evt.target === canvas) {
         const { nx, ny } = getNormalizedCanvasCoord(evt);
         const coordEl = document.getElementById('mapCursorCoord');
-        if (coordEl && nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
-          coordEl.textContent = `GRID: ${normalizedToGrid(nx, ny)}`;
+        if (coordEl && nx >= -0.25 && nx <= 1.25 && ny >= -0.25 && ny <= 1.25) {
+          const clampedX = Math.max(0, Math.min(0.999, nx));
+          const clampedY = Math.max(0, Math.min(0.999, ny));
+          coordEl.textContent = `GRID: ${normalizedToGrid(clampedX, clampedY)}`;
         }
       }
       if (!isDraggingMap) return;
@@ -2248,20 +2631,20 @@
     canvas.addEventListener('wheel', (evt) => {
       evt.preventDefault();
       const factor = evt.deltaY < 0 ? 1.12 : 0.89;
-      mapZoom = Math.min(3.5, Math.max(0.8, mapZoom * factor));
+      mapZoom = Math.min(3.5, Math.max(0.75, mapZoom * factor));
       drawTacticalMap();
     });
 
     canvas.addEventListener('click', (evt) => {
       if (pointerMoved) return;
       const { nx, ny } = getNormalizedCanvasCoord(evt);
-      if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+      if (nx < -0.35 || nx > 1.35 || ny < -0.35 || ny > 1.35) return;
 
       const mode = document.getElementById('mapClickModeSelect')?.value || 'inspect';
       if (mode === 'inspect') {
-        // Check closest Vending Machine first
+        // 1. Check closest Vending Machine first (when search or vending active)
         let closestVm = null;
-        let minVmDist = 0.032;
+        let minVmDist = 0.028;
         (appState.rustPlus?.vendingMachines || []).forEach((vm) => {
           const d = Math.hypot(vm.x - nx, vm.y - ny);
           if (d < minVmDist) {
@@ -2269,42 +2652,74 @@
             closestVm = vm;
           }
         });
-        if (closestVm) {
+        if (closestVm && (document.getElementById('vendingSearchInput')?.value || '').trim().length > 0) {
           selectedVendingId = closestVm.id;
-          document.querySelector('[data-subtab="sub-rustplus"]')?.click();
+          openInspectorToSubtab('sub-rustplus');
           renderRustPlusSidebar();
           drawTacticalMap();
           return;
         }
 
-        // Otherwise find closest monument
-        let closest = null;
-        let minDist = 0.045;
-        DATA.monuments.forEach((m) => {
-          const d = Math.hypot(m.defaultPos.x - nx, m.defaultPos.y - ny);
-          if (d < minDist) {
-            minDist = d;
-            closest = m;
-          }
-        });
-        if (closest) {
-          selectedMonumentId = closest.id;
-          document.querySelector('[data-subtab="sub-monuments"]')?.click();
+        // 2. Check closest World Monument from window.RUST_WORLD_MAP.monuments
+        const world = window.RUST_WORLD_MAP || {};
+        const mapSize = world.size || 3500;
+        let bestAtlasId = null;
+        let minWorldDist = 0.038;
+
+        if (Array.isArray(world.monuments)) {
+          world.monuments.forEach((wm) => {
+            const mnx = wm.x / mapSize;
+            const mny = 1 - wm.y / mapSize;
+            const d = Math.hypot(mnx - nx, mny - ny);
+            if (d < minWorldDist) {
+              const atlasId = prefabToMonumentAtlasId(wm.prefab);
+              if (atlasId) {
+                minWorldDist = d;
+                bestAtlasId = atlasId;
+              }
+            }
+          });
+        }
+
+        // Fallback to DATA.monuments default positions
+        if (!bestAtlasId) {
+          DATA.monuments.forEach((m) => {
+            const d = Math.hypot(m.defaultPos.x - nx, m.defaultPos.y - ny);
+            if (d < minWorldDist) {
+              minWorldDist = d;
+              bestAtlasId = m.id;
+            }
+          });
+        }
+
+        if (bestAtlasId) {
+          selectedMonumentId = bestAtlasId;
+          openInspectorToSubtab('sub-monuments');
           renderMonumentAtlas();
           drawTacticalMap();
         }
       } else if (mode === 'move_gps') {
-        const grid = normalizedToGrid(nx, ny);
+        const clampedX = Math.max(0, Math.min(0.999, nx));
+        const clampedY = Math.max(0, Math.min(0.999, ny));
+        const grid = normalizedToGrid(clampedX, clampedY);
+        if (window.RUST_WORLD_MAP?.teamMembers?.[0]) {
+          const mapSize = window.RUST_WORLD_MAP.size || 3500;
+          window.RUST_WORLD_MAP.teamMembers[0].x = Math.round(nx * mapSize);
+          window.RUST_WORLD_MAP.teamMembers[0].y = Math.round((1 - ny) * mapSize);
+          renderRustPlusSidebar();
+        }
         if (appState.rustPlus?.teamMembers?.[0]) {
-          appState.rustPlus.teamMembers[0].x = Number(nx.toFixed(4));
-          appState.rustPlus.teamMembers[0].y = Number(ny.toFixed(4));
+          appState.rustPlus.teamMembers[0].x = Number(clampedX.toFixed(4));
+          appState.rustPlus.teamMembers[0].y = Number(clampedY.toFixed(4));
           appState.rustPlus.teamMembers[0].grid = grid;
           syncStateToServer();
-          drawTacticalMap();
         }
+        drawTacticalMap();
       } else {
         const type = mode.replace('pin_', '');
-        const grid = normalizedToGrid(nx, ny);
+        const clampedX = Math.max(0, Math.min(0.999, nx));
+        const clampedY = Math.max(0, Math.min(0.999, ny));
+        const grid = normalizedToGrid(clampedX, clampedY);
         const defaultName =
           type === 'raid'
             ? 'Enemy Raid Target'
@@ -2335,7 +2750,7 @@
     // Live animation loop for Rust+ moving entities (Cargo, Patrol Heli, Squad GPS pulse)
     setInterval(() => {
       const mapTabActive = document.getElementById('tab-map')?.classList.contains('active');
-      if (mapTabActive && (liveEventsSimEnabled || mapLayers.teamGps || mapLayers.vending)) {
+      if (mapTabActive && (liveEventsSimEnabled || mapLayers.liveEvents || mapLayers.vending)) {
         drawTacticalMap();
       }
     }, 80);

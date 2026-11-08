@@ -626,16 +626,288 @@ body::before {
 }
 
 /* ==========================================================================
-   TAB 2: INTERACTIVE TACTICAL MAP & MONUMENT ATLAS
+   TAB 2: RUST+ DESKTOP STYLE LIVE MAP & SIDEBAR
    ========================================================================== */
+#tab-map.active {
+  margin: -20px;
+}
+
+.rpd-shell {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: calc(100vh - 109px);
+  min-height: 680px;
+  background: #0b3a4a;
+  border-top: 1px solid #222630;
+  overflow: hidden;
+}
+
+@media (max-width: 1024px) {
+  .rpd-shell {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+}
+
+/* Left Sidebar (#15181e) */
+.rpd-sidebar {
+  background: #15181e;
+  border-right: 1px solid #252a34;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  color: #e2e8f0;
+}
+
+.rpd-card {
+  background: #1b1f27;
+  border: 1px solid #282e3b;
+  border-radius: 7px;
+  padding: 10px 12px;
+}
+
+.rpd-server-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.rpd-server-title {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rpd-icon-btn {
+  background: #232832;
+  border: 1px solid #323947;
+  color: #cbd5e1;
+  border-radius: 5px;
+  width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.rpd-icon-btn:hover {
+  background: #2d3442;
+  color: #fff;
+  border-color: #475569;
+}
+
+.rpd-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4ade80;
+}
+
+.rpd-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  display: inline-block;
+}
+
+/* Team / Players 2-Column Grid in Sidebar */
+.rpd-players-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.rpd-player-card {
+  background: #1b1f27;
+  border: 1px solid #2a303d;
+  border-radius: 7px;
+  padding: 7px 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  overflow: hidden;
+}
+
+.rpd-player-card:hover {
+  border-color: #3b82f6;
+  background: #222733;
+}
+
+.rpd-online-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #22c55e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rpd-online-ring::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.rpd-online-ring.offline {
+  border-color: #64748b;
+}
+
+.rpd-online-ring.offline::after {
+  background: #64748b;
+}
+
+.rpd-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.rpd-player-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.rpd-player-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rpd-player-steam {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Right Main Map Workspace */
+.rpd-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0b3a4a;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top Toolbar above Map Canvas */
+.rpd-toolbar {
+  height: 44px;
+  background: #15181e;
+  border-bottom: 1px solid #252a34;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 25;
+}
+
+.rpd-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.rpd-pill {
+  background: #1d212a;
+  border: 1px solid #2c3342;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.rpd-pill:hover {
+  color: #f1f5f9;
+  border-color: #475569;
+}
+
+.rpd-pill.active {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: #3b82f6;
+  color: #93c5fd;
+  box-shadow: inset 0 0 8px rgba(59, 130, 246, 0.2);
+}
+
+.rpd-view-segmented {
+  display: inline-flex;
+  background: #1d212a;
+  border: 1px solid #2c3342;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.rpd-view-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.rpd-view-btn.active {
+  background: rgba(37, 99, 235, 0.28);
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+/* Map Viewport & Floating Overlays */
 .map-viewport {
   position: relative;
+  flex: 1;
   width: 100%;
-  aspect-ratio: 1 / 1;
-  max-height: 680px;
-  background: #0a1929;
-  border: 1px solid var(--border-highlight);
-  border-radius: 8px;
+  height: 100%;
+  background: #0b3a4a;
   overflow: hidden;
   cursor: grab;
   user-select: none;
@@ -649,48 +921,150 @@ body::before {
   width: 100%;
   height: 100%;
   display: block;
+  transition: transform 0.35s ease;
 }
 
-.map-overlay-controls {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  z-index: 10;
+#tacticalMapCanvas.view-3d {
+  transform: perspective(1100px) rotateX(28deg) scale(0.95);
 }
 
-.map-legend-bar {
+/* Top-Left Floating HUD Pills (Clock, Pop, Monuments) */
+.rpd-floating-hud-top {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
-  background: rgba(11, 14, 19, 0.88);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 8px 12px;
+  top: 14px;
+  left: 14px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  z-index: 15;
   flex-wrap: wrap;
-  gap: 10px;
-  font-size: 11px;
-  font-family: var(--font-mono);
 }
 
-.legend-item {
+.rpd-hud-box {
+  background: rgba(21, 24, 30, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid #2d3545;
+  border-radius: 6px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.rpd-hud-btn {
+  background: rgba(21, 24, 30, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid #2d3545;
+  border-radius: 6px;
+  padding: 6px 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  transition: all 0.15s ease;
 }
 
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
+.rpd-hud-btn:hover {
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+/* Bottom-Left Floating Team Chat Button & Drawer */
+.rpd-floating-bottom-left {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rpd-team-chat-btn {
+  background: rgba(21, 24, 30, 0.95);
+  border: 1px solid #2d3545;
+  border-radius: 6px;
+  padding: 7px 32px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.rpd-team-chat-btn:hover {
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.rpd-chat-drawer {
+  width: 340px;
+  background: rgba(21, 24, 30, 0.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid #333c4d;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  display: none;
+}
+
+.rpd-chat-drawer.open {
+  display: block;
+}
+
+/* Floating Layers Popover Menu */
+.rpd-layers-popover {
+  position: absolute;
+  top: 48px;
+  left: 290px;
+  width: 250px;
+  background: #181c24;
+  border: 1px solid #323947;
+  border-radius: 8px;
+  padding: 10px;
+  z-index: 40;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rpd-layers-popover.open {
+  display: flex;
+}
+
+/* Floating Right Drawer for Monument Puzzles / Vending / Build Spots */
+.rpd-floating-inspector {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 370px;
+  max-height: calc(100% - 28px);
+  overflow-y: auto;
+  background: rgba(21, 24, 30, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid #323947;
+  border-radius: 8px;
+  padding: 14px;
+  z-index: 20;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  display: none;
+}
+
+.rpd-floating-inspector.open {
+  display: block;
 }
 
 /* Keycard Badges */
