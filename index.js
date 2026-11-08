@@ -1,35 +1,41 @@
 /**
- * RUST TACTICAL COMPANION v2.0 — Pterodactyl Node.js Server + Rust+ Live Map Engine
- * ---------------------------------------------------------------------------------
- * - Runs out-of-the-box on any Node.js 16/18/20/22 Pterodactyl Egg
+ * RUST TACTICAL COMPANION v2.1 — Pterodactyl Node.js Server + Rust+ Desktop Auto-Pairing
+ * --------------------------------------------------------------------------------------
+ * - Zero-crash startup on any Node.js 16/18/20/22 Pterodactyl Egg
  * - Auto-binds to Pterodactyl's SERVER_PORT or PORT environment variable
+ * - Built-in Rust+ Desktop Style Auto-Pairing (FCM Push Receiver + Facepunch Companion API)
+ *   Catches "Pair with Server" & "Pair Smart Switch" clicks directly from inside Rust!
  * - Real-time Squad Sync via Server-Sent Events (SSE) + JSON file persistence
- * - Native Rust+ Companion Protocol support (via @liamcottle/rustplus.js when installed)
- *   + Live Telemetry Engine for Cargo, Patrol Heli, CH47, Vending Machines, Team GPS & Smart Switches
- * - Built-in BattleMetrics API Proxy with automatic Server Map Image extraction
+ * - Built-in BattleMetrics API Proxy + Discord Webhook notifications
  */
 
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { URL } = require('url');
 
-// Optional native Rust+ WebSocket library (auto-installed if npm install runs on Pterodactyl)
 let RustPlus = null;
+let PushReceiver = null;
 try {
   RustPlus = require('@liamcottle/rustplus.js');
-} catch (_) {
-  // Runs seamlessly with built-in Rust+ Live Telemetry & BattleMetrics Map Engine if not installed
-}
+} catch (_) {}
+try {
+  PushReceiver = require('@liamcottle/push-receiver');
+} catch (_) {}
 
 const PORT = parseInt(process.env.SERVER_PORT || process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const SQUAD_PIN = process.env.SQUAD_PIN || '';
 const BM_TOKEN = process.env.BATTLEMETRICS_TOKEN || '';
 
+// Facepunch Official Rust+ Firebase Sender ID
+const FACEPUNCH_GCM_SENDER_ID = '976529667804';
+
 const DATA_DIR = path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'squad-state.json');
+const FCM_FILE = path.join(DATA_DIR, 'fcm-credentials.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -46,8 +52,10 @@ const DEFAULT_STATE = {
   },
   rustPlus: {
     connected: false,
-    mode: 'simulated_live', // 'real_rustplus' | 'simulated_live'
+    fcmListening: false,
+    mode: 'simulated_live',
     config: {
+      serverName: '',
       ip: process.env.RUSTPLUS_IP || '',
       port: process.env.RUSTPLUS_PORT || '28082',
       playerId: process.env.RUSTPLUS_PLAYER_ID || '',
@@ -55,6 +63,7 @@ const DEFAULT_STATE = {
     },
     serverTime: '14:35',
     isDaytime: true,
+    liveMarkers: [],
     teamMembers: [
       { id: 'tm-1', name: 'Tang [Leader]', x: 0.52, y: 0.44, grid: 'N11', isOnline: true, isAlive: true, deathX: 0.75, deathY: 0.45, deathGrid: 'T11' },
       { id: 'tm-2', name: 'Scout_AK', x: 0.08, y: 0.45, grid: 'B11', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' },
@@ -99,8 +108,7 @@ const DEFAULT_STATE = {
         orders: [
           { item: 'Scrap', qty: 3, costItem: 'Fertilizer', costQty: 2, stock: 999 },
           { item: 'F1 Grenade', qty: 1, costItem: 'Scrap', costQty: 8, stock: 99 },
-          { item: 'LR-300 Assault Rifle', qty: 1, costItem: 'Scrap', costQty: 500, stock: 10 },
-          { item: '8x Zoom Scope', qty: 1, costItem: 'Scrap', costQty: 150, stock: 15 }
+          { item: 'LR-300 Assault Rifle', qty: 1, costItem: 'Scrap', costQty: 500, stock: 10 }
         ]
       },
       {
@@ -267,8 +275,14 @@ function broadcastState(eventType = 'state_update', extra = {}) {
   }
 }
 
+function normalizedToGrid(nx, ny) {
+  const col = Math.min(25, Math.max(0, Math.floor(nx * 26)));
+  const row = Math.min(25, Math.max(0, Math.floor(ny * 26)));
+  return `${String.fromCharCode(65 + col)}${row}`;
+}
+
 // ============================================================================
-// NATIVE RUST+ WEBSOCKET CONNECTOR (IF @liamcottle/rustplus.js IS INSTALLED)
+// NATIVE RUST+ WEBSOCKET CONNECTOR
 // ============================================================================
 let activeRustPlusClient = null;
 let rustPlusPollTimer = null;
@@ -295,24 +309,27 @@ function connectRustPlusSocket(cfg) {
       saveState(squadState);
       broadcastState('rustplus_connected');
 
-      // Fetch high-res map image once connected
+      // 1. Fetch high-res map image & monuments once connected
       rp.getMap((msg) => {
-        if (msg?.response?.map?.jpgImage) {
-          cachedRustPlusMapBuffer = Buffer.from(msg.response.map.jpgImage);
+        const mapData = msg?.response?.map;
+        if (mapData?.jpgImage) {
+          cachedRustPlusMapBuffer = Buffer.from(mapData.jpgImage);
           squadState.mapConfig.customImageUrl = `/api/rustplus/map-image?t=${Date.now()}`;
           saveState(squadState);
           broadcastState('state_update');
         }
       });
 
-      // Poll live markers, team info & server time every 4s
+      // 2. Poll live markers, team info & server time every 4s
       rustPlusPollTimer = setInterval(() => {
         const mapSize = squadState.mapConfig?.size || 4250;
+
         rp.getInfo((msg) => {
           const info = msg?.response?.info;
           if (info) {
             squadState.mapConfig.size = info.mapSize || mapSize;
             squadState.mapConfig.seed = String(info.seed || squadState.mapConfig.seed);
+            if (info.name) squadState.rustPlus.config.serverName = info.name;
           }
         });
 
@@ -322,14 +339,12 @@ function connectRustPlusSocket(cfg) {
             squadState.rustPlus.teamMembers = team.members.map((m) => {
               const nx = Math.min(1, Math.max(0, m.x / mapSize));
               const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
-              const col = String.fromCharCode(65 + Math.min(25, Math.floor(nx * 26)));
-              const row = Math.min(25, Math.floor(ny * 26));
               return {
                 id: String(m.steamId),
                 name: m.name,
                 x: Number(nx.toFixed(4)),
                 y: Number(ny.toFixed(4)),
-                grid: `${col}${row}`,
+                grid: normalizedToGrid(nx, ny),
                 isOnline: Boolean(m.isOnline),
                 isAlive: Boolean(m.isAlive)
               };
@@ -337,7 +352,78 @@ function connectRustPlusSocket(cfg) {
             broadcastState('rustplus_telemetry');
           }
         });
+
+        rp.getMapMarkers((msg) => {
+          const markers = msg?.response?.mapMarkers?.markers;
+          if (Array.isArray(markers)) {
+            const liveVms = [];
+            const liveEvts = [];
+            markers.forEach((mk) => {
+              const nx = Math.min(1, Math.max(0, mk.x / mapSize));
+              const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
+              const grid = normalizedToGrid(nx, ny);
+              // Type 3 = VendingMachine
+              if (mk.type === 3 && Array.isArray(mk.sellOrders) && mk.sellOrders.length > 0) {
+                liveVms.push({
+                  id: `vm-${mk.id}`,
+                  name: mk.name || `Vending Shop [${grid}]`,
+                  type: 'player',
+                  x: Number(nx.toFixed(4)),
+                  y: Number(ny.toFixed(4)),
+                  grid,
+                  inStock: true,
+                  orders: mk.sellOrders.slice(0, 8).map((so) => ({
+                    item: `Item #${so.itemId}`,
+                    qty: so.quantity || 1,
+                    costItem: `Item #${so.currencyId}`,
+                    costQty: so.costPerItem || 1,
+                    stock: so.amountInStock || 0
+                  }))
+                });
+              } else if ([2, 4, 5, 6, 8].includes(mk.type)) {
+                liveEvts.push({
+                  id: mk.id,
+                  type: mk.type,
+                  x: Number(nx.toFixed(4)),
+                  y: Number(ny.toFixed(4)),
+                  grid
+                });
+              }
+            });
+            if (liveVms.length > 0) squadState.rustPlus.vendingMachines = liveVms;
+            squadState.rustPlus.liveMarkers = liveEvts;
+          }
+        });
       }, 4000);
+    });
+
+    // Listen for real-time In-Game Team Chat & Smart Switch changes
+    rp.on('message', (msg) => {
+      const tmMsg = msg?.broadcast?.teamMessage?.message;
+      if (tmMsg) {
+        squadState.rustPlus.teamChat.push({
+          id: 'tc-' + Date.now(),
+          author: tmMsg.name || 'Teammate',
+          text: tmMsg.message || '',
+          time: new Date().toTimeString().slice(0, 5),
+          color: '#4ade80'
+        });
+        if (squadState.rustPlus.teamChat.length > 40) squadState.rustPlus.teamChat.shift();
+        saveState(squadState);
+        broadcastState('state_update');
+      }
+
+      const entChanged = msg?.broadcast?.entityChanged;
+      if (entChanged) {
+        const dev = (squadState.rustPlus.smartDevices || []).find(
+          (d) => String(d.entityId) === String(entChanged.entityId)
+        );
+        if (dev) {
+          dev.active = Boolean(entChanged.payload?.value);
+          saveState(squadState);
+          broadcastState('state_update');
+        }
+      }
     });
 
     rp.on('disconnected', () => {
@@ -359,6 +445,199 @@ function connectRustPlusSocket(cfg) {
 }
 
 // ============================================================================
+// RUST+ DESKTOP STYLE AUTO-PAIRING (FCM PUSH RECEIVER + FACEPUNCH REGISTER)
+// ============================================================================
+let fcmClient = null;
+
+function postJsonHttps(urlStr, bodyObj, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const payload = JSON.stringify(bodyObj);
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'User-Agent': 'RustTacticalCompanion/2.1',
+          ...headers
+        },
+        timeout: 10000
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          try {
+            const json = data ? JSON.parse(data) : {};
+            if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
+            else reject(new Error(json?.error || `HTTP ${res.statusCode}: ${data.slice(0, 120)}`));
+          } catch (_) {
+            if (res.statusCode >= 200 && res.statusCode < 300) resolve({ raw: data });
+            else reject(new Error(`HTTP ${res.statusCode}`));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function extractFacepunchToken(rawInput) {
+  const str = String(rawInput || '').trim();
+  if (!str) return null;
+
+  // 1. Direct JSON object {"SteamId":"...","Token":"..."}
+  try {
+    const j = JSON.parse(str);
+    if (j.Token || j.token) {
+      return { token: j.Token || j.token, steamId: j.SteamId || j.steamId || '' };
+    }
+  } catch (_) {}
+
+  // 2. Extracted from HTML page source of companion-rust.facepunch.com/login
+  const tokenMatch = str.match(/["']Token["']\s*:\s*["']([^"']+)["']/i);
+  const steamMatch = str.match(/["']SteamId["']\s*:\s*["'](\d+)["']/i);
+  if (tokenMatch) {
+    return { token: tokenMatch[1], steamId: steamMatch ? steamMatch[1] : '' };
+  }
+
+  // 3. Raw token string
+  if (str.length > 25 && !str.includes(' ')) {
+    return { token: str, steamId: '' };
+  }
+  return null;
+}
+
+function handleIncomingFcmNotification(notification) {
+  try {
+    const data = notification?.notification?.data || notification?.data;
+    if (!data || !data.body) return;
+    const body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
+    console.log('[Rust+ FCM Push Received]', body.type, body.name || body.entityName || '');
+
+    if (body.type === 'server' && body.ip && body.playerToken) {
+      // Auto-Pair Server!
+      squadState.rustPlus.config = {
+        serverName: body.name || `${body.ip}:${body.port}`,
+        ip: body.ip,
+        port: String(body.port || '28082'),
+        playerId: String(body.playerId || ''),
+        playerToken: String(body.playerToken || '')
+      };
+      saveState(squadState);
+      connectRustPlusSocket(squadState.rustPlus.config);
+      broadcastState('rustplus_paired_server', {
+        pairedServer: squadState.rustPlus.config
+      });
+    } else if (body.type === 'entity' && body.entityId) {
+      // Auto-Pair Smart Switch / Smart Alarm / Storage Monitor!
+      if (body.ip && body.playerToken && !squadState.rustPlus.config.ip) {
+        squadState.rustPlus.config = {
+          serverName: body.name || `${body.ip}:${body.port}`,
+          ip: body.ip,
+          port: String(body.port || '28082'),
+          playerId: String(body.playerId || ''),
+          playerToken: String(body.playerToken || '')
+        };
+        connectRustPlusSocket(squadState.rustPlus.config);
+      }
+
+      const entityIdStr = String(body.entityId);
+      const existing = (squadState.rustPlus.smartDevices || []).find(
+        (d) => String(d.entityId) === entityIdStr
+      );
+      const devType = String(body.entityType) === '2' ? 'alarm' : 'switch';
+      const devName = body.entityName || (devType === 'alarm' ? `Smart Alarm #${entityIdStr}` : `Smart Switch #${entityIdStr}`);
+
+      if (!existing) {
+        squadState.rustPlus.smartDevices.unshift({
+          id: 'sd-' + Date.now(),
+          entityId: entityIdStr,
+          name: devName,
+          type: devType,
+          active: false,
+          grid: 'PAIRED'
+        });
+      }
+      saveState(squadState);
+      broadcastState('rustplus_paired_entity', {
+        pairedEntity: { entityId: entityIdStr, name: devName, type: devType }
+      });
+    }
+  } catch (err) {
+    console.error('[Rust+ FCM Parse Error]', err.message);
+  }
+}
+
+async function startFcmPairingListener(credentials) {
+  if (!PushReceiver || !credentials) return false;
+  try {
+    if (fcmClient) {
+      try { fcmClient.destroy?.(); } catch (_) {}
+    }
+    fcmClient = await PushReceiver.listen(credentials, handleIncomingFcmNotification);
+    squadState.rustPlus.fcmListening = true;
+    saveState(squadState);
+    broadcastState('state_update');
+    console.log('[Rust+ FCM] Live In-Game Pairing Listener ACTIVE! Click "Pair" in-game anytime.');
+    return true;
+  } catch (err) {
+    console.error('[Rust+ FCM Listen Error]', err.message);
+    return false;
+  }
+}
+
+async function registerFacepunchFcm(authToken) {
+  if (!PushReceiver) {
+    throw new Error('Package @liamcottle/push-receiver is not installed yet. Run npm install on your container.');
+  }
+
+  // 1. Register with Google FCM using Facepunch's Sender ID
+  const fcmCredentials = await PushReceiver.register(FACEPUNCH_GCM_SENDER_ID);
+  const fcmToken = fcmCredentials?.fcm?.token;
+  if (!fcmToken) {
+    throw new Error('Failed to obtain FCM token from push-receiver');
+  }
+
+  // 2. Fetch Expo Push Token for @facepunch/rustcompanion
+  const expoRes = await postJsonHttps('https://exp.host/--/api/v2/push/getExpoPushToken', {
+    deviceId: crypto.randomUUID ? crypto.randomUUID() : 'rust-companion-' + Date.now(),
+    experienceId: '@facepunch/rustcompanion',
+    appId: 'com.facepunch.rust.companion',
+    deviceToken: fcmToken,
+    type: 'fcm',
+    development: false
+  });
+
+  const expoPushToken = expoRes?.data?.expoPushToken;
+  if (!expoPushToken) {
+    throw new Error('Failed to obtain Expo Push Token');
+  }
+
+  // 3. Register with Facepunch Rust+ Companion API
+  await postJsonHttps(
+    'https://companion-rust.facepunch.com:443/api/push/register',
+    {
+      AuthToken: authToken,
+      DeviceId: 'rust-tactical-companion',
+      PushKind: 0,
+      PushToken: expoPushToken
+    },
+    { Authorization: `Bearer ${authToken}` }
+  );
+
+  // 4. Save FCM credentials & start listening!
+  fs.writeFileSync(FCM_FILE, JSON.stringify(fcmCredentials, null, 2), 'utf8');
+  await startFcmPairingListener(fcmCredentials);
+  return true;
+}
+
+// ============================================================================
 // BATTLEMETRICS PROXY & DISCORD WEBHOOK HELPER
 // ============================================================================
 const bmCache = new Map();
@@ -373,7 +652,7 @@ function fetchJsonHttps(urlStr, token = '') {
 
     const headers = {
       'Accept': 'application/json',
-      'User-Agent': 'RustTacticalCompanion/2.0'
+      'User-Agent': 'RustTacticalCompanion/2.1'
     };
     if (token || BM_TOKEN) {
       headers['Authorization'] = `Bearer ${token || BM_TOKEN}`;
@@ -563,15 +842,37 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 3. Rust+ Live Pairing & Control Endpoints
+    // 3. Rust+ Desktop Style Auto-Pairing (FCM Registration & Listener)
+    if (pathname === '/api/rustplus/fcm-register' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      const extracted = extractFacepunchToken(body.tokenInput);
+      if (!extracted || !extracted.token) {
+        return sendJson(res, 400, {
+          error: 'Could not find a Facepunch Token in the pasted text. Make sure you logged in at companion-rust.facepunch.com/login and copied the token or page source.'
+        });
+      }
+      try {
+        await registerFacepunchFcm(extracted.token);
+        return sendJson(res, 200, {
+          ok: true,
+          message: 'Live In-Game Pairing Listener is now ACTIVE! Open Rust and click "Pair with Server" or pair any Smart Switch in-game.'
+        });
+      } catch (err) {
+        return sendJson(res, 500, { error: err.message });
+      }
+    }
+
+    // 4. Rust+ Direct Config / JSON Import
     if (pathname === '/api/rustplus/connect' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
       squadState.rustPlus.config = {
+        serverName: body.serverName || squadState.rustPlus.config.serverName || '',
         ip: body.ip || '',
-        port: body.port || '28082',
-        playerId: body.playerId || '',
-        playerToken: body.playerToken || ''
+        port: String(body.port || '28082'),
+        playerId: String(body.playerId || ''),
+        playerToken: String(body.playerToken || '')
       };
       const started = connectRustPlusSocket(squadState.rustPlus.config);
       saveState(squadState);
@@ -581,8 +882,8 @@ const server = http.createServer(async (req, res) => {
         nativeSocketStarted: started,
         nativeLibraryInstalled: Boolean(RustPlus),
         message: started
-          ? 'Connecting to Rust+ WebSocket server...'
-          : 'Saved Rust+ credentials! (Run npm install on container for direct socket, or use Live Tactical Telemetry)'
+          ? `Connected to Rust+ server ${squadState.rustPlus.config.ip}:${squadState.rustPlus.config.port}!`
+          : 'Saved Rust+ credentials!'
       });
     }
 
@@ -638,7 +939,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, teamChat: squadState.rustPlus.teamChat });
     }
 
-    // 4. BattleMetrics Search Proxy
+    // 5. BattleMetrics Search Proxy
     if (pathname === '/api/battlemetrics/search' && req.method === 'GET') {
       const q = parsedUrl.searchParams.get('q') || '';
       const token = req.headers['authorization']?.replace('Bearer ', '') || '';
@@ -654,7 +955,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 5. BattleMetrics Server Detail + Auto Map Image Extraction
+    // 6. BattleMetrics Server Detail + Auto Map Image Extraction
     if (pathname.startsWith('/api/battlemetrics/server/') && req.method === 'GET') {
       const serverId = pathname.split('/').pop();
       const token = req.headers['authorization']?.replace('Bearer ', '') || '';
@@ -679,7 +980,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 6. Discord Webhook Notification Endpoint
+    // 7. Discord Webhook Notification Endpoint
     if (pathname === '/api/discord' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
@@ -691,7 +992,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 7. Static File Serving from /public
+    // 8. Static File Serving from /public
     let safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
     if (safePath === '/' || safePath === '\\') {
       safePath = '/index.html';
@@ -728,17 +1029,23 @@ setInterval(() => {
   }
 }, 25000);
 
-// Auto-connect to Rust+ if env vars or saved config exist
+// Resume saved FCM Pairing Listener & Rust+ Socket on startup
+if (fs.existsSync(FCM_FILE)) {
+  try {
+    const savedFcm = JSON.parse(fs.readFileSync(FCM_FILE, 'utf8'));
+    startFcmPairingListener(savedFcm);
+  } catch (_) {}
+}
 if (squadState.rustPlus?.config?.ip && squadState.rustPlus?.config?.playerToken) {
   connectRustPlusSocket(squadState.rustPlus.config);
 }
 
 server.listen(PORT, HOST, () => {
   console.log('==========================================================');
-  console.log('  RUST TACTICAL COMPANION — ONLINE (RUST+ LIVE EDITION)');
+  console.log('  RUST TACTICAL COMPANION — ONLINE (RUST+ AUTO-PAIR v2.1)');
   console.log(`  Listening on: http://${HOST}:${PORT}`);
   console.log(`  Squad State : ${STATE_FILE}`);
   console.log(`  Rust+ Lib   : ${RustPlus ? 'READY (@liamcottle/rustplus.js)' : 'BUILT-IN TELEMETRY MODE'}`);
-  console.log(`  Squad PIN   : ${SQUAD_PIN ? 'ENABLED' : 'OPEN (No PIN)'}`);
+  console.log(`  FCM Pairing : ${PushReceiver ? 'READY (@liamcottle/push-receiver)' : 'INSTALL VIA NPM'}`);
   console.log('==========================================================');
 });

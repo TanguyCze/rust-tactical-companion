@@ -250,6 +250,14 @@
             saveLocalFallback();
             renderAll();
           }
+          if (msg.type === 'rustplus_paired_server' && msg.pairedServer) {
+            playAlertSound('complete');
+            alert(`🎉 Auto-Paired with Rust Server: ${msg.pairedServer.serverName || msg.pairedServer.ip}!`);
+          }
+          if (msg.type === 'rustplus_paired_entity' && msg.pairedEntity) {
+            playAlertSound('complete');
+            alert(`🔌 Auto-Paired In-Game ${msg.pairedEntity.name} (Entity #${msg.pairedEntity.entityId})!`);
+          }
           isServerConnected = true;
           updateSyncBadge(true, 'LIVE SQUAD SYNC');
         } catch (_) {}
@@ -1931,11 +1939,85 @@
       document.getElementById('rpServerPort').value = cfg.port || '28082';
       document.getElementById('rpPlayerId').value = cfg.playerId || '';
       document.getElementById('rpPlayerToken').value = cfg.playerToken || '';
+      const fcmBadge = document.getElementById('fcmListenerBadge');
+      if (fcmBadge) {
+        fcmBadge.textContent = appState.rustPlus?.fcmListening ? '🟢 LISTENING FOR IN-GAME PAIR' : 'LISTENER READY';
+        fcmBadge.className = appState.rustPlus?.fcmListening ? 'keycard-tag keycard-Green' : 'keycard-tag keycard-Fuse';
+      }
       rpModal?.classList.add('open');
     });
 
     document.getElementById('closeRustPlusModalBtn')?.addEventListener('click', () => {
       rpModal?.classList.remove('open');
+    });
+
+    // Copy F12 Console 1-Liner helper
+    document.getElementById('copyConsoleExtractorBtn')?.addEventListener('click', () => {
+      const snippet = `copy(document.documentElement.outerHTML); alert('Copied! Paste into Rust Tactical Companion.');`;
+      navigator.clipboard?.writeText(snippet);
+      alert('Copied F12 Console 1-liner! Or simply press Ctrl+U on the Facepunch Login page, press Ctrl+A then Ctrl+C, and paste it below.');
+    });
+
+    // Activate Live In-Game FCM Pairing Listener
+    document.getElementById('activateFcmListenerBtn')?.addEventListener('click', async () => {
+      const tokenInput = document.getElementById('fcmTokenInput')?.value.trim();
+      if (!tokenInput) {
+        alert('First open the Facepunch Steam Login page, sign in, and paste the page source (Ctrl+U) or Token JSON into the box!');
+        return;
+      }
+      if (!isServerConnected) {
+        alert('Host the app on your Pterodactyl container so the backend can register with Facepunch FCM and listen for in-game pairing!');
+        return;
+      }
+      const btn = document.getElementById('activateFcmListenerBtn');
+      const oldText = btn.textContent;
+      btn.textContent = '⏳ Registering with Facepunch FCM & Starting Listener...';
+      try {
+        const res = await fetch('/api/rustplus/fcm-register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+          body: JSON.stringify({ tokenInput })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('🎉 ' + data.message);
+          const fcmBadge = document.getElementById('fcmListenerBadge');
+          if (fcmBadge) {
+            fcmBadge.textContent = '🟢 LISTENING FOR IN-GAME PAIR';
+            fcmBadge.className = 'keycard-tag keycard-Green';
+          }
+        } else {
+          alert('Error: ' + (data.error || 'Failed to register FCM'));
+        }
+      } catch (err) {
+        alert('Request failed: ' + err.message);
+      } finally {
+        btn.textContent = oldText;
+      }
+    });
+
+    // 1-Click Upload rustplus.config.json
+    document.getElementById('rpJsonFileInput')?.addEventListener('change', (evt) => {
+      const file = evt.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result));
+          const ip = parsed.ip || parsed.server?.ip || '';
+          const port = parsed.port || parsed.server?.port || '28082';
+          const playerId = parsed.playerId || parsed.steamId || '';
+          const playerToken = parsed.playerToken || parsed.token || '';
+          if (ip) document.getElementById('rpServerIp').value = ip;
+          if (port) document.getElementById('rpServerPort').value = port;
+          if (playerId) document.getElementById('rpPlayerId').value = playerId;
+          if (playerToken) document.getElementById('rpPlayerToken').value = playerToken;
+          alert('Loaded credentials from JSON! Click "Connect to Paired Rust+ Server" below.');
+        } catch (_) {
+          alert('Invalid JSON file.');
+        }
+      };
+      reader.readAsText(file);
     });
 
     document.getElementById('connectRustPlusBtn')?.addEventListener('click', async () => {

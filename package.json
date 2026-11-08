@@ -1,13 +1,18 @@
 {
   "name": "rust-tactical-companion",
-  "version": "2.0.0",
-  "description": "All-in-one Rust Companion Web App with Rust+ Live Map (Vending Machines, Cargo/Heli/CH47 Telemetry, Team Radar, Smart Switches, Raidboi Optimizer, Monument Timers, 6-Gene Solver & BattleMetrics) for Pterodactyl Docker",
+  "version": "2.1.0",
+  "description": "All-in-one Rust Companion Web App with Rust+ Desktop style Auto-Pairing (FCM Listener), Live Map, Vending Machines, Smart Switches, Raidboi Optimizer, Monument Timers, 6-Gene Solver & BattleMetrics",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "dependencies": {
+    "@liamcottle/rustplus.js": "^2.4.0",
+    "@liamcottle/push-receiver": "^1.0.10"
+  },
   "optionalDependencies": {
-    "@liamcottle/rustplus.js": "^2.4.0"
+    "@liamcottle/rustplus.js": "^2.4.0",
+    "@liamcottle/push-receiver": "^1.0.10"
   },
   "engines": {
     "node": ">=16.0.0"

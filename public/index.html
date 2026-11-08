@@ -724,46 +724,94 @@
   </div>
 
   <!-- ====================================================================
-       MODAL: RUST+ SERVER PAIRING & BATTLEMETRICS MAP AUTO-IMPORTER
+       MODAL: RUST+ DESKTOP STYLE AUTO-PAIRING WIZARD
        ==================================================================== -->
   <div id="rustPlusModal" class="modal-backdrop">
-    <div class="modal-card" style="max-width: 560px;">
+    <div class="modal-card" style="max-width: 640px; max-height: 90vh; overflow-y: auto;">
       <div class="panel-header">
-        <div class="panel-title">🛰️ Pair Rust+ Companion & Load Live Server Map</div>
+        <div class="panel-title">🛰️ Rust+ Desktop Style Pairing Wizard</div>
         <button id="closeRustPlusModalBtn" class="btn btn-sm">✕</button>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.35); border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--text-main);">
-          <strong>Method A — Direct Rust+ WebSocket Connection:</strong><br/>
-          Enter your Rust server's IP, Rust+ App Port (usually <code>28082</code> or <code>serverPort + 67</code>), your SteamID64, and your Rust+ Player Token (from <code>npx @liamcottle/rustplus.js fcm-register</code>).
-        </div>
-        <div style="display: flex; gap: 10px;">
-          <div style="flex: 2;">
-            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST SERVER IP</label>
-            <input id="rpServerIp" type="text" class="input" style="width: 100%;" placeholder="e.g. 145.239.205.12" />
-          </div>
-          <div style="flex: 1;">
-            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ APP PORT</label>
-            <input id="rpServerPort" type="text" class="input" style="width: 100%;" placeholder="28082" value="28082" />
-          </div>
-        </div>
-        <div style="display: flex; gap: 10px;">
-          <div style="flex: 1;">
-            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">STEAM ID 64</label>
-            <input id="rpPlayerId" type="text" class="input" style="width: 100%;" placeholder="76561198..." />
-          </div>
-          <div style="flex: 1;">
-            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ PLAYER TOKEN</label>
-            <input id="rpPlayerToken" type="password" class="input" style="width: 100%;" placeholder="Your negative/positive token" />
-          </div>
-        </div>
-        <button id="connectRustPlusBtn" class="btn btn-primary" style="width: 100%;">
-          🛰️ Connect Live Rust+ Socket & Sync Squad
-        </button>
 
-        <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <!-- SECTION 1: AUTO-PAIR FROM IN-GAME (LIKE RUST+ DESKTOP) -->
+        <div style="background: linear-gradient(150deg, rgba(34,197,94,0.14), var(--bg-card)); border: 1px solid rgba(34,197,94,0.45); border-radius: 8px; padding: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+            <span style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#4ade80;">
+              🎮 Method 1: Auto-Pair Directly From Inside Rust (Like Rust+ Desktop)
+            </span>
+            <span id="fcmListenerBadge" class="keycard-tag keycard-Fuse">LISTENER READY</span>
+          </div>
+
+          <ol style="font-size: 12px; color: var(--text-main); padding-left: 18px; display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
+            <li>
+              Click <strong>"1. Open Facepunch Steam Login"</strong> below and sign in with your Steam account.
+            </li>
+            <li>
+              Once signed in on the Facepunch page, press <code>Ctrl + U</code> (View Page Source), press <code>Ctrl + A</code> then <code>Ctrl + C</code> to copy the page, and paste it into the box below! <em>(We automatically extract your AuthToken).</em>
+            </li>
+            <li>
+              Click <strong>"2. Activate In-Game Pairing Listener"</strong>. Then inside Rust, simply press <strong>ESC → Rust+ → Pair With Server</strong> (or hold <strong>E → Pair</strong> on any Smart Switch in your base) and it pairs automatically!
+            </li>
+          </ol>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            <a href="https://companion-rust.facepunch.com/login" target="_blank" rel="noopener" class="btn btn-sm btn-primary" style="text-decoration:none;">
+              🔗 1. Open Facepunch Steam Login
+            </a>
+            <button id="copyConsoleExtractorBtn" class="btn btn-sm">
+              📋 Or Copy F12 Console 1-Liner
+            </button>
+          </div>
+
+          <textarea id="fcmTokenInput" class="input" rows="3" style="width:100%; font-family:var(--font-mono); font-size:11px; margin-bottom:8px;" placeholder="Paste the Ctrl+U Page Source from companion-rust.facepunch.com/login (or your Facepunch Token JSON) here..."></textarea>
+
+          <button id="activateFcmListenerBtn" class="btn btn-primary" style="width:100%; background:#16a34a; border-color:#4ade80;">
+            📡 2. Activate Live In-Game Pairing Listener (Catches In-Game "Pair" Clicks!)
+          </button>
+        </div>
+
+        <!-- SECTION 2: 1-CLICK IMPORT JSON OR MANUAL CREDENTIALS -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+            <span style="font-family:var(--font-display); font-weight:700; color:#fff;">
+              📂 Method 2: Import <code>rustplus.config.json</code> or Direct Server Credentials
+            </span>
+            <label class="btn btn-sm" style="cursor:pointer;">
+              📁 Upload .json File
+              <input id="rpJsonFileInput" type="file" accept=".json" style="display:none;" />
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <div style="flex: 2;">
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST SERVER IP</label>
+              <input id="rpServerIp" type="text" class="input" style="width: 100%;" placeholder="Auto-filled on in-game pair (or type IP)" />
+            </div>
+            <div style="flex: 1;">
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ APP PORT</label>
+              <input id="rpServerPort" type="text" class="input" style="width: 100%;" placeholder="28082" value="28082" />
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <div style="flex: 1;">
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">STEAM ID 64</label>
+              <input id="rpPlayerId" type="text" class="input" style="width: 100%;" placeholder="76561198..." />
+            </div>
+            <div style="flex: 1;">
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ PLAYER TOKEN</label>
+              <input id="rpPlayerToken" type="password" class="input" style="width: 100%;" placeholder="Auto-filled on in-game pair" />
+            </div>
+          </div>
+          <button id="connectRustPlusBtn" class="btn btn-primary" style="width: 100%;">
+            🛰️ Connect to Paired Rust+ Server
+          </button>
+        </div>
+
+        <!-- SECTION 3: 1-CLICK BATTLEMETRICS MAP LOADER -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
           <div style="font-family: var(--font-display); font-weight: 700; color: var(--sulfur-yellow); margin-bottom: 6px;">
-            Method B — Auto-Import High-Res Map from BattleMetrics Server ID
+            🌐 Method 3: 1-Click BattleMetrics Map Loader (No Steam Login Needed)
           </div>
           <div style="display: flex; gap: 8px;">
             <input id="rpBmServerIdInput" type="text" class="input" style="flex: 1;" placeholder="Enter BattleMetrics Server ID (e.g. 9565287)" />
