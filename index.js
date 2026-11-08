@@ -1,0 +1,422 @@
+/**
+ * RUST TACTICAL COMPANION — Pterodactyl Node.js Server
+ * ----------------------------------------------------
+ * - Zero external dependencies required (runs out-of-the-box on any Node.js 16/18/20/22 Pterodactyl Egg)
+ * - Auto-binds to Pterodactyl's SERVER_PORT or PORT environment variable
+ * - Real-time Squad Sync via Server-Sent Events (SSE) + JSON file persistence
+ * - Built-in BattleMetrics API Proxy with smart caching & 24h player history fetch
+ */
+
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const { URL } = require('url');
+
+const PORT = parseInt(process.env.SERVER_PORT || process.env.PORT || '3000', 10);
+const HOST = process.env.HOST || '0.0.0.0';
+const SQUAD_PIN = process.env.SQUAD_PIN || ''; // Optional PIN to lock write actions
+const BM_TOKEN = process.env.BATTLEMETRICS_TOKEN || '';
+
+const DATA_DIR = path.join(__dirname, 'data');
+const STATE_FILE = path.join(DATA_DIR, 'squad-state.json');
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Default shared squad state
+const DEFAULT_STATE = {
+  squadName: 'RUST SQUAD ALPHA',
+  mapConfig: {
+    seed: '1337420',
+    size: 4250,
+    customImageUrl: '',
+    wipeDate: new Date(Date.now() - 2 * 86400000).toISOString()
+  },
+  markers: [
+    {
+      id: 'm-default-base',
+      type: 'base',
+      label: 'Main Squad Compound',
+      grid: 'N11',
+      x: 0.52,
+      y: 0.44,
+      notes: 'T3 Workbench, 2x Wind Turbines, 36h Upkeep',
+      createdBy: 'Squad Leader',
+      createdAt: Date.now()
+    },
+    {
+      id: 'm-default-raid',
+      type: 'raid',
+      label: 'Roofcamper Clan [2x2 Multi-TC]',
+      grid: 'Q14',
+      x: 0.64,
+      y: 0.56,
+      notes: 'Est. 2 Sheet Doors + 3 Garage Doors + 1 Stone Wall to core. Offline ~04:00',
+      createdBy: 'Scout',
+      createdAt: Date.now()
+    },
+    {
+      id: 'm-default-farm',
+      type: 'farm',
+      label: 'Desert Sulfur Ridge',
+      grid: 'L19',
+      x: 0.45,
+      y: 0.76,
+      notes: '15+ Sulfur nodes per run with Pure Ore Tea',
+      createdBy: 'Farmer',
+      createdAt: Date.now()
+    }
+  ],
+  activeTimers: [],
+  raidQueue: [
+    { targetId: 'sheet_metal_door', qty: 2, mode: 'combo' },
+    { targetId: 'garage_door', qty: 3, mode: 'combo' },
+    { targetId: 'stone_wall', qty: 1, mode: 'combo' }
+  ],
+  savedClones: [
+    { id: 'c1', crop: 'Hemp', genes: 'YGYWGG', notes: 'Gen 1 Starter' },
+    { id: 'c2', crop: 'Hemp', genes: 'GGYYXW', notes: 'Gen 1 Donor A' },
+    { id: 'c3', crop: 'Hemp', genes: 'YYYYGG', notes: 'God Clone (Yield)' },
+    { id: 'c4', crop: 'Blue Berry', genes: 'GGGYYY', notes: 'Pure Ore Tea Clone' }
+  ],
+  battlemetrics: {
+    serverId: '',
+    serverName: 'Rustoria.co - EU Main',
+    watchlist: [
+      {
+        id: 'w1',
+        name: '[ZERG] ChadThundercock',
+        grid: 'Q14',
+        typicalOffline: '03:30 - 10:00',
+        notes: 'Main builder / TC auth, logs off around 3:30 AM CET',
+        status: 'offline'
+      },
+      {
+        id: 'w2',
+        name: 'xX_OilRigController_Xx',
+        grid: 'U4',
+        typicalOffline: '02:00 - 09:00',
+        notes: 'Counters Small Rig from snow cliff boat base',
+        status: 'online'
+      }
+    ]
+  },
+  updatedAt: Date.now()
+};
+
+function loadState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_STATE, ...parsed };
+    }
+  } catch (err) {
+    console.error('[State] Failed to read squad-state.json, using default:', err.message);
+  }
+  saveState(DEFAULT_STATE);
+  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+}
+
+function saveState(state) {
+  try {
+    state.updatedAt = Date.now();
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[State] Failed to save squad-state.json:', err.message);
+  }
+}
+
+let squadState = loadState();
+
+// Connected SSE clients for instant live sync
+const sseClients = new Set();
+
+function broadcastState(eventType = 'state_update') {
+  const payload = JSON.stringify({
+    type: eventType,
+    state: squadState,
+    timestamp: Date.now()
+  });
+  for (const res of sseClients) {
+    try {
+      res.write(`data: ${payload}\n\n`);
+    } catch (_) {
+      sseClients.delete(res);
+    }
+  }
+}
+
+// Simple in-memory cache for BattleMetrics API requests (60s TTL)
+const bmCache = new Map();
+const BM_CACHE_TTL = 60 * 1000;
+
+function fetchJsonHttps(urlStr, token = '') {
+  return new Promise((resolve, reject) => {
+    const cached = bmCache.get(urlStr);
+    if (cached && Date.now() - cached.time < BM_CACHE_TTL) {
+      return resolve(cached.data);
+    }
+
+    const headers = {
+      'Accept': 'application/json',
+      'User-Agent': 'RustTacticalCompanion/1.0'
+    };
+    if (token || BM_TOKEN) {
+      headers['Authorization'] = `Bearer ${token || BM_TOKEN}`;
+    }
+
+    const req = https.get(urlStr, { headers, timeout: 8000 }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            bmCache.set(urlStr, { time: Date.now(), data: json });
+            resolve(json);
+          } else {
+            reject(new Error(json?.errors?.[0]?.detail || `BattleMetrics HTTP ${res.statusCode}`));
+          }
+        } catch (err) {
+          reject(new Error(`Invalid JSON from BattleMetrics: ${err.message}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('BattleMetrics request timed out'));
+    });
+  });
+}
+
+// Helper to parse JSON request body
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2 * 1024 * 1024) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => {
+      if (!body) return resolve({});
+      try {
+        resolve(JSON.parse(body));
+      } catch (e) {
+        reject(new Error('Invalid JSON payload'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res, statusCode, data) {
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Squad-Pin, Authorization'
+  });
+  res.end(JSON.stringify(data));
+}
+
+function checkPin(req, res) {
+  if (!SQUAD_PIN) return true;
+  const provided = req.headers['x-squad-pin'] || '';
+  if (provided !== SQUAD_PIN) {
+    sendJson(res, 403, { error: 'Invalid Squad PIN. Set your Squad PIN in the top bar.' });
+    return false;
+  }
+  return true;
+}
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon'
+};
+
+const server = http.createServer(async (req, res) => {
+  try {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Squad-Pin, Authorization'
+      });
+      return res.end();
+    }
+
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = parsedUrl.pathname;
+
+    // 1. SSE Live Stream
+    if (pathname === '/api/events' && req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.write(`data: ${JSON.stringify({ type: 'connected', state: squadState, pinRequired: Boolean(SQUAD_PIN) })}\n\n`);
+      sseClients.add(res);
+      req.on('close', () => sseClients.delete(res));
+      return;
+    }
+
+    // 2. Get or Update Full Squad State
+    if (pathname === '/api/state') {
+      if (req.method === 'GET') {
+        return sendJson(res, 200, { state: squadState, pinRequired: Boolean(SQUAD_PIN) });
+      }
+      if (req.method === 'POST' || req.method === 'PUT') {
+        if (!checkPin(req, res)) return;
+        const body = await readJsonBody(req);
+        squadState = {
+          ...squadState,
+          ...body,
+          updatedAt: Date.now()
+        };
+        saveState(squadState);
+        broadcastState('state_update');
+        return sendJson(res, 200, { ok: true, state: squadState });
+      }
+    }
+
+    // 3. Timers API (Add / Remove / Clear)
+    if (pathname === '/api/timers' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      if (body.action === 'start' && body.timer) {
+        squadState.activeTimers = squadState.activeTimers.filter((t) => t.id !== body.timer.id);
+        squadState.activeTimers.unshift(body.timer);
+      } else if (body.action === 'remove' && body.id) {
+        squadState.activeTimers = squadState.activeTimers.filter((t) => t.id !== body.id);
+      } else if (body.action === 'clear') {
+        squadState.activeTimers = [];
+      }
+      saveState(squadState);
+      broadcastState('timers_update');
+      return sendJson(res, 200, { ok: true, activeTimers: squadState.activeTimers });
+    }
+
+    // 4. Map Markers API
+    if (pathname === '/api/markers' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      if (body.action === 'add' && body.marker) {
+        squadState.markers.push(body.marker);
+      } else if (body.action === 'remove' && body.id) {
+        squadState.markers = squadState.markers.filter((m) => m.id !== body.id);
+      } else if (body.action === 'clear') {
+        squadState.markers = [];
+      }
+      saveState(squadState);
+      broadcastState('markers_update');
+      return sendJson(res, 200, { ok: true, markers: squadState.markers });
+    }
+
+    // 5. BattleMetrics Search Proxy
+    if (pathname === '/api/battlemetrics/search' && req.method === 'GET') {
+      const q = parsedUrl.searchParams.get('q') || '';
+      const token = req.headers['authorization']?.replace('Bearer ', '') || '';
+      if (!q.trim()) {
+        return sendJson(res, 400, { error: 'Missing search query parameter ?q=' });
+      }
+      const apiUrl = `https://api.battlemetrics.com/servers?filter[game]=rust&filter[search]=${encodeURIComponent(q)}&page[size]=12`;
+      try {
+        const data = await fetchJsonHttps(apiUrl, token);
+        return sendJson(res, 200, data);
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    // 6. BattleMetrics Server Detail + 24h Population History Proxy
+    if (pathname.startsWith('/api/battlemetrics/server/') && req.method === 'GET') {
+      const serverId = pathname.split('/').pop();
+      const token = req.headers['authorization']?.replace('Bearer ', '') || '';
+      if (!serverId || !/^\d+$/.test(serverId)) {
+        return sendJson(res, 400, { error: 'Invalid BattleMetrics Server ID' });
+      }
+      const now = new Date();
+      const start = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+      const stop = now.toISOString();
+
+      const detailUrl = `https://api.battlemetrics.com/servers/${serverId}?include=player`;
+      const historyUrl = `https://api.battlemetrics.com/servers/${serverId}/player-count-history?start=${encodeURIComponent(start)}&stop=${encodeURIComponent(stop)}&resolution=60`;
+
+      try {
+        const [detail, history] = await Promise.all([
+          fetchJsonHttps(detailUrl, token),
+          fetchJsonHttps(historyUrl, token).catch(() => ({ data: [] }))
+        ]);
+        return sendJson(res, 200, { server: detail, history: history.data || [] });
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    // 7. Static File Serving from /public
+    let safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
+    if (safePath === '/' || safePath === '\\') {
+      safePath = '/index.html';
+    }
+    const filePath = path.join(PUBLIC_DIR, safePath);
+
+    if (filePath.startsWith(PUBLIC_DIR) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType });
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      // SPA fallback to index.html
+      const indexFile = path.join(PUBLIC_DIR, 'index.html');
+      if (fs.existsSync(indexFile)) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        fs.createReadStream(indexFile).pipe(res);
+      } else {
+        sendJson(res, 404, { error: 'Not Found' });
+      }
+    }
+  } catch (err) {
+    console.error('[Server Error]', err);
+    sendJson(res, 500, { error: 'Internal Server Error', details: err.message });
+  }
+});
+
+// Keep-alive heartbeat for SSE clients every 25s (prevents proxy/Cloudflare/Pterodactyl idle timeouts)
+setInterval(() => {
+  for (const res of sseClients) {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch (_) {
+      sseClients.delete(res);
+    }
+  }
+}, 25000);
+
+server.listen(PORT, HOST, () => {
+  console.log('==========================================================');
+  console.log('  RUST TACTICAL COMPANION — ONLINE');
+  console.log(`  Listening on: http://${HOST}:${PORT}`);
+  console.log(`  Squad State : ${STATE_FILE}`);
+  console.log(`  Squad PIN   : ${SQUAD_PIN ? 'ENABLED' : 'OPEN (No PIN)'}`);
+  console.log('==========================================================');
+});

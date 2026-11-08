@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RUST TACTICAL COMPANION — Raid, Map, Monuments, Genetics & BattleMetrics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- ====================================================================
+       TOP TACTICAL HUD HEADER
+       ==================================================================== -->
+  <header class="top-header">
+    <div class="header-inner">
+      <div class="brand-group">
+        <div class="brand-logo">R</div>
+        <div>
+          <div class="brand-title">
+            RUST TACTICAL COMPANION
+            <span id="squadNameBadge" class="nav-badge" style="color: var(--sulfur-yellow); border: 1px solid rgba(234,179,8,0.4);">RUST SQUAD ALPHA</span>
+          </div>
+          <div class="brand-subtitle">RAIDBOI OPTIMIZER • MONUMENT ATLAS • LIVE TIMERS • GENETICS • BATTLEMETRICS</div>
+        </div>
+      </div>
+
+      <!-- Live Running Timers Ticker (visible on all tabs) -->
+      <div id="hudTimersStrip" class="hud-timers-strip">
+        <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">No active monument timers — start one in Map or Timers</span>
+      </div>
+
+      <div class="header-controls">
+        <div id="syncStatusBadge" class="sync-badge">
+          <span class="sync-dot"></span>
+          <span id="syncStatusText">CONNECTING...</span>
+        </div>
+        <button id="audioToggleBtn" class="btn btn-sm" title="Toggle Timer Sound Alerts">
+          🔔 AUDIO: ON
+        </button>
+        <button id="openSettingsBtn" class="btn btn-sm">
+          ⚙️ SQUAD / PIN
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ====================================================================
+       PRIMARY NAVIGATION BAR
+       ==================================================================== -->
+  <nav class="nav-bar">
+    <div class="nav-inner">
+      <button class="nav-tab active" data-tab="tab-raid">
+        💥 Raid & Sulfur Optimizer <span class="nav-badge">COMBOS</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-map">
+        🗺️ Interactive Map & Monuments <span class="nav-badge">CARDS + SPOTS</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-timers">
+        ⏱️ Monument Timers <span id="navTimerCount" class="nav-badge">0</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-genetics">
+        🌱 Genetics & Tea Lab <span class="nav-badge">6-GENE</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-battlemetrics">
+        📡 BattleMetrics Raid Intel <span class="nav-badge">LIVE POP</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ====================================================================
+       MAIN WORKSPACE CONTAINER
+       ==================================================================== -->
+  <main class="main-container">
+
+    <!-- ==================================================================
+         TAB 1: RAID CALCULATOR & SULFUR SAVER COMBO ENGINE
+         ================================================================== -->
+    <section id="tab-raid" class="tab-panel active">
+      <div class="grid-2">
+        <!-- Left Column: Target Selector + Combo & Method Inspector -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🎯 1. Select Raidable Structure / Target</div>
+                <div class="panel-subtitle">Click any door, wall, window, turret, or deployable to see exact Sulfur-saving combinations</div>
+              </div>
+              <div id="raidCategoryPills" class="filter-pills">
+                <button class="filter-pill active" data-cat="All">All</button>
+                <button class="filter-pill" data-cat="Doors">Doors</button>
+                <button class="filter-pill" data-cat="Walls & Floors">Walls & Floors</button>
+                <button class="filter-pill" data-cat="Windows & Grills">Windows</button>
+                <button class="filter-pill" data-cat="Traps & Turrets">Turrets & Traps</button>
+                <button class="filter-pill" data-cat="Deployables & External">TC & External</button>
+              </div>
+            </div>
+
+            <div id="raidTargetGrid" class="target-grid"></div>
+
+            <!-- Selected Target Detail Inspector -->
+            <div id="selectedTargetInspector" style="border-top: 1px solid var(--border-subtle); padding-top: 16px;"></div>
+          </div>
+
+          <!-- Dynamic Damaged Target / Remainder HP Calculator -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🧮 Custom Damaged Target / Remaining HP Solver</div>
+                <div class="panel-subtitle">Already splashed a wall or door? Enter its remaining HP to find the exact cheapest finish combo</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">TARGET TYPE</label>
+                <select id="customHpTargetSelect" class="select"></select>
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">REMAINING HP</label>
+                <input id="customHpInput" type="number" class="input" value="180" min="1" max="2500" style="width: 120px;" />
+              </div>
+              <button id="solveCustomHpBtn" class="btn btn-primary">Calculate Cheapest Finish</button>
+            </div>
+            <div id="customHpResult" style="margin-top: 14px;"></div>
+          </div>
+        </div>
+
+        <!-- Right Column: Multi-Target Squad Raid Planner & Sulfur Node Calculator -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">💣 Squad Multi-Target Raid Planner</div>
+                <div class="panel-subtitle">Synced live with your squad — build your full breach path & compare Combo vs Pure Sulfur</div>
+              </div>
+              <button id="clearRaidQueueBtn" class="btn btn-sm">Clear Plan</button>
+            </div>
+
+            <!-- Quick Add Bar -->
+            <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+              <select id="quickAddTargetSelect" class="select" style="flex: 1; min-width: 170px;"></select>
+              <input id="quickAddQtyInput" type="number" class="input" value="1" min="1" max="50" style="width: 70px;" />
+              <select id="quickAddModeSelect" class="select">
+                <option value="combo">⚡ Best Sulfur-Saving Combo</option>
+                <option value="cheapest_single">💰 Cheapest Single Method</option>
+                <option value="fastest">🚀 Fastest Breach (C4/Rocket)</option>
+                <option value="t1">🧨 Tier 1 Only (Satchel/Beancan/Fire)</option>
+              </select>
+              <button id="quickAddRaidBtn" class="btn btn-primary">+ Add</button>
+            </div>
+
+            <!-- Queue List -->
+            <div id="raidQueueContainer"></div>
+
+            <!-- Total Resources & Crafting Summary -->
+            <div id="raidTotalSummary" style="margin-top: 18px; border-top: 1px solid var(--border-subtle); padding-top: 16px;"></div>
+          </div>
+
+          <!-- Sulfur Node & Ore Tea Farming Calculator -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">⛏️ Sulfur Nodes & Ore Tea Yield Calculator</div>
+                <div class="panel-subtitle">How many Sulfur nodes your squad needs to hit for this raid</div>
+              </div>
+            </div>
+            <div id="sulfurNodeBreakdown"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         TAB 2: INTERACTIVE MAP, MONUMENTS, KEYCARDS & BUILD SPOTS
+         ================================================================== -->
+    <section id="tab-map" class="tab-panel">
+      <div class="grid-map-layout">
+        <!-- Left Column: Interactive Tactical Map Canvas -->
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">🗺️ Interactive Tactical Map & Layer Overlay</div>
+              <div class="panel-subtitle">Click monuments to inspect puzzles/fuses, or switch to Pin Mode to mark Raid Targets & Bases for your squad</div>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button id="mapZoomInBtn" class="btn btn-sm">➕ Zoom</button>
+              <button id="mapZoomOutBtn" class="btn btn-sm">➖ Zoom</button>
+              <button id="mapResetViewBtn" class="btn btn-sm">⟲ Reset</button>
+              <button id="mapCustomUrlBtn" class="btn btn-sm">🖼️ Load Server Map URL</button>
+            </div>
+          </div>
+
+          <!-- Map Layer & Pin Mode Bar -->
+          <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+            <div class="filter-pills" id="mapLayerToggles">
+              <button class="filter-pill active" data-layer="monuments">🏛️ Monuments</button>
+              <button class="filter-pill active" data-layer="cardFlow">💳 Card Progression</button>
+              <button class="filter-pill active" data-layer="buildSpots">🏰 Best Build Spots</button>
+              <button class="filter-pill active" data-layer="farmZones">⛏️ Node Hotspots</button>
+              <button class="filter-pill active" data-layer="squadPins">📍 Squad Pins</button>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary);">CLICK MODE:</span>
+              <select id="mapClickModeSelect" class="select" style="padding: 4px 8px; font-size: 12px;">
+                <option value="inspect">🔍 Inspect Monument / Spot</option>
+                <option value="pin_raid">🎯 Drop Raid Target Pin</option>
+                <option value="pin_base">🏠 Drop Squad Base Pin</option>
+                <option value="pin_farm">⛏️ Drop Farm Spot Pin</option>
+                <option value="pin_danger">⚠️ Drop Roofcamper / Danger Pin</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Map Canvas Viewport -->
+          <div class="map-viewport" id="mapViewport">
+            <canvas id="tacticalMapCanvas" width="900" height="900"></canvas>
+
+            <div class="map-legend-bar">
+              <span class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Green Card / T1</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#3b82f6;"></span> Blue Card / T2</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Red Card / T3 Elite</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Sulfur / Node Zone</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#a855f7;"></span> Meta Base Spot</span>
+              <span id="mapCursorCoord" style="color: var(--sulfur-yellow); font-weight: 700;">GRID: M13</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Monument Card/Fuse Inspector + Build Spot Recommender + Squad Pins -->
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="panel">
+            <div class="panel-header" style="margin-bottom: 12px;">
+              <div class="filter-pills" id="mapSideSubtabs">
+                <button class="filter-pill active" data-subtab="sub-monuments">🔑 Monuments & Cards (16)</button>
+                <button class="filter-pill" data-subtab="sub-buildspots">🏰 Best Build Spots</button>
+                <button class="filter-pill" data-subtab="sub-markers">📍 Squad Map Pins</button>
+              </div>
+            </div>
+
+            <!-- SUBTAB A: MONUMENTS, CARDS & FUSES -->
+            <div id="sub-monuments" class="map-subtab-content">
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;" id="monumentFilterBar">
+                <button class="filter-pill active" data-mfilter="all">All</button>
+                <button class="filter-pill" data-mfilter="get_green">Gets Green Card</button>
+                <button class="filter-pill" data-mfilter="get_blue">Gets Blue Card</button>
+                <button class="filter-pill" data-mfilter="get_red">Gets Red Card</button>
+                <button class="filter-pill" data-mfilter="tier3">Red Card / Elite</button>
+              </div>
+
+              <!-- Selected Monument Active Card -->
+              <div id="selectedMonumentDetail" style="margin-bottom: 14px;"></div>
+
+              <!-- Monument List -->
+              <div id="monumentAtlasList" class="monument-list"></div>
+            </div>
+
+            <!-- SUBTAB B: BEST BUILDING SPOTS RECOMMENDER -->
+            <div id="sub-buildspots" class="map-subtab-content" style="display: none;">
+              <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 12px;">
+                <div style="font-family: var(--font-display); font-weight: 700; margin-bottom: 8px; color: var(--sulfur-yellow);">
+                  🧭 Interactive Base Spot Filter
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <div style="flex: 1;">
+                    <label style="font-size: 11px; color: var(--text-secondary);">SQUAD SIZE</label>
+                    <select id="spotSquadFilter" class="select" style="width: 100%;">
+                      <option value="all">All Squad Sizes</option>
+                      <option value="solo">Solo / Duo</option>
+                      <option value="trio">Trio / Quad</option>
+                      <option value="zerg">Clan / Zerg (5+)</option>
+                    </select>
+                  </div>
+                  <div style="flex: 1;">
+                    <label style="font-size: 11px; color: var(--text-secondary);">WIPE FOCUS</label>
+                    <select id="spotStyleFilter" class="select" style="width: 100%;">
+                      <option value="all">All Playstyles</option>
+                      <option value="raid">Max Sulfur & Raiding</option>
+                      <option value="rig">Oil Rig / Cargo Control</option>
+                      <option value="scrap">Fast Scrap & WB Rush</option>
+                      <option value="stealth">Stealth / Anti-Offline</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div id="buildSpotsList" class="monument-list"></div>
+            </div>
+
+            <!-- SUBTAB C: SHARED SQUAD MAP PINS -->
+            <div id="sub-markers" class="map-subtab-content" style="display: none;">
+              <div style="margin-bottom: 10px; font-size: 12px; color: var(--text-secondary);">
+                Select a Pin Mode above the map and click anywhere on the island to drop a live-synced marker for your teammates.
+              </div>
+              <div id="squadMarkersList" class="monument-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         TAB 3: MONUMENT & EVENT TIMERS (SQUAD SYNCED)
+         ================================================================== -->
+    <section id="tab-timers" class="tab-panel">
+      <div class="panel" style="margin-bottom: 20px;">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">⏱️ Active Squad Monument & Event Timers</div>
+            <div class="panel-subtitle">Synced live across all connected squadmates — plays an audio alert at 60s remaining and upon completion</div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="testAudioAlarmBtn" class="btn btn-sm">🔊 Test Alarm Sound</button>
+            <button id="clearAllTimersBtn" class="btn btn-sm">🗑️ Clear All Timers</button>
+          </div>
+        </div>
+
+        <div id="activeTimersContainer" class="active-timers-grid"></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Preset Monument & Event Timers -->
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">🚀 1-Click Monument Completed & Event Presets</div>
+              <div class="panel-subtitle">Click immediately after swiping a card, hacking Oil Rig crate, or taking Bradley APC</div>
+            </div>
+          </div>
+          <div id="timerPresetsGrid" class="target-grid"></div>
+        </div>
+
+        <!-- Custom Timer Creator -->
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">➕ Start Custom Squad Countdown</div>
+              <div class="panel-subtitle">Track decaying bases, Diesel Giant Excavator runs, Furnace smelts, or Roam timers</div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">TIMER LABEL & GRID</label>
+              <input id="customTimerLabel" type="text" class="input" placeholder="e.g., Decaying Clan Compound [Q14] or 20x Diesel Excavator" style="width: 100%;" />
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <div style="flex: 1;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">MINUTES</label>
+                <input id="customTimerMin" type="number" class="input" value="30" min="0" max="720" style="width: 100%;" />
+              </div>
+              <div style="flex: 1;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SECONDS</label>
+                <input id="customTimerSec" type="number" class="input" value="0" min="0" max="59" style="width: 100%;" />
+              </div>
+            </div>
+            <button id="startCustomTimerBtn" class="btn btn-primary" style="width: 100%; padding: 11px;">
+              ⏱️ Start Shared Squad Timer
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         TAB 4: FARMING, PLANT GENETICS & BERRY TEA LAB
+         ================================================================== -->
+    <section id="tab-genetics" class="tab-panel">
+      <div class="grid-2">
+        <!-- Left Column: Crossbreeding Solver & 3x3 Planter Box Simulator -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🧬 6-Gene Crossbreeding Solver & God Clone Builder</div>
+                <div class="panel-subtitle">Add your harvested clones below and automatically compute the optimal 3x3 Large Planter Box crossbreed</div>
+              </div>
+              <div>
+                <select id="geneticsTargetGoal" class="select">
+                  <option value="GGGYYY">🎯 Target: GGGYYY (Balanced 3G/3Y God Clone)</option>
+                  <option value="YYYYGG">🌾 Target: YYYYGG (Max Yield 4Y/2G God Clone)</option>
+                  <option value="GGGGYY">⚡ Target: GGGGYY (Fast Growth 4G/2Y Clone)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Add Clone Input Bar -->
+            <div style="background: var(--bg-card); padding: 14px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 16px;">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <select id="cloneCropSelect" class="select">
+                  <option value="Hemp">🌿 Hemp (Cloth)</option>
+                  <option value="Blue Berry">🫐 Blue Berry (Ore Tea)</option>
+                  <option value="Yellow Berry">🍋 Yellow Berry (Ore/Scrap Tea)</option>
+                  <option value="Red Berry">🍓 Red Berry (Max HP Tea)</option>
+                  <option value="White Berry">⚪ White Berry (Scrap Tea)</option>
+                  <option value="Pumpkin">🎃 Pumpkin / Potato</option>
+                </select>
+                <input id="cloneGeneInput" type="text" class="input" maxlength="6" placeholder="Enter 6 genes (e.g. YGYWGG)" style="font-family: var(--font-mono); text-transform: uppercase; width: 190px; letter-spacing: 0.12em;" />
+                <div style="display: flex; gap: 4px;">
+                  <button class="btn btn-sm gene-quick-btn" data-g="G" style="border-color:#22c55e; color:#4ade80;">+G</button>
+                  <button class="btn btn-sm gene-quick-btn" data-g="Y" style="border-color:#22c55e; color:#4ade80;">+Y</button>
+                  <button class="btn btn-sm gene-quick-btn" data-g="H" style="border-color:#22c55e; color:#4ade80;">+H</button>
+                  <button class="btn btn-sm gene-quick-btn" data-g="W" style="border-color:#ef4444; color:#f87171;">+W</button>
+                  <button class="btn btn-sm gene-quick-btn" data-g="X" style="border-color:#ef4444; color:#f87171;">+X</button>
+                </div>
+                <button id="addCloneBtn" class="btn btn-primary">+ Save Clone</button>
+                <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
+              </div>
+              <div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
+                DOMINANCE WEIGHTS: <span style="color:#4ade80;">G / Y / H = 0.6</span> • <span style="color:#f87171;">X (Empty) = 0.9</span> • <span style="color:#f87171;">W (Water) = 1.0</span> (2x Green genes = 1.2 &gt; 1x Red gene!)
+              </div>
+            </div>
+
+            <!-- Optimal Crossbreed Result & 3x3 Planter Layout -->
+            <div id="crossbreedResultContainer"></div>
+          </div>
+
+          <!-- Fertilizer & Compost Scrap Calculator -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🐴 Horse Dung / Compost → Fertilizer → Scrap Calculator</div>
+                <div class="panel-subtitle">Calculate passive Scrap income at Bandit Camp / Outpost (2 Fertilizer = 3 Scrap)</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">HORSE DUNG COUNT</label>
+                <input id="fertDungInput" type="number" class="input" value="100" min="0" style="width: 130px;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">PLANT FIBER / PLANT MATTER</label>
+                <input id="fertFiberInput" type="number" class="input" value="200" min="0" style="width: 150px;" />
+              </div>
+              <button id="calcFertilizerBtn" class="btn btn-sulfur">Calculate Scrap Yield</button>
+            </div>
+            <div id="fertCalcResult" style="margin-top: 12px;"></div>
+          </div>
+        </div>
+
+        <!-- Right Column: Squad Clone Library & Berry Tea Recipes -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🌱 Squad Saved Clones & Saplings</div>
+                <div class="panel-subtitle">Click "Solve Crossbreed" after adding 2+ clones of the same crop</div>
+              </div>
+              <button id="runGeneticsSolverBtn" class="btn btn-primary btn-sm">⚡ Re-Solve Best Crossbreed</button>
+            </div>
+            <div id="savedClonesList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🧪 Mixing Table Berry Tea Recipes (Basic / Adv / Pure)</div>
+                <div class="panel-subtitle">Craft Pure Ore Tea (+50% Sulfur) & Pure Scrap Tea (+350% Barrel Scrap)</div>
+              </div>
+            </div>
+            <div id="teaRecipesContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         TAB 5: BATTLEMETRICS SERVER INTEL & BEST TIME TO RAID
+         ================================================================== -->
+    <section id="tab-battlemetrics" class="tab-panel">
+      <div class="grid-2">
+        <!-- Left Column: Live Server Search + 24-Hour Raid Window Analyzer -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">📡 BattleMetrics Server Lookup & Live Population</div>
+                <div class="panel-subtitle">Search any Rust server or enter its BattleMetrics Server ID to analyze the best raid window</div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+              <input id="bmSearchInput" type="text" class="input" placeholder="Search server name (e.g. Rustoria, Rustafied, Moose) or Server ID..." style="flex: 1; min-width: 220px;" />
+              <button id="bmSearchBtn" class="btn btn-primary">🔍 Search BattleMetrics</button>
+              <button id="bmSimulatePresetBtn" class="btn btn-sm">📊 Load EU/US Main Profile</button>
+            </div>
+
+            <!-- Search Results Dropdown / List -->
+            <div id="bmSearchResults" style="margin-bottom: 14px;"></div>
+
+            <!-- Active Server Telemetry Card -->
+            <div id="bmServerTelemetryCard"></div>
+          </div>
+
+          <!-- 24-Hour Population Curve & Raid Window Recommendation -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🕒 24-Hour Population Curve & Best Time to Raid</div>
+                <div class="panel-subtitle">Identifies the exact lowest-counter raid window and recommends the safest raid method for current pop</div>
+              </div>
+            </div>
+
+            <div id="bmRaidWindowSummary" style="margin-bottom: 16px;"></div>
+            <div id="bmHeatmapContainer" class="bm-heatmap-bars"></div>
+            <div id="bmRaidMethodAdvisor" style="margin-top: 26px;"></div>
+          </div>
+        </div>
+
+        <!-- Right Column: Enemy Clan / Raid Target Watchlist -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🎯 Enemy Clan & Raid Target Watchlist</div>
+                <div class="panel-subtitle">Track rival groups, base grid coordinates, and typical offline hours across your squad</div>
+              </div>
+            </div>
+
+            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 14px;">
+              <div style="display: grid; grid-template-columns: 1.3fr 0.6fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <input id="watchNameInput" type="text" class="input" placeholder="Clan / Player Name (e.g. [AK] Roofcampers)" />
+                <input id="watchGridInput" type="text" class="input" placeholder="Grid (Q14)" />
+                <input id="watchOfflineInput" type="text" class="input" placeholder="Offline Window (04:00 - 10:00)" />
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <input id="watchNotesInput" type="text" class="input" placeholder="Raid notes (e.g. 2x2 Honeycombed, 3 Garage Doors, Turret on roof)" style="flex: 1;" />
+                <button id="addWatchlistBtn" class="btn btn-primary">+ Track Target</button>
+              </div>
+            </div>
+
+            <div id="bmWatchlistContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ====================================================================
+       MODAL: SQUAD SETTINGS, PIN & CUSTOM MAP URL
+       ==================================================================== -->
+  <div id="settingsModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="panel-header">
+        <div class="panel-title">⚙️ Squad Sync, PIN & Map Settings</div>
+        <button id="closeSettingsModalBtn" class="btn btn-sm">✕</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SQUAD / CLAN NAME</label>
+          <input id="settingSquadName" type="text" class="input" style="width: 100%;" placeholder="RUST SQUAD ALPHA" />
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SQUAD PIN (If SQUAD_PIN is set in Pterodactyl env)</label>
+          <input id="settingSquadPin" type="password" class="input" style="width: 100%;" placeholder="Leave blank if no PIN configured on server" />
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">CUSTOM SERVER MAP IMAGE URL (Optional — RustMaps / BattleMetrics Map Image)</label>
+          <input id="settingMapImageUrl" type="text" class="input" style="width: 100%;" placeholder="https://... (Leave blank to use Tactical Procedural Island Map)" />
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">MAP SEED</label>
+            <input id="settingMapSeed" type="text" class="input" style="width: 100%;" placeholder="1337420" />
+          </div>
+          <div style="flex: 1;">
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">MAP SIZE</label>
+            <input id="settingMapSize" type="number" class="input" style="width: 100%;" value="4250" />
+          </div>
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATTLEMETRICS API TOKEN (Optional for higher rate limits)</label>
+          <input id="settingBmToken" type="password" class="input" style="width: 100%;" placeholder="Optional Personal Access Token" />
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button id="saveSettingsBtn" class="btn btn-primary">💾 Save & Sync with Squad</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
