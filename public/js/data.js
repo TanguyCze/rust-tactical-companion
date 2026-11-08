@@ -1089,7 +1089,7 @@ window.RUST_DATA = {
     },
     {
       id: 'harbor',
-      name: 'Harbor (Small & Large)',
+      name: 'Harbor (Small & Large — Cargo Dock)',
       tier: 1,
       biome: 'Coast',
       defaultPos: { x: 0.82, y: 0.65, grid: 'V17' },
@@ -1099,12 +1099,70 @@ window.RUST_DATA = {
       radRequired: '0%',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 2, normal: 6, diesel: 0 },
-      utilities: ['Recycler', 'Oil Refinery', 'Cargo Dock'],
+      utilities: ['Recycler (60%)', 'Oil Refinery', 'Cargo Ship Docking Port'],
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse.',
         'Small Harbor: Insert Fuse & flip switch in the concrete pillar room, then swipe Green Card upstairs on the hangar walkway.',
         'Large Harbor: Insert Fuse in the small brick shed near the entrance, then swipe Green Card at the crane control container.',
-        'Loot the Blue Keycard on the desk + crates (Cargo Ship also docks here!).'
+        'Loot the Blue Keycard on the desk + crates. (PATCH NOTE: Cargo Ship now docks directly at Harbor during its route and spawns an extra Locked Crate!)'
+      ]
+    },
+    {
+      id: 'ferry_terminal',
+      name: 'Ferry Terminal (Updated Puzzle)',
+      tier: 1,
+      biome: 'Coast',
+      defaultPos: { x: 0.16, y: 0.68, grid: 'E17' },
+      cardsNeeded: ['Green'],
+      cardsFound: ['Blue'],
+      fusesNeeded: 1,
+      radRequired: '11%',
+      respawnMin: 30,
+      crates: { locked: 0, elite: 0, military: 3, normal: 10, diesel: 0 },
+      utilities: ['Recycler (60%)', 'Car Lift', 'Repair Bench'],
+      steps: [
+        'Bring 1x Green Keycard + 1x Electric Fuse + 11% Rad Protection.',
+        'Enter the underground maintenance / switch room, insert 1x Electric Fuse, and flip the breaker switch.',
+        'Swipe your Green Keycard at the terminal loot room door to get a Blue Keycard + Military Crates & Vehicle Parts.'
+      ]
+    },
+    {
+      id: 'radtown',
+      name: 'Radtown (New Monument & Puzzle)',
+      tier: 1,
+      biome: 'Temperate',
+      defaultPos: { x: 0.39, y: 0.56, grid: 'K14' },
+      cardsNeeded: ['Green'],
+      cardsFound: ['Blue'],
+      fusesNeeded: 1,
+      radRequired: '11% – 25% (Hazmat/Burlap)',
+      respawnMin: 30,
+      crates: { locked: 0, elite: 0, military: 4, normal: 14, diesel: 2 },
+      utilities: ['Recycler (60%)', 'Research Table', 'Oil Refinery'],
+      steps: [
+        'NEW PATCH MONUMENT: Bring 1x Green Keycard + 1x Electric Fuse + 15–25% Rad Protection (Zero Scientists, high PvP/grub traffic!).',
+        'Locate the fuse box inside the central industrial building, insert 1x Fuse, and flip the main power switch.',
+        'Run to the Green Keycard door and swipe in to loot Military Crates + Blue Keycard + Diesel Barrels.',
+        '⚠️ PATCH MECHANIC: Puzzle reset timer (30m) starts when the first crate is looted, and deadly radiation floods the room 10m before reset!'
+      ]
+    },
+    {
+      id: 'the_dome',
+      name: 'The Dome (Sphere Tank)',
+      tier: 1,
+      biome: 'Temperate / Arid',
+      defaultPos: { x: 0.46, y: 0.36, grid: 'M9' },
+      cardsNeeded: [],
+      cardsFound: [],
+      fusesNeeded: 0,
+      radRequired: '11%',
+      respawnMin: 20,
+      crates: { locked: 0, elite: 0, military: 4, normal: 6, diesel: 2 },
+      utilities: ['Oil Refinery (x2)'],
+      steps: [
+        'No Fuse or Keycard required — only 11% Radiation Protection.',
+        'Climb the interior catwalks and pipes to the very top of the sphere.',
+        'Loot 4 guaranteed Military Crates + 2x Diesel Barrels on the top platform, and use the 2x Oil Refineries in the bottom sheds.'
       ]
     },
     {
@@ -1119,12 +1177,12 @@ window.RUST_DATA = {
       radRequired: '11%',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 4, normal: 8, diesel: 0 },
-      utilities: ['Recycler (x2)', 'Oil Refinery'],
+      utilities: ['Recycler (x2 @ 60%)', 'Oil Refinery'],
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse + 11% Rad Protection.',
         'Enter the small bunker shed at the base of the jump-up tower: insert 1x Fuse and flip the switch.',
         'Head down into the underground sewer tunnel and swipe your Green Keycard.',
-        'Loot 9–12 crates, grab the Blue Keycard on the desk, and use the safe underground Recycler!'
+        'Loot 9–12 crates, grab the Blue Keycard on the desk, and use the safe underground 60%-yield Recycler!'
       ]
     },
     {
@@ -1139,7 +1197,7 @@ window.RUST_DATA = {
       radRequired: '11%',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 2, normal: 6, diesel: 0 },
-      utilities: ['Recycler'],
+      utilities: ['Recycler (60%)'],
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse + 11% Rad Protection.',
         'Insert Fuse into the lower shipping container and flip the switch.',
@@ -1158,7 +1216,7 @@ window.RUST_DATA = {
       radRequired: '11% (25% Valve)',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 6, normal: 10, diesel: 3 },
-      utilities: ['Recycler', 'Oil Refinery', 'Repair Bench'],
+      utilities: ['Recycler (60%)', 'Oil Refinery', 'Repair Bench'],
       steps: [
         'Bring 1x Blue Keycard + 1x Electric Fuse + 11% Rad Protection.',
         'Turn the wheel valve on the central garage building to lift the roll-up door.',
@@ -1178,7 +1236,7 @@ window.RUST_DATA = {
       radRequired: '11% (25% Puzzle)',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 7, normal: 10, diesel: 3 },
-      utilities: ['Recycler', 'Oil Refinery', 'Coaling Tower Unloader'],
+      utilities: ['Recycler (60%)', 'Oil Refinery', 'Coaling Tower Unloader'],
       steps: [
         'Bring 1x Blue Keycard (Green Card optional for extra room) + 1x Fuse + 25% Rad Protection (Hazmat recommended).',
         'Switch #1: Flip the ON switch on the 2nd floor of the concrete transformer building.',
@@ -1199,7 +1257,7 @@ window.RUST_DATA = {
       radRequired: '25%',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 6, normal: 9, diesel: 3 },
-      utilities: ['Recycler (x2)', 'Oil Refinery'],
+      utilities: ['Recycler (x2 @ 60%)', 'Oil Refinery'],
       steps: [
         'Bring 1x Green Keycard + 1x Blue Keycard + 2x Electric Fuses + 25% Rad Protection.',
         'Flip the switch in the small shed near the broken cooling tower, OR swipe Green Card on the side of the main building.',
@@ -1219,12 +1277,12 @@ window.RUST_DATA = {
       radRequired: '11%',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 5, normal: 12, diesel: 3 },
-      utilities: ['Recycler', 'Oil Refinery', 'Repair Bench'],
+      utilities: ['Recycler (60%)', 'Oil Refinery', 'Repair Bench'],
       steps: [
         'Bring 1x Green Keycard + 1x Blue Keycard + 2x Electric Fuses + 11% Rad Protection.',
         'Insert 1st Fuse in the middle office building and flip the switch.',
         'Drop down the underground sewer ladder between hangars -> Swipe Green Card -> Insert 2nd Fuse -> Swipe Blue Card.',
-        'Loot the Red Keycard + underground Military Crates.'
+        'Loot the Red Keycard + underground Military Crates (watch out for the 10-minute pre-reset radiation flood!).'
       ]
     },
     {
@@ -1239,11 +1297,30 @@ window.RUST_DATA = {
       radRequired: '0% (Cold Protection!)',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 5, normal: 8, diesel: 2 },
-      utilities: ['Recycler', 'Snowmobile Spawn'],
+      utilities: ['Recycler (60%)', 'Snowmobile Spawn'],
       steps: [
         'Bring 1x Blue Keycard + 1x Electric Fuse (Clear Arctic Scientists first).',
         'Insert 1x Fuse in the garage building and flip the switch.',
         'Swipe Blue Card at the central lab building to get the Red Keycard + free Snowmobile + Military Crates.'
+      ]
+    },
+    {
+      id: 'giant_excavator',
+      name: 'Giant Excavator Pit',
+      tier: 2,
+      biome: 'Desert / Arid',
+      defaultPos: { x: 0.68, y: 0.74, grid: 'R19' },
+      cardsNeeded: [],
+      cardsFound: [],
+      fusesNeeded: 0,
+      radRequired: '11%',
+      respawnMin: 20,
+      crates: { locked: 0, elite: 0, military: 4, normal: 8, diesel: 1 },
+      utilities: ['Recycler (x2 @ 60%)', 'Diesel Ore Arm (2,000 Sulfur/Barrel)', 'Signal Computer (Airdrop)'],
+      steps: [
+        'No Keycard or Fuse needed — bring Diesel Barrels + Gun/Meds to clear ~15 Scientists.',
+        'Deposit Diesel into the Engine Room (1 Barrel = 2 mins runtime = 2,000 Sulfur Ore or 100 HQM!).',
+        'Select your resource at the Control Room and collect ore from the two Output Piles (every 5 barrels also calls a Supply Drop!).'
       ]
     },
     {
@@ -1258,12 +1335,12 @@ window.RUST_DATA = {
       radRequired: '50% (Hazmat + Water/Pills)',
       respawnMin: 30,
       crates: { locked: 0, elite: 3, military: 6, normal: 12, diesel: 4 },
-      utilities: ['Recycler', 'Oil Refinery', 'Bradley APC (7 HV Rockets)'],
+      utilities: ['Recycler (60%)', 'Oil Refinery', 'Bradley APC (7 HV Rockets)'],
       steps: [
         'Bring 1x Green Keycard + 1x Red Keycard + 2x Electric Fuses + Hazmat Suit + ~150ml Water (to wash rads).',
         'Building #1: Swipe Green Card -> Insert 1st Fuse -> Flip switch.',
         'Building #2 (North side): Insert 2nd Fuse -> Flip switch.',
-        'Swipe Red Card at the main Rocket Factory door -> Climb or take elevator to roof for 3x Elite Crates!',
+        'Swipe Red Card at the main Rocket Factory door (Note: Day-1 Wipe Monument Blockers decay over 24h or can be broken) -> Climb to roof for 3x Elite Crates!',
         'To exit: Press the red auxiliary power button inside the ground-floor control room. (Tip: Bradley APC takes 7x HV Rockets = 1,400 Sulfur!)'
       ]
     },
@@ -1279,7 +1356,7 @@ window.RUST_DATA = {
       radRequired: '25%',
       respawnMin: 30,
       crates: { locked: 0, elite: 3, military: 8, normal: 10, diesel: 0 },
-      utilities: ['Recycler'],
+      utilities: ['Recycler (60%)'],
       steps: [
         'Bring 1x Green + 1x Blue + 1x Red Keycard + 1x Fuse + 25% Rad Protection + Meds/Weapon for Tunnel Scientists.',
         'Insert 1x Fuse in the mine-cart side room -> Swipe Green Card (gives Blue Card + flips main power switch).',
@@ -1288,21 +1365,41 @@ window.RUST_DATA = {
     },
     {
       id: 'missile_silo',
-      name: 'Nuclear Missile Silo',
+      name: 'Nuclear Missile Silo (Updated Red Card Tier 3)',
       tier: 3,
       biome: 'Snow / Temperate',
       defaultPos: { x: 0.50, y: 0.22, grid: 'N6' },
-      cardsNeeded: ['Blue'],
-      cardsFound: ['Red'],
+      cardsNeeded: ['Red'],
+      cardsFound: [],
       fusesNeeded: 1,
-      radRequired: '25%',
+      radRequired: '25% – 35% (Hazmat)',
       respawnMin: 30,
-      crates: { locked: 0, elite: 2, military: 7, normal: 10, diesel: 3 },
-      utilities: ['Recycler'],
+      crates: { locked: 0, elite: 3, military: 8, normal: 12, diesel: 3 },
+      utilities: ['Recycler (60%)', 'MLRS Rocket Terminal'],
       steps: [
-        'Bring 1x Blue Keycard + 1x Fuse + 25% Rad Protection + Gun/Ammo for Silo Scientists.',
-        'Insert Fuse on the surface building and swipe Blue Card on the giant missile hatch.',
-        'Fight down the 5 underground floors to the warhead room for Elite Crates + Red Card, then exit via elevator.'
+        'PATCH UPDATE: Missile Silo now requires 1x RED Keycard + 1x Electric Fuse (upgraded from Blue Card in recent patch!).',
+        'Clear the surface guards and descend the central silo staircase while wearing 25%+ Rad Protection.',
+        'Fight through the NVG Heavy Scientists underground, insert 1x Electric Fuse into the wall panel, and flip the switch.',
+        'Swipe your RED Keycard at the underground vault terminal to loot 3x Elite Crates + 8 Military Crates + MLRS Modules/Rockets, then exit via the surface elevator.'
+      ]
+    },
+    {
+      id: 'underwater_labs',
+      name: 'Underwater Labs',
+      tier: 3,
+      biome: 'Ocean (South)',
+      defaultPos: { x: 0.28, y: 0.92, grid: 'H23' },
+      cardsNeeded: ['Green', 'Blue', 'Red'],
+      cardsFound: ['Green', 'Blue'],
+      fusesNeeded: 1,
+      radRequired: '0% (Diving Tank / Sub)',
+      respawnMin: 25,
+      crates: { locked: 0, elite: 2, military: 6, normal: 14, diesel: 0 },
+      utilities: ['Safe Moonpool Dock', 'High Tech Trash Yield'],
+      steps: [
+        'Enter via Submarine or Diving Tank through the underwater moonpool.',
+        'Clear Lab Dwellers across the procedural modules and check desks for free Green/Blue Keycards.',
+        'Use 1x Fuse + Green/Blue/Red Keycards depending on the generated lab layout for high-density Tech Trash & Elite Crates.'
       ]
     },
     {

@@ -1159,11 +1159,14 @@
     if (mapLayers.cardFlow) {
       const flowPairs = [
         ['lighthouse', 'sewer_branch', '#22c55e'],
-        ['gas_station', 'satellite_dish', '#22c55e'],
+        ['gas_station', 'radtown', '#22c55e'],
+        ['supermarket', 'ferry_terminal', '#22c55e'],
         ['sewer_branch', 'water_treatment', '#3b82f6'],
-        ['satellite_dish', 'train_yard', '#3b82f6'],
+        ['radtown', 'train_yard', '#3b82f6'],
+        ['ferry_terminal', 'power_plant', '#3b82f6'],
         ['water_treatment', 'launch_site', '#ef4444'],
         ['train_yard', 'military_tunnels', '#ef4444'],
+        ['power_plant', 'missile_silo', '#ef4444'],
         ['arctic_research', 'large_oil_rig', '#ef4444']
       ];
 
@@ -1951,18 +1954,29 @@
       rpModal?.classList.remove('open');
     });
 
+    // Copy %APPDATA%\RustPlusDesk path button
+    document.getElementById('copyRustPlusDeskPathBtn')?.addEventListener('click', () => {
+      const pathStr = '%APPDATA%\\RustPlusDesk';
+      navigator.clipboard?.writeText(pathStr);
+      const statusBox = document.getElementById('rpImportStatusBox');
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.textContent = '✓ Copied "%APPDATA%\\RustPlusDesk" to clipboard! Now click "2. Select profiles.json or rustplusjs-config.json" and press Ctrl+V in the File Explorer address bar.';
+      }
+    });
+
     // Copy F12 Console 1-Liner helper
     document.getElementById('copyConsoleExtractorBtn')?.addEventListener('click', () => {
       const snippet = `copy(document.documentElement.outerHTML); alert('Copied! Paste into Rust Tactical Companion.');`;
       navigator.clipboard?.writeText(snippet);
-      alert('Copied F12 Console 1-liner! Or simply press Ctrl+U on the Facepunch Login page, press Ctrl+A then Ctrl+C, and paste it below.');
+      alert('Copied F12 Console Extractor! On the Facepunch Steam Login page, press F12 -> Console, press Ctrl+V and Enter, then paste into the box below.');
     });
 
     // Activate Live In-Game FCM Pairing Listener
     document.getElementById('activateFcmListenerBtn')?.addEventListener('click', async () => {
       const tokenInput = document.getElementById('fcmTokenInput')?.value.trim();
       if (!tokenInput) {
-        alert('First open the Facepunch Steam Login page, sign in, and paste the page source (Ctrl+U) or Token JSON into the box!');
+        alert('First paste the output from the F12 Console Extractor or upload rustplusjs-config.json from %APPDATA%\\RustPlusDesk!');
         return;
       }
       if (!isServerConnected) {
@@ -1996,28 +2010,139 @@
       }
     });
 
-    // 1-Click Upload rustplus.config.json
-    document.getElementById('rpJsonFileInput')?.addEventListener('change', (evt) => {
-      const file = evt.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
+    // 1-Click Upload from RustPlusDesk (profiles.json or rustplusjs-config.json) or rustplus.config.json
+    document.getElementById('rpJsonFileInput')?.addEventListener('change', async (evt) => {
+      const files = Array.from(evt.target.files || []);
+      if (files.length === 0) return;
+      const statusBox = document.getElementById('rpImportStatusBox');
+
+      for (const file of files) {
         try {
-          const parsed = JSON.parse(String(reader.result));
-          const ip = parsed.ip || parsed.server?.ip || '';
-          const port = parsed.port || parsed.server?.port || '28082';
-          const playerId = parsed.playerId || parsed.steamId || '';
-          const playerToken = parsed.playerToken || parsed.token || '';
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+
+          // Case 1: RustPlusDesk profiles.json (Array of server profiles with PascalCase keys)
+          if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].Host || parsed[0].PlayerToken)) {
+            let profile = parsed[parsed.length - 1];
+            if (parsed.length > 1) {
+              const names = parsed.map((p, i) => `${i + 1}: ${p.Name || p.Host}`).join('\n');
+              const choice = prompt(`Found ${parsed.length} servers in profiles.json:\n${names}\n\nEnter number to import (default ${parsed.length}):`, String(parsed.length));
+              const idx = (parseInt(choice, 10) || parsed.length) - 1;
+              if (parsed[idx]) profile = parsed[idx];
+            }
+
+            const ip = profile.Host || '';
+            const port = String(profile.Port || '28082');
+            const playerId = String(profile.SteamId64 || '');
+            const playerToken = String(profile.PlayerToken || '');
+            const serverName = profile.Name || `${ip}:${port}`;
+            const useFacepunchProxy = Boolean(profile.UseFacepunchProxy);
+            const customImageUrl = profile.CustomMapUrl || '';
+            const battlemetricsId = profile.BattleMetricsId || '';
+
+            const smartDevices = Array.isArray(profile.Devices)
+              ? profile.Devices.map((d) => ({
+                  id: 'sd-' + d.EntityId,
+                  entityId: String(d.EntityId),
+                  name: d.Name || d.Alias || `Smart Device #${d.EntityId}`,
+                  type: d.Kind === 2 ? 'alarm' : 'switch',
+                  active: Boolean(d.IsOn),
+                  grid: 'PAIRED'
+                }))
+              : [];
+
+            document.getElementById('rpServerIp').value = ip;
+            document.getElementById('rpServerPort').value = port;
+            document.getElementById('rpPlayerId').value = playerId;
+            document.getElementById('rpPlayerToken').value = playerToken;
+
+            appState.rustPlus.config = { serverName, ip, port, playerId, playerToken, useFacepunchProxy };
+            if (smartDevices.length > 0) {
+              smartDevices.forEach((sd) => {
+                if (!appState.rustPlus.smartDevices.some((existing) => String(existing.entityId) === sd.entityId)) {
+                  appState.rustPlus.smartDevices.unshift(sd);
+                }
+              });
+            }
+            saveLocalFallback();
+            renderRustPlusSidebar();
+
+            if (isServerConnected) {
+              const res = await fetch('/api/rustplus/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+                body: JSON.stringify({
+                  serverName,
+                  ip,
+                  port,
+                  playerId,
+                  playerToken,
+                  useFacepunchProxy,
+                  smartDevices,
+                  customImageUrl,
+                  battlemetricsId
+                })
+              });
+              const data = await res.json();
+              if (statusBox) {
+                statusBox.style.display = 'block';
+                statusBox.textContent = `✓ Imported "${serverName}" + ${smartDevices.length} Smart Device(s) from profiles.json! ${data.message || ''}`;
+              }
+              alert(`🎉 Imported "${serverName}" (${ip}:${port}) and ${smartDevices.length} Smart Switch/Alarm(s) from Rust+ Desktop!`);
+            } else {
+              alert(`Imported "${serverName}" (${ip}:${port}) and ${smartDevices.length} Smart Switch(es) from profiles.json!`);
+            }
+            continue;
+          }
+
+          // Case 2: RustPlusDesk rustplusjs-config.json (contains fcm_credentials + rustplus_auth_token)
+          if (parsed.fcm_credentials || parsed.rustplus_auth_token) {
+            document.getElementById('fcmTokenInput').value = text;
+            if (isServerConnected) {
+              const res = await fetch('/api/rustplus/fcm-register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+                body: JSON.stringify({
+                  fcmCredentials: parsed.fcm_credentials,
+                  tokenInput: text
+                })
+              });
+              const data = await res.json();
+              if (res.ok) {
+                const fcmBadge = document.getElementById('fcmListenerBadge');
+                if (fcmBadge) {
+                  fcmBadge.textContent = '🟢 LISTENING FOR IN-GAME PAIR';
+                  fcmBadge.className = 'keycard-tag keycard-Green';
+                }
+                if (statusBox) {
+                  statusBox.style.display = 'block';
+                  statusBox.textContent = `✓ ${data.message}`;
+                }
+                alert('🎉 ' + data.message);
+              } else {
+                alert('FCM Import Error: ' + (data.error || 'Failed'));
+              }
+            } else {
+              alert('Loaded rustplusjs-config.json! Click "Activate Live In-Game Pairing Listener" when connected to your Pterodactyl server.');
+            }
+            continue;
+          }
+
+          // Case 3: Standard rustplus.config.json ({ ip, port, playerId, playerToken })
+          const ip = parsed.ip || parsed.server?.ip || parsed.Host || '';
+          const port = String(parsed.port || parsed.server?.port || parsed.Port || '28082');
+          const playerId = String(parsed.playerId || parsed.steamId || parsed.SteamId64 || '');
+          const playerToken = String(parsed.playerToken || parsed.token || parsed.PlayerToken || '');
           if (ip) document.getElementById('rpServerIp').value = ip;
           if (port) document.getElementById('rpServerPort').value = port;
           if (playerId) document.getElementById('rpPlayerId').value = playerId;
           if (playerToken) document.getElementById('rpPlayerToken').value = playerToken;
-          alert('Loaded credentials from JSON! Click "Connect to Paired Rust+ Server" below.');
-        } catch (_) {
-          alert('Invalid JSON file.');
+          alert('Loaded credentials from JSON! Click "Connect & Sync Paired Rust+ Server" below.');
+        } catch (err) {
+          alert(`Failed to parse ${file.name}: ${err.message}`);
         }
-      };
-      reader.readAsText(file);
+      }
+      evt.target.value = '';
     });
 
     document.getElementById('connectRustPlusBtn')?.addEventListener('click', async () => {

@@ -14,16 +14,37 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 const { URL } = require('url');
 
 let RustPlus = null;
 let PushReceiver = null;
-try {
-  RustPlus = require('@liamcottle/rustplus.js');
-} catch (_) {}
-try {
-  PushReceiver = require('@liamcottle/push-receiver');
-} catch (_) {}
+
+function loadRustPlusDependencies() {
+  try {
+    RustPlus = require('@liamcottle/rustplus.js');
+  } catch (_) {}
+  try {
+    PushReceiver = require('@liamcottle/push-receiver');
+  } catch (_) {}
+}
+
+loadRustPlusDependencies();
+
+// Auto-install missing npm dependencies on Pterodactyl startup if AUTO_UPDATE pulled new package.json
+if ((!RustPlus || !PushReceiver) && fs.existsSync(path.join(__dirname, 'package.json'))) {
+  try {
+    console.log('[Startup] Installing @liamcottle/rustplus.js and @liamcottle/push-receiver...');
+    execSync('npm install --production --no-audit --no-fund', {
+      cwd: __dirname,
+      stdio: 'inherit',
+      timeout: 120000
+    });
+    loadRustPlusDependencies();
+  } catch (err) {
+    console.warn('[Startup] Auto npm install skipped or failed:', err.message);
+  }
+}
 
 const PORT = parseInt(process.env.SERVER_PORT || process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -299,7 +320,13 @@ function connectRustPlusSocket(cfg) {
     }
     if (rustPlusPollTimer) clearInterval(rustPlusPollTimer);
 
-    const rp = new RustPlus(cfg.ip, cfg.port || 28082, cfg.playerId, cfg.playerToken);
+    const rp = new RustPlus(
+      cfg.ip,
+      cfg.port || 28082,
+      cfg.playerId,
+      cfg.playerToken,
+      Boolean(cfg.useFacepunchProxy)
+    );
     activeRustPlusClient = rp;
 
     rp.on('connected', () => {
@@ -491,23 +518,33 @@ function extractFacepunchToken(rawInput) {
   const str = String(rawInput || '').trim();
   if (!str) return null;
 
-  // 1. Direct JSON object {"SteamId":"...","Token":"..."}
+  // 1. Direct JSON object {"SteamId":"...","Token":"..."} or RustPlusDesk rustplusjs-config.json
   try {
     const j = JSON.parse(str);
-    if (j.Token || j.token) {
-      return { token: j.Token || j.token, steamId: j.SteamId || j.steamId || '' };
+    if (j.fcm_credentials && j.fcm_credentials.gcm && j.fcm_credentials.fcm) {
+      return {
+        fcmCredentials: j.fcm_credentials,
+        token: j.rustplus_auth_token || j.Token || j.token || '',
+        steamId: j.steam_id || j.SteamId || j.steamId || ''
+      };
+    }
+    if (j.Token || j.token || j.rustplus_auth_token) {
+      return {
+        token: j.Token || j.token || j.rustplus_auth_token,
+        steamId: j.SteamId || j.steamId || j.steam_id || ''
+      };
     }
   } catch (_) {}
 
-  // 2. Extracted from HTML page source of companion-rust.facepunch.com/login
+  // 2. Extracted from HTML DOM / page source of companion-rust.facepunch.com/login
   const tokenMatch = str.match(/["']Token["']\s*:\s*["']([^"']+)["']/i);
   const steamMatch = str.match(/["']SteamId["']\s*:\s*["'](\d+)["']/i);
   if (tokenMatch) {
     return { token: tokenMatch[1], steamId: steamMatch ? steamMatch[1] : '' };
   }
 
-  // 3. Raw token string
-  if (str.length > 25 && !str.includes(' ')) {
+  // 3. Raw token string (JWT / base64 Facepunch token)
+  if (str.length > 25 && !str.includes(' ') && !str.includes('<html')) {
     return { token: str, steamId: '' };
   }
   return null;
@@ -846,10 +883,32 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/rustplus/fcm-register' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
+
+      // Direct fcm_credentials import from RustPlusDesk's rustplusjs-config.json
+      const directFcm = body.fcmCredentials || extractFacepunchToken(body.tokenInput)?.fcmCredentials;
+      if (directFcm && directFcm.gcm && directFcm.fcm) {
+        try {
+          fs.writeFileSync(FCM_FILE, JSON.stringify(directFcm, null, 2), 'utf8');
+          const ok = await startFcmPairingListener(directFcm);
+          if (!ok) {
+            return sendJson(res, 500, {
+              error: 'Saved FCM credentials, but @liamcottle/push-receiver could not start listener. Check server logs.'
+            });
+          }
+          return sendJson(res, 200, {
+            ok: true,
+            message: 'Imported Rust+ Desktop FCM Credentials! Live In-Game Pairing Listener is now ACTIVE.'
+          });
+        } catch (err) {
+          return sendJson(res, 500, { error: err.message });
+        }
+      }
+
       const extracted = extractFacepunchToken(body.tokenInput);
       if (!extracted || !extracted.token) {
         return sendJson(res, 400, {
-          error: 'Could not find a Facepunch Token in the pasted text. Make sure you logged in at companion-rust.facepunch.com/login and copied the token or page source.'
+          error:
+            'No Facepunch Token found! Note: Pressing Ctrl+U on the Facepunch Login page reloads the page and clears your login. Instead, either upload your Rust+ Desktop files (%APPDATA%\\RustPlusDesk\\profiles.json or rustplusjs-config.json) OR press F12 -> Console on the Facepunch page and run the 1-Click Extractor!'
         });
       }
       try {
@@ -863,7 +922,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 4. Rust+ Direct Config / JSON Import
+    // 4. Rust+ Direct Config / RustPlusDesk profiles.json Import
     if (pathname === '/api/rustplus/connect' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
@@ -872,8 +931,37 @@ const server = http.createServer(async (req, res) => {
         ip: body.ip || '',
         port: String(body.port || '28082'),
         playerId: String(body.playerId || ''),
-        playerToken: String(body.playerToken || '')
+        playerToken: String(body.playerToken || ''),
+        useFacepunchProxy: Boolean(body.useFacepunchProxy)
       };
+
+      // If imported from RustPlusDesk profiles.json with Smart Switches / Alarms
+      if (Array.isArray(body.smartDevices) && body.smartDevices.length > 0) {
+        body.smartDevices.forEach((dev) => {
+          const exists = (squadState.rustPlus.smartDevices || []).some(
+            (d) => String(d.entityId) === String(dev.entityId)
+          );
+          if (!exists) {
+            squadState.rustPlus.smartDevices.unshift({
+              id: dev.id || 'sd-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+              entityId: String(dev.entityId),
+              name: dev.name || `Device #${dev.entityId}`,
+              type: dev.type === 'alarm' ? 'alarm' : 'switch',
+              active: Boolean(dev.active),
+              grid: dev.grid || 'PAIRED'
+            });
+          }
+        });
+      }
+
+      if (body.customImageUrl) {
+        squadState.mapConfig.customImageUrl = body.customImageUrl;
+      }
+      if (body.battlemetricsId) {
+        squadState.battlemetrics.serverId = String(body.battlemetricsId);
+        if (body.serverName) squadState.battlemetrics.serverName = body.serverName;
+      }
+
       const started = connectRustPlusSocket(squadState.rustPlus.config);
       saveState(squadState);
       broadcastState('state_update');
@@ -882,8 +970,8 @@ const server = http.createServer(async (req, res) => {
         nativeSocketStarted: started,
         nativeLibraryInstalled: Boolean(RustPlus),
         message: started
-          ? `Connected to Rust+ server ${squadState.rustPlus.config.ip}:${squadState.rustPlus.config.port}!`
-          : 'Saved Rust+ credentials!'
+          ? `Connected to Rust+ server ${squadState.rustPlus.config.serverName || squadState.rustPlus.config.ip + ':' + squadState.rustPlus.config.port}!`
+          : 'Saved Rust+ server & devices configuration!'
       });
     }
 

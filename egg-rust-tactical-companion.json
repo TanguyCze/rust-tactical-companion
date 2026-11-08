@@ -15,7 +15,7 @@
     "Node.js 18": "ghcr.io/parkervcp/yolks:nodejs_18"
   },
   "file_denylist": [],
-  "startup": "if [[ -d .git ]] && [[ {{AUTO_UPDATE}} == \"1\" ]]; then git pull; fi; /usr/local/bin/node /home/container/{{MAIN_FILE}}",
+  "startup": "if [[ -d .git ]] && [[ {{AUTO_UPDATE}} == \"1\" ]]; then git pull && /usr/local/bin/npm install --production --no-audit --no-fund; fi; /usr/local/bin/node /home/container/{{MAIN_FILE}}",
   "config": {
     "files": "{}",
     "startup": "{\r\n    \"done\": \"RUST TACTICAL COMPANION\"\r\n}",
