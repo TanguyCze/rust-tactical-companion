@@ -304,14 +304,648 @@ function normalizedToGrid(nx, ny) {
 }
 
 // ============================================================================
-// NATIVE RUST+ WEBSOCKET CONNECTOR (WITH AUTO FACEPUNCH PROXY FALLBACK)
+// ZERO-DEPENDENCY NATIVE RUST+ PROTOBUF + WEBSOCKET CLIENT (WORKS WITHOUT NPM!)
+// ============================================================================
+const EventEmitter = require('events');
+
+function writeVarint(arr, val) {
+  let v = BigInt(val);
+  if (v < 0n) {
+    // Negative int32 in Protobuf is sign-extended to 64-bit unsigned (10 bytes)
+    v = BigInt.asUintN(64, v);
+  }
+  while (v >= 0x80n) {
+    arr.push(Number((v & 0x7fn) | 0x80n));
+    v >>= 7n;
+  }
+  arr.push(Number(v));
+}
+
+function readVarint(buf, offset) {
+  let res = 0n;
+  let shift = 0n;
+  let pos = offset;
+  while (pos < buf.length) {
+    const b = buf[pos++];
+    res |= BigInt(b & 0x7f) << shift;
+    if ((b & 0x80) === 0) break;
+    shift += 7n;
+  }
+  return { value: res, offset: pos };
+}
+
+function skipWireField(buf, offset, wireType) {
+  if (wireType === 0) return readVarint(buf, offset).offset;
+  if (wireType === 1) return offset + 8;
+  if (wireType === 2) {
+    const len = readVarint(buf, offset);
+    return len.offset + Number(len.value);
+  }
+  if (wireType === 5) return offset + 4;
+  return buf.length;
+}
+
+function encodeAppRequest(seq, playerId, playerToken, fieldNum, innerBytes = []) {
+  const out = [];
+  // 1: seq (uint32)
+  writeVarint(out, (1 << 3) | 0);
+  writeVarint(out, seq);
+  // 2: playerId (uint64)
+  writeVarint(out, (2 << 3) | 0);
+  writeVarint(out, BigInt(String(playerId || '0')));
+  // 3: playerToken (int32)
+  writeVarint(out, (3 << 3) | 0);
+  writeVarint(out, BigInt(parseInt(String(playerToken || '0'), 10)));
+  // optional entityId if passed on innerBytes.entityId
+  if (innerBytes && typeof innerBytes.entityId === 'number') {
+    writeVarint(out, (4 << 3) | 0);
+    writeVarint(out, innerBytes.entityId);
+  }
+  const payload = Array.isArray(innerBytes) ? innerBytes : innerBytes.bytes || [];
+  writeVarint(out, (fieldNum << 3) | 2);
+  writeVarint(out, payload.length);
+  for (let i = 0; i < payload.length; i++) out.push(payload[i]);
+  return Buffer.from(out);
+}
+
+function decodeAppInfo(buf) {
+  let pos = 0;
+  const info = {};
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2 && [1, 2, 3, 4].includes(fn)) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const str = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+      if (fn === 1) info.name = str;
+      else if (fn === 2) info.headerImage = str;
+      else if (fn === 3) info.url = str;
+      else if (fn === 4) info.map = str;
+    } else if (wt === 0 && [5, 6, 7, 8, 9, 10, 11].includes(fn)) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      const num = Number(v.value);
+      if (fn === 5) info.mapSize = num;
+      else if (fn === 6) info.wipeTime = num;
+      else if (fn === 7) info.players = num;
+      else if (fn === 8) info.maxPlayers = num;
+      else if (fn === 9) info.queuedPlayers = num;
+      else if (fn === 10) info.seed = num;
+      else if (fn === 11) info.salt = num;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return info;
+}
+
+function decodeAppTime(buf) {
+  let pos = 0;
+  const time = {};
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 1) time.dayLengthMinutes = val;
+      else if (fn === 2) time.timeScale = val;
+      else if (fn === 3) time.sunrise = val;
+      else if (fn === 4) time.sunset = val;
+      else if (fn === 5) time.time = val;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return time;
+}
+
+function decodeAppMap(buf) {
+  let pos = 0;
+  const map = { monuments: [] };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0 && (fn === 1 || fn === 2 || fn === 4)) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) map.width = Number(v.value);
+      else if (fn === 2) map.height = Number(v.value);
+      else if (fn === 4) map.oceanMargin = Number(v.value);
+    } else if (wt === 2 && fn === 3) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      map.jpgImage = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return map;
+}
+
+function decodeTeamMember(buf) {
+  let pos = 0;
+  const m = { steamId: '0', name: '', x: 0, y: 0, isOnline: false, spawnTime: 0, isAlive: false, deathTime: 0 };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) m.steamId = v.value.toString();
+      else if (fn === 5) m.isOnline = v.value !== 0n;
+      else if (fn === 6) m.spawnTime = Number(v.value);
+      else if (fn === 7) m.isAlive = v.value !== 0n;
+      else if (fn === 8) m.deathTime = Number(v.value);
+    } else if (wt === 2 && fn === 2) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      m.name = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+    } else if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 3) m.x = val;
+      else if (fn === 4) m.y = val;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return m;
+}
+
+function decodeMapNote(buf) {
+  let pos = 0;
+  const note = { type: 0, x: 0, y: 0, icon: 0, colourIndex: 0, label: '' };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) note.type = Number(v.value);
+      else if (fn === 4) note.icon = Number(v.value);
+      else if (fn === 5) note.colourIndex = Number(v.value);
+    } else if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 2) note.x = val;
+      else if (fn === 3) note.y = val;
+    } else if (wt === 2 && fn === 6) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      note.label = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return note;
+}
+
+function decodeAppTeamInfo(buf) {
+  let pos = 0;
+  const ti = { leaderSteamId: '0', members: [], mapNotes: [], leaderMapNotes: [] };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0 && fn === 1) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      ti.leaderSteamId = v.value.toString();
+    } else if (wt === 2 && (fn === 2 || fn === 3 || fn === 4)) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 2) ti.members.push(decodeTeamMember(sub));
+      else if (fn === 3) ti.mapNotes.push(decodeMapNote(sub));
+      else if (fn === 4) ti.leaderMapNotes.push(decodeMapNote(sub));
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return ti;
+}
+
+function decodeSellOrder(buf) {
+  let pos = 0;
+  const so = { itemId: 0, quantity: 1, currencyId: 0, costPerItem: 1, amountInStock: 0 };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      const num = Number(BigInt.asIntN(32, v.value));
+      if (fn === 1) so.itemId = num;
+      else if (fn === 2) so.quantity = num;
+      else if (fn === 3) so.currencyId = num;
+      else if (fn === 4) so.costPerItem = num;
+      else if (fn === 5) so.amountInStock = num;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return so;
+}
+
+function decodeAppMarker(buf) {
+  let pos = 0;
+  const mk = { id: 0, type: 0, x: 0, y: 0, steamId: '0', rotation: 0, radius: 0, name: '', sellOrders: [] };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) mk.id = Number(v.value);
+      else if (fn === 2) mk.type = Number(v.value);
+      else if (fn === 5) mk.steamId = v.value.toString();
+    } else if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 3) mk.x = val;
+      else if (fn === 4) mk.y = val;
+      else if (fn === 6) mk.rotation = val;
+      else if (fn === 7) mk.radius = val;
+    } else if (wt === 2 && (fn === 11 || fn === 13)) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 11) mk.name = sub.toString('utf8');
+      else if (fn === 13) mk.sellOrders.push(decodeSellOrder(sub));
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return mk;
+}
+
+function decodeAppMapMarkers(buf) {
+  let pos = 0;
+  const markers = [];
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2 && fn === 1) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      markers.push(decodeAppMarker(buf.slice(pos, pos + Number(len.value))));
+      pos += Number(len.value);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return { markers };
+}
+
+function decodeAppResponse(buf) {
+  let pos = 0;
+  const resp = {};
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0 && fn === 1) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      resp.seq = Number(v.value);
+    } else if (wt === 2) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 6) resp.info = decodeAppInfo(sub);
+      else if (fn === 7) resp.time = decodeAppTime(sub);
+      else if (fn === 8) resp.map = decodeAppMap(sub);
+      else if (fn === 9) resp.teamInfo = decodeAppTeamInfo(sub);
+      else if (fn === 13) resp.mapMarkers = decodeAppMapMarkers(sub);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return resp;
+}
+
+function decodeAppBroadcast(buf) {
+  let pos = 0;
+  const bc = {};
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 4) {
+        // AppTeamChanged -> field 2 is AppTeamInfo
+        let p2 = 0;
+        while (p2 < sub.length) {
+          const t2 = readVarint(sub, p2);
+          p2 = t2.offset;
+          const fn2 = Number(t2.value >> 3n);
+          const wt2 = Number(t2.value & 7n);
+          if (wt2 === 2 && fn2 === 2) {
+            const l2 = readVarint(sub, p2);
+            p2 = l2.offset;
+            bc.teamChanged = { teamInfo: decodeAppTeamInfo(sub.slice(p2, p2 + Number(l2.value))) };
+            p2 += Number(l2.value);
+          } else {
+            p2 = skipWireField(sub, p2, wt2);
+          }
+        }
+      }
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return bc;
+}
+
+function decodeAppMessage(buf) {
+  let pos = 0;
+  const msg = {};
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2 && (fn === 1 || fn === 2)) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 1) msg.response = decodeAppResponse(sub);
+      else if (fn === 2) msg.broadcast = decodeAppBroadcast(sub);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return msg;
+}
+
+// Built-in RFC 6455 WebSocket + Protobuf client (uses global WebSocket or Node http/https upgrade)
+class BuiltInRustPlusClient extends EventEmitter {
+  constructor(ip, port, playerId, playerToken, useFacepunchProxy = false, serverId = '', authToken = '') {
+    super();
+    this.ip = ip;
+    this.port = port || 28082;
+    this.playerId = String(playerId);
+    this.playerToken = parseInt(String(playerToken), 10);
+    this.useFacepunchProxy = Boolean(useFacepunchProxy);
+    this.serverId = serverId || '';
+    this.authToken = authToken || '';
+    this.seq = 0;
+    this.callbacks = new Map();
+    this.ws = null;
+    this.socket = null;
+  }
+
+  connect() {
+    let url = `ws://${this.ip}:${this.port}/`;
+    let protocols = [];
+    if (this.useFacepunchProxy) {
+      if (this.serverId && this.authToken) {
+        const b64Url = Buffer.from(this.authToken, 'utf8')
+          .toString('base64')
+          .replace(/=+$/, '')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_');
+        url = `wss://companion-rust.facepunch.com/socket/${this.serverId}`;
+        protocols = ['rustplus.auth.v1', b64Url];
+      } else {
+        url = `wss://companion-rust.facepunch.com/game/${this.ip}/${this.port}`;
+      }
+    }
+
+    if (typeof globalThis.WebSocket === 'function') {
+      try {
+        this.ws = protocols.length > 0 ? new globalThis.WebSocket(url, protocols) : new globalThis.WebSocket(url);
+        this.ws.binaryType = 'arraybuffer';
+        this.ws.onopen = () => this.emit('connected');
+        this.ws.onmessage = (evt) => {
+          const buf = Buffer.from(evt.data);
+          this._handleFrame(buf);
+        };
+        this.ws.onerror = (err) => this.emit('error', err || new Error('WebSocket error'));
+        this.ws.onclose = () => this.emit('disconnected');
+        return;
+      } catch (_) {}
+    }
+
+    // Fallback to raw http/https Upgrade socket for Node 16/18 without global WebSocket
+    const parsed = new URL(url);
+    const isSecure = parsed.protocol === 'wss:';
+    const mod = isSecure ? https : http;
+    const key = crypto.randomBytes(16).toString('base64');
+    const headers = {
+      Connection: 'Upgrade',
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Version': '13',
+      'Sec-WebSocket-Key': key
+    };
+    if (protocols.length > 0) {
+      headers['Sec-WebSocket-Protocol'] = protocols.join(', ');
+    }
+    const req = mod.request({
+      hostname: parsed.hostname,
+      port: parsed.port || (isSecure ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers
+    });
+    req.on('upgrade', (res, socket) => {
+      this.socket = socket;
+      socket.setNoDelay(true);
+      this.emit('connected');
+      let recvBuffer = Buffer.alloc(0);
+      socket.on('data', (chunk) => {
+        recvBuffer = Buffer.concat([recvBuffer, chunk]);
+        while (recvBuffer.length >= 2) {
+          const b0 = recvBuffer[0];
+          const b1 = recvBuffer[1];
+          const opcode = b0 & 0x0f;
+          let payloadLen = b1 & 0x7f;
+          let headerLen = 2;
+          if (payloadLen === 126) {
+            if (recvBuffer.length < 4) return;
+            payloadLen = recvBuffer.readUInt16BE(2);
+            headerLen = 4;
+          } else if (payloadLen === 127) {
+            if (recvBuffer.length < 10) return;
+            payloadLen = Number(recvBuffer.readBigUInt64BE(2));
+            headerLen = 10;
+          }
+          if (recvBuffer.length < headerLen + payloadLen) return;
+          const payload = recvBuffer.slice(headerLen, headerLen + payloadLen);
+          recvBuffer = recvBuffer.slice(headerLen + payloadLen);
+          if (opcode === 0x02) {
+            this._handleFrame(payload);
+          } else if (opcode === 0x08) {
+            this.disconnect();
+          }
+        }
+      });
+      socket.on('close', () => this.emit('disconnected'));
+      socket.on('error', (err) => this.emit('error', err));
+    });
+    req.on('error', (err) => this.emit('error', err));
+    req.end();
+  }
+
+  _sendRaw(buf) {
+    if (this.ws && this.ws.readyState === 1) {
+      this.ws.send(buf);
+      return;
+    }
+    if (this.socket && !this.socket.destroyed) {
+      const mask = crypto.randomBytes(4);
+      let header;
+      if (buf.length < 126) {
+        header = Buffer.alloc(6);
+        header[0] = 0x82; // FIN + binary
+        header[1] = 0x80 | buf.length;
+        mask.copy(header, 2);
+      } else {
+        header = Buffer.alloc(8);
+        header[0] = 0x82;
+        header[1] = 0x80 | 126;
+        header.writeUInt16BE(buf.length, 2);
+        mask.copy(header, 4);
+      }
+      const masked = Buffer.alloc(buf.length);
+      for (let i = 0; i < buf.length; i++) masked[i] = buf[i] ^ mask[i & 3];
+      this.socket.write(Buffer.concat([header, masked]));
+    }
+  }
+
+  _handleFrame(buf) {
+    try {
+      const msg = decodeAppMessage(buf);
+      if (msg.response && msg.response.seq) {
+        const cb = this.callbacks.get(msg.response.seq);
+        if (cb) {
+          this.callbacks.delete(msg.response.seq);
+          cb(msg);
+        }
+      }
+      this.emit('message', msg);
+    } catch (_) {}
+  }
+
+  _request(fieldNum, inner, cb) {
+    const seq = ++this.seq;
+    if (typeof cb === 'function') this.callbacks.set(seq, cb);
+    const bytes = encodeAppRequest(seq, this.playerId, this.playerToken, fieldNum, inner);
+    this._sendRaw(bytes);
+  }
+
+  getInfo(cb) { this._request(8, [], cb); }
+  getTime(cb) { this._request(9, [], cb); }
+  getMap(cb) { this._request(10, [], cb); }
+  getTeamInfo(cb) { this._request(11, [], cb); }
+  getMapMarkers(cb) { this._request(18, [], cb); }
+
+  sendTeamMessage(text, cb) {
+    const strBytes = Buffer.from(String(text || ''), 'utf8');
+    const inner = [];
+    writeVarint(inner, (1 << 3) | 2);
+    writeVarint(inner, strBytes.length);
+    for (const b of strBytes) inner.push(b);
+    this._request(13, inner, cb);
+  }
+
+  turnSmartSwitchOn(entityId, cb) {
+    this._request(15, { entityId: Number(entityId), bytes: [0x08, 0x01] }, cb);
+  }
+  turnSmartSwitchOff(entityId, cb) {
+    this._request(15, { entityId: Number(entityId), bytes: [0x08, 0x00] }, cb);
+  }
+
+  disconnect() {
+    try { if (this.ws) this.ws.close(); } catch (_) {}
+    try { if (this.socket) this.socket.destroy(); } catch (_) {}
+    this.ws = null;
+    this.socket = null;
+  }
+}
+
+// ============================================================================
+// NATIVE RUST+ WEBSOCKET CONNECTOR (1.5s REAL-TIME GPS + AUTO PROXY FALLBACK)
 // ============================================================================
 let activeRustPlusClient = null;
 let rustPlusPollTimer = null;
+let rustPlusSlowTimer = null;
 let cachedRustPlusMapBuffer = null;
 
+function applyTeamInfoToState(team, mapSize) {
+  if (!team || !Array.isArray(team.members)) return;
+  squadState.rustPlus.teamMembers = team.members.map((m) => {
+    const nx = Math.min(1, Math.max(0, m.x / mapSize));
+    const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
+    const wx = Number((m.x - mapSize / 2).toFixed(1));
+    const wy = Number((m.y - mapSize / 2).toFixed(1));
+    return {
+      id: String(m.steamId),
+      steamId: String(m.steamId),
+      name: m.name,
+      rawX: Number(m.x.toFixed(1)),
+      rawY: Number(m.y.toFixed(1)),
+      wx,
+      wy,
+      x: Number(nx.toFixed(4)),
+      y: Number(ny.toFixed(4)),
+      grid: normalizedToGrid(nx, ny),
+      isOnline: Boolean(m.isOnline),
+      isAlive: Boolean(m.isAlive),
+      spawnTime: m.spawnTime || 0,
+      deathTime: m.deathTime || 0
+    };
+  });
+  const allNotes = [...(team.mapNotes || []), ...(team.leaderMapNotes || [])];
+  if (allNotes.length > 0) {
+    squadState.rustPlus.mapNotes = allNotes.map((n) => ({
+      type: n.type || 0,
+      icon: n.icon || 0,
+      color: n.colourIndex || 0,
+      label: n.label || '',
+      x: Number((n.x - mapSize / 2).toFixed(1)),
+      y: Number((n.y - mapSize / 2).toFixed(1)),
+      nx: Number(Math.min(1, Math.max(0, n.x / mapSize)).toFixed(4)),
+      ny: Number(Math.min(1, Math.max(0, 1 - n.y / mapSize)).toFixed(4))
+    }));
+  }
+}
+
 function connectRustPlusSocket(cfg, triedProxyFallback = false) {
-  if (!RustPlus || !cfg || !cfg.ip || !cfg.playerId || !cfg.playerToken) {
+  if (!cfg || !cfg.ip || !cfg.playerId || !cfg.playerToken) {
     return false;
   }
 
@@ -320,15 +954,21 @@ function connectRustPlusSocket(cfg, triedProxyFallback = false) {
       try { activeRustPlusClient.disconnect(); } catch (_) {}
     }
     if (rustPlusPollTimer) clearInterval(rustPlusPollTimer);
+    if (rustPlusSlowTimer) clearInterval(rustPlusSlowTimer);
 
     const useProxy = Boolean(cfg.useFacepunchProxy);
-    const rp = new RustPlus(
-      cfg.ip,
-      cfg.port || 28082,
-      cfg.playerId,
-      cfg.playerToken,
-      useProxy
-    );
+    const rp =
+      RustPlus && !cfg.serverId
+        ? new RustPlus(cfg.ip, cfg.port || 28082, cfg.playerId, cfg.playerToken, useProxy)
+        : new BuiltInRustPlusClient(
+            cfg.ip,
+            cfg.port || 28082,
+            cfg.playerId,
+            cfg.playerToken,
+            useProxy,
+            cfg.serverId || '',
+            squadState.rustPlus.authToken || ''
+          );
     activeRustPlusClient = rp;
 
     let didConnect = false;
@@ -352,7 +992,7 @@ function connectRustPlusSocket(cfg, triedProxyFallback = false) {
       // 1. Fetch high-res map image & monuments once connected
       rp.getMap((msg) => {
         const mapData = msg?.response?.map;
-        if (mapData?.jpgImage) {
+        if (mapData?.jpgImage && mapData.jpgImage.length > 100) {
           cachedRustPlusMapBuffer = Buffer.from(mapData.jpgImage);
           squadState.mapConfig.customImageUrl = `/api/rustplus/map-image?t=${Date.now()}`;
           saveState(squadState);
@@ -360,18 +1000,80 @@ function connectRustPlusSocket(cfg, triedProxyFallback = false) {
         }
       });
 
-      // 2. Poll live markers, team info & server time every 4s
-      const pollTelemetry = () => {
+      // 2. Fast Real-Time GPS & Dynamic Markers Poller (Every 1.5s!)
+      const pollFastGps = () => {
         const mapSize = squadState.mapConfig?.size || 3500;
 
+        rp.getTeamInfo((msg) => {
+          const team = msg?.response?.teamInfo;
+          if (team && Array.isArray(team.members)) {
+            applyTeamInfoToState(team, mapSize);
+            broadcastState('rustplus_telemetry');
+          }
+        });
+
+        rp.getMapMarkers((msg) => {
+          const markers = msg?.response?.mapMarkers?.markers;
+          if (Array.isArray(markers)) {
+            const liveVms = [];
+            const liveEvts = [];
+            markers.forEach((mk) => {
+              const nx = Math.min(1, Math.max(0, mk.x / mapSize));
+              const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
+              const wx = Number((mk.x - mapSize / 2).toFixed(1));
+              const wy = Number((mk.y - mapSize / 2).toFixed(1));
+              const grid = normalizedToGrid(nx, ny);
+              if (mk.type === 3 && Array.isArray(mk.sellOrders) && mk.sellOrders.length > 0) {
+                liveVms.push({
+                  id: `vm-${mk.id}`,
+                  name: mk.name || `Vending Shop [${grid}]`,
+                  type: 'player',
+                  x: Number(nx.toFixed(4)),
+                  y: Number(ny.toFixed(4)),
+                  wx,
+                  wy,
+                  grid,
+                  inStock: true,
+                  orders: mk.sellOrders.slice(0, 8).map((so) => ({
+                    item: `Item #${so.itemId}`,
+                    qty: so.quantity || 1,
+                    costItem: `Item #${so.currencyId}`,
+                    costQty: so.costPerItem || 1,
+                    stock: so.amountInStock || 0
+                  }))
+                });
+              } else if ([2, 4, 5, 6, 8, 9].includes(mk.type)) {
+                liveEvts.push({
+                  id: mk.id,
+                  type: mk.type,
+                  name: mk.name || '',
+                  rotation: mk.rotation || 0,
+                  wx,
+                  wy,
+                  x: Number(nx.toFixed(4)),
+                  y: Number(ny.toFixed(4)),
+                  grid
+                });
+              }
+            });
+            if (liveVms.length > 0) squadState.rustPlus.vendingMachines = liveVms;
+            squadState.rustPlus.liveMarkers = liveEvts;
+          }
+        });
+      };
+
+      // 3. Server Time & Pop Poller (Every 6s)
+      const pollSlowInfo = () => {
+        const mapSize = squadState.mapConfig?.size || 3500;
         rp.getInfo((msg) => {
           const info = msg?.response?.info;
           if (info) {
             squadState.mapConfig.size = info.mapSize || mapSize;
-            squadState.mapConfig.seed = String(info.seed || squadState.mapConfig.seed);
+            if (info.seed) squadState.mapConfig.seed = String(info.seed);
             if (info.name) squadState.rustPlus.config.serverName = info.name;
             if (info.players !== undefined && info.maxPlayers !== undefined) {
-              squadState.rustPlus.playersOnline = `${info.players}/${info.maxPlayers}`;
+              squadState.rustPlus.playersOnline = info.players;
+              squadState.rustPlus.playersMax = info.maxPlayers;
             }
           }
         });
@@ -385,77 +1087,21 @@ function connectRustPlusSocket(cfg, triedProxyFallback = false) {
             squadState.rustPlus.isDaytime = hrs >= 7 && hrs < 19;
           }
         });
-
-        rp.getTeamInfo((msg) => {
-          const team = msg?.response?.teamInfo;
-          if (team && Array.isArray(team.members)) {
-            squadState.rustPlus.teamMembers = team.members.map((m) => {
-              const nx = Math.min(1, Math.max(0, m.x / mapSize));
-              const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
-              return {
-                id: String(m.steamId),
-                steamId: String(m.steamId),
-                name: m.name,
-                wx: m.x,
-                wy: m.y,
-                x: Number(nx.toFixed(4)),
-                y: Number(ny.toFixed(4)),
-                grid: normalizedToGrid(nx, ny),
-                isOnline: Boolean(m.isOnline),
-                isAlive: Boolean(m.isAlive)
-              };
-            });
-            broadcastState('rustplus_telemetry');
-          }
-        });
-
-        rp.getMapMarkers((msg) => {
-          const markers = msg?.response?.mapMarkers?.markers;
-          if (Array.isArray(markers)) {
-            const liveVms = [];
-            const liveEvts = [];
-            markers.forEach((mk) => {
-              const nx = Math.min(1, Math.max(0, mk.x / mapSize));
-              const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
-              const grid = normalizedToGrid(nx, ny);
-              if (mk.type === 3 && Array.isArray(mk.sellOrders) && mk.sellOrders.length > 0) {
-                liveVms.push({
-                  id: `vm-${mk.id}`,
-                  name: mk.name || `Vending Shop [${grid}]`,
-                  type: 'player',
-                  x: Number(nx.toFixed(4)),
-                  y: Number(ny.toFixed(4)),
-                  grid,
-                  inStock: true,
-                  orders: mk.sellOrders.slice(0, 8).map((so) => ({
-                    item: `Item #${so.itemId}`,
-                    qty: so.quantity || 1,
-                    costItem: `Item #${so.currencyId}`,
-                    costQty: so.costPerItem || 1,
-                    stock: so.amountInStock || 0
-                  }))
-                });
-              } else if ([2, 4, 5, 6, 8].includes(mk.type)) {
-                liveEvts.push({
-                  id: mk.id,
-                  type: mk.type,
-                  x: Number(nx.toFixed(4)),
-                  y: Number(ny.toFixed(4)),
-                  grid
-                });
-              }
-            });
-            if (liveVms.length > 0) squadState.rustPlus.vendingMachines = liveVms;
-            squadState.rustPlus.liveMarkers = liveEvts;
-          }
-        });
       };
 
-      pollTelemetry();
-      rustPlusPollTimer = setInterval(pollTelemetry, 4000);
+      pollSlowInfo();
+      pollFastGps();
+      rustPlusPollTimer = setInterval(pollFastGps, 1500);
+      rustPlusSlowTimer = setInterval(pollSlowInfo, 6000);
     });
 
     rp.on('message', (msg) => {
+      const teamChanged = msg?.broadcast?.teamChanged?.teamInfo;
+      if (teamChanged) {
+        applyTeamInfoToState(teamChanged, squadState.mapConfig?.size || 3500);
+        broadcastState('rustplus_telemetry');
+      }
+
       const tmMsg = msg?.broadcast?.teamMessage?.message;
       if (tmMsg) {
         squadState.rustPlus.teamChat.push({
@@ -487,6 +1133,7 @@ function connectRustPlusSocket(cfg, triedProxyFallback = false) {
       clearTimeout(fallbackTimeout);
       squadState.rustPlus.connected = false;
       if (rustPlusPollTimer) clearInterval(rustPlusPollTimer);
+      if (rustPlusSlowTimer) clearInterval(rustPlusSlowTimer);
       broadcastState('rustplus_disconnected');
     });
 

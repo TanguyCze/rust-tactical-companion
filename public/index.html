@@ -341,7 +341,7 @@
           <div class="map-viewport" id="mapViewport">
             <canvas id="tacticalMapCanvas" width="1400" height="1000"></canvas>
 
-            <!-- Top-Left Floating HUD Pills (Clock, Pop, Player Jump, Monuments) -->
+            <!-- Top-Left Floating HUD Pills (Clock, Pop, Player Jump, Follow GPS, Monuments) -->
             <div class="rpd-floating-hud-top">
               <div class="rpd-hud-box">
                 <span id="rustPlusClockDisplay">☀️ 14:39</span>
@@ -351,6 +351,14 @@
 
               <button class="rpd-hud-btn" id="rpdCenterPlayerBtn" title="Center on Squad Leader (Smiguel)">
                 👤 ⌄
+              </button>
+
+              <button class="rpd-hud-btn" id="rpdFollowPlayerBtn" title="Lock camera onto your character as you move in real time">
+                🎯 Follow Me
+              </button>
+
+              <button class="rpd-hud-btn" id="rpdSimWalkBtn" title="Preview real-time 60 FPS GPS character movement on the map">
+                🏃 Test Live Move
               </button>
 
               <button class="rpd-hud-btn" id="rpdFloatingMonumentsBtn" title="Open Monument Keycard & Puzzle Atlas">

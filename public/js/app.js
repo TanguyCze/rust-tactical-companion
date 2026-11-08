@@ -1015,7 +1015,294 @@
   let pointerMoved = false;
   let customMapImg = null;
   let liveEventsSimEnabled = false;
+  let followPlayerEnabled = false;
+  let simWalkEnabled = false;
   let selectedVendingId = null;
+
+  // Smooth 60 FPS interpolation & breadcrumb trail state for real-time player movement
+  const playerRenderState = new Map();
+  let browserRustPlusWs = null;
+  let browserRustPlusTimer = null;
+
+  // Browser-Native Zero-Dependency Rust+ Binary Protobuf & WebSocket Client
+  function pbWriteVarint(arr, val) {
+    let v = BigInt(val);
+    if (v < 0n) v = BigInt.asUintN(64, v);
+    while (v >= 0x80n) {
+      arr.push(Number((v & 0x7fn) | 0x80n));
+      v >>= 7n;
+    }
+    arr.push(Number(v));
+  }
+
+  function pbReadVarint(u8, pos) {
+    let res = 0n;
+    let shift = 0n;
+    let p = pos;
+    while (p < u8.length) {
+      const b = u8[p++];
+      res |= BigInt(b & 0x7f) << shift;
+      if ((b & 0x80) === 0) break;
+      shift += 7n;
+    }
+    return { value: res, offset: p };
+  }
+
+  function pbSkip(u8, pos, wt) {
+    if (wt === 0) return pbReadVarint(u8, pos).offset;
+    if (wt === 1) return pos + 8;
+    if (wt === 2) {
+      const l = pbReadVarint(u8, pos);
+      return l.offset + Number(l.value);
+    }
+    if (wt === 5) return pos + 4;
+    return u8.length;
+  }
+
+  function pbReadFloatLE(u8, pos) {
+    const dv = new DataView(u8.buffer, u8.byteOffset + pos, 4);
+    return dv.getFloat32(0, true);
+  }
+
+  function pbBuildRequest(seq, playerId, playerToken, fieldNum) {
+    const out = [];
+    pbWriteVarint(out, (1 << 3) | 0);
+    pbWriteVarint(out, seq);
+    pbWriteVarint(out, (2 << 3) | 0);
+    pbWriteVarint(out, BigInt(String(playerId || '0')));
+    pbWriteVarint(out, (3 << 3) | 0);
+    pbWriteVarint(out, BigInt(parseInt(String(playerToken || '0'), 10)));
+    pbWriteVarint(out, (fieldNum << 3) | 2);
+    pbWriteVarint(out, 0);
+    return new Uint8Array(out);
+  }
+
+  function pbDecodeBrowserMessage(u8) {
+    const td = new TextDecoder();
+    function decMember(b) {
+      let p = 0;
+      const m = { steamId: '0', name: '', x: 0, y: 0, isOnline: false, isAlive: false };
+      while (p < b.length) {
+        const t = pbReadVarint(b, p); p = t.offset;
+        const fn = Number(t.value >> 3n), wt = Number(t.value & 7n);
+        if (wt === 0) {
+          const v = pbReadVarint(b, p); p = v.offset;
+          if (fn === 1) m.steamId = v.value.toString();
+          else if (fn === 5) m.isOnline = v.value !== 0n;
+          else if (fn === 7) m.isAlive = v.value !== 0n;
+        } else if (wt === 2 && fn === 2) {
+          const l = pbReadVarint(b, p); p = l.offset;
+          m.name = td.decode(b.subarray(p, p + Number(l.value)));
+          p += Number(l.value);
+        } else if (wt === 5 && p + 4 <= b.length) {
+          const val = pbReadFloatLE(b, p); p += 4;
+          if (fn === 3) m.x = val;
+          else if (fn === 4) m.y = val;
+        } else p = pbSkip(b, p, wt);
+      }
+      return m;
+    }
+    function decNote(b) {
+      let p = 0;
+      const n = { type: 0, x: 0, y: 0, icon: 0, colourIndex: 0, label: '' };
+      while (p < b.length) {
+        const t = pbReadVarint(b, p); p = t.offset;
+        const fn = Number(t.value >> 3n), wt = Number(t.value & 7n);
+        if (wt === 0) {
+          const v = pbReadVarint(b, p); p = v.offset;
+          if (fn === 1) n.type = Number(v.value);
+          else if (fn === 4) n.icon = Number(v.value);
+          else if (fn === 5) n.colourIndex = Number(v.value);
+        } else if (wt === 5 && p + 4 <= b.length) {
+          const val = pbReadFloatLE(b, p); p += 4;
+          if (fn === 2) n.x = val;
+          else if (fn === 3) n.y = val;
+        } else if (wt === 2 && fn === 6) {
+          const l = pbReadVarint(b, p); p = l.offset;
+          n.label = td.decode(b.subarray(p, p + Number(l.value)));
+          p += Number(l.value);
+        } else p = pbSkip(b, p, wt);
+      }
+      return n;
+    }
+    function decTeamInfo(b) {
+      let p = 0;
+      const ti = { members: [], mapNotes: [] };
+      while (p < b.length) {
+        const t = pbReadVarint(b, p); p = t.offset;
+        const fn = Number(t.value >> 3n), wt = Number(t.value & 7n);
+        if (wt === 2 && (fn === 2 || fn === 3 || fn === 4)) {
+          const l = pbReadVarint(b, p); p = l.offset;
+          const sub = b.subarray(p, p + Number(l.value)); p += Number(l.value);
+          if (fn === 2) ti.members.push(decMember(sub));
+          else ti.mapNotes.push(decNote(sub));
+        } else p = pbSkip(b, p, wt);
+      }
+      return ti;
+    }
+    function decMarker(b) {
+      let p = 0;
+      const mk = { id: 0, type: 0, x: 0, y: 0, rotation: 0, name: '' };
+      while (p < b.length) {
+        const t = pbReadVarint(b, p); p = t.offset;
+        const fn = Number(t.value >> 3n), wt = Number(t.value & 7n);
+        if (wt === 0) {
+          const v = pbReadVarint(b, p); p = v.offset;
+          if (fn === 1) mk.id = Number(v.value);
+          else if (fn === 2) mk.type = Number(v.value);
+        } else if (wt === 5 && p + 4 <= b.length) {
+          const val = pbReadFloatLE(b, p); p += 4;
+          if (fn === 3) mk.x = val;
+          else if (fn === 4) mk.y = val;
+          else if (fn === 6) mk.rotation = val;
+        } else if (wt === 2 && fn === 11) {
+          const l = pbReadVarint(b, p); p = l.offset;
+          mk.name = td.decode(b.subarray(p, p + Number(l.value)));
+          p += Number(l.value);
+        } else p = pbSkip(b, p, wt);
+      }
+      return mk;
+    }
+    let pos = 0;
+    const out = {};
+    while (pos < u8.length) {
+      const t = pbReadVarint(u8, pos); pos = t.offset;
+      const fn = Number(t.value >> 3n), wt = Number(t.value & 7n);
+      if (wt === 2 && fn === 1) {
+        const l = pbReadVarint(u8, pos); pos = l.offset;
+        const rBuf = u8.subarray(pos, pos + Number(l.value)); pos += Number(l.value);
+        let rp = 0;
+        while (rp < rBuf.length) {
+          const rt = pbReadVarint(rBuf, rp); rp = rt.offset;
+          const rfn = Number(rt.value >> 3n), rwt = Number(rt.value & 7n);
+          if (rwt === 2) {
+            const rl = pbReadVarint(rBuf, rp); rp = rl.offset;
+            const sub = rBuf.subarray(rp, rp + Number(rl.value)); rp += Number(rl.value);
+            if (rfn === 7) {
+              let tp = 0;
+              while (tp < sub.length) {
+                const tt = pbReadVarint(sub, tp); tp = tt.offset;
+                if (Number(tt.value >> 3n) === 5 && Number(tt.value & 7n) === 5) {
+                  out.time = pbReadFloatLE(sub, tp); tp += 4;
+                } else tp = pbSkip(sub, tp, Number(tt.value & 7n));
+              }
+            } else if (rfn === 9) {
+              out.teamInfo = decTeamInfo(sub);
+            } else if (rfn === 13) {
+              out.markers = [];
+              let mp = 0;
+              while (mp < sub.length) {
+                const mt = pbReadVarint(sub, mp); mp = mt.offset;
+                if (Number(mt.value >> 3n) === 1 && Number(mt.value & 7n) === 2) {
+                  const ml = pbReadVarint(sub, mp); mp = ml.offset;
+                  out.markers.push(decMarker(sub.subarray(mp, mp + Number(ml.value))));
+                  mp += Number(ml.value);
+                } else mp = pbSkip(sub, mp, Number(mt.value & 7n));
+              }
+            }
+          } else rp = pbSkip(rBuf, rp, rwt);
+        }
+      } else pos = pbSkip(u8, pos, wt);
+    }
+    return out;
+  }
+
+  function connectBrowserRustPlusSocket(cfg) {
+    if (!cfg || !cfg.ip || !cfg.playerId || !cfg.playerToken) return;
+    // Note: Browsers on HTTPS cannot open ws:// (insecure) directly; in that case the backend SSE streams 1.5s updates
+    if (window.location.protocol === 'https:' && !cfg.useFacepunchProxy) return;
+
+    try {
+      if (browserRustPlusWs) {
+        try { browserRustPlusWs.close(); } catch (_) {}
+      }
+      if (browserRustPlusTimer) clearInterval(browserRustPlusTimer);
+
+      const wsUrl = cfg.useFacepunchProxy
+        ? `wss://companion-rust.facepunch.com/game/${cfg.ip}/${cfg.port || 28082}`
+        : `ws://${cfg.ip}:${cfg.port || 28082}/`;
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      browserRustPlusWs = ws;
+      let seq = 100;
+
+      ws.onopen = () => {
+        appState.rustPlus.connected = true;
+        renderRustPlusSidebar();
+        const pollBrowserGps = () => {
+          if (ws.readyState !== 1 || simWalkEnabled) return;
+          ws.send(pbBuildRequest(++seq, cfg.playerId, cfg.playerToken, 11)); // getTeamInfo
+          ws.send(pbBuildRequest(++seq, cfg.playerId, cfg.playerToken, 18)); // getMapMarkers
+          if (seq % 8 === 0) {
+            ws.send(pbBuildRequest(++seq, cfg.playerId, cfg.playerToken, 9)); // getTime
+          }
+        };
+        pollBrowserGps();
+        browserRustPlusTimer = setInterval(pollBrowserGps, 1500);
+      };
+
+      ws.onmessage = (evt) => {
+        if (simWalkEnabled) return;
+        try {
+          const u8 = new Uint8Array(evt.data);
+          const parsed = pbDecodeBrowserMessage(u8);
+          const mapSize = appState.mapConfig?.size || window.RUST_WORLD_MAP?.size || 3500;
+          if (typeof parsed.time === 'number') {
+            const hrs = Math.floor(parsed.time);
+            const mins = Math.floor((parsed.time - hrs) * 60);
+            appState.rustPlus.serverTime = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+            appState.rustPlus.isDaytime = hrs >= 7 && hrs < 19;
+          }
+          if (parsed.teamInfo && parsed.teamInfo.members.length > 0) {
+            appState.rustPlus.connected = true;
+            appState.rustPlus.teamMembers = parsed.teamInfo.members.map((m) => {
+              const nx = Math.min(1, Math.max(0, m.x / mapSize));
+              const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
+              const wx = Number((m.x - mapSize / 2).toFixed(1));
+              const wy = Number((m.y - mapSize / 2).toFixed(1));
+              return {
+                id: m.steamId,
+                steamId: m.steamId,
+                name: m.name,
+                wx,
+                wy,
+                x: Number(nx.toFixed(4)),
+                y: Number(ny.toFixed(4)),
+                grid: normalizedToGrid(nx, ny),
+                isOnline: m.isOnline,
+                isAlive: m.isAlive
+              };
+            });
+            if (parsed.teamInfo.mapNotes.length > 0) {
+              appState.rustPlus.mapNotes = parsed.teamInfo.mapNotes.map((n) => ({
+                type: n.type,
+                icon: n.icon,
+                color: n.colourIndex,
+                label: n.label,
+                x: Number((n.x - mapSize / 2).toFixed(1)),
+                y: Number((n.y - mapSize / 2).toFixed(1))
+              }));
+            }
+            renderRustPlusSidebar();
+          }
+          if (Array.isArray(parsed.markers)) {
+            appState.rustPlus.liveMarkers = parsed.markers
+              .filter((mk) => [2, 4, 5, 6, 8, 9].includes(mk.type))
+              .map((mk) => ({
+                id: mk.id,
+                type: mk.type,
+                name: mk.name,
+                rotation: mk.rotation,
+                wx: Number((mk.x - mapSize / 2).toFixed(1)),
+                wy: Number((mk.y - mapSize / 2).toFixed(1)),
+                x: Number(Math.min(1, Math.max(0, mk.x / mapSize)).toFixed(4)),
+                y: Number(Math.min(1, Math.max(0, 1 - mk.y / mapSize)).toFixed(4))
+              }));
+          }
+        } catch (_) {}
+      };
+    } catch (_) {}
+  }
 
   const mapLayers = {
     grid: false,
@@ -1659,7 +1946,52 @@
       });
     }
 
-    // 15. Layer: Simulated Cargo Ship & Patrol Helicopter (when enabled)
+    // 15A. Layer: Live Rust+ Server Dynamic Markers (Cargo Ship, Patrol Heli, CH47, Locked Crates, Explosions)
+    if (Array.isArray(appState.rustPlus?.liveMarkers) && appState.rustPlus.liveMarkers.length > 0) {
+      appState.rustPlus.liveMarkers.forEach((mk) => {
+        const pos =
+          typeof mk.wx === 'number' && typeof mk.wy === 'number'
+            ? worldToIslandScreen(mk.wx, mk.wy, W, H, mapSize)
+            : normalizedToIslandScreen(mk.x, mk.y, W, H);
+        ctx.save();
+        let bg = '#0284c7';
+        let label = '🚢 CARGO';
+        if (mk.type === 8) {
+          bg = '#dc2626';
+          label = '🚁 PATROL HELI';
+        } else if (mk.type === 4) {
+          bg = '#f59e0b';
+          label = '🚁 CH47 CHINOOK';
+        } else if (mk.type === 6) {
+          bg = '#eab308';
+          label = '🔒 LOCKED CRATE';
+        } else if (mk.type === 2) {
+          bg = '#ef4444';
+          label = '💥 EXPLOSION';
+        } else if (mk.type === 9) {
+          bg = '#10b981';
+          label = '🚚 VENDOR';
+        }
+        ctx.beginPath();
+        ctx.arc(pos.px, pos.py, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = bg;
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.font = '700 8.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(label, pos.px, pos.py - 12);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, pos.px, pos.py - 12);
+        ctx.restore();
+      });
+    }
+
+    // 15B. Layer: Simulated Cargo Ship & Patrol Helicopter (when enabled)
     if (mapLayers.liveEvents || liveEventsSimEnabled) {
       const t = Date.now() / 1000;
       const cargoAngle = (t * 0.035) % (Math.PI * 2);
@@ -1679,89 +2011,192 @@
       ctx.restore();
     }
 
-    // 16. Layer: Rust+ In-Game Map Notes & Squad Players (Smiguel, Kanki)
-    if (mapLayers.teamGps) {
-      // Draw in-game Map Notes (e.g. black circle with white pillar next to Smiguel in screenshot)
-      if (Array.isArray(world.mapNotes)) {
-        world.mapNotes.slice(0, 2).forEach((mn) => {
-          const { px, py } = worldToIslandScreen(mn.x, mn.y, W, H, mapSize);
-          ctx.save();
+    // 16. Layer: Rust+ In-Game Map Notes (Deaths & G-Map Pins) + Real-Time Squad Players (60 FPS Interpolated)
+    const activeNotes =
+      Array.isArray(appState.rustPlus?.mapNotes) && appState.rustPlus.mapNotes.length > 0
+        ? appState.rustPlus.mapNotes
+        : Array.isArray(world.mapNotes)
+        ? world.mapNotes
+        : [];
+
+    if (activeNotes.length > 0) {
+      const notePalette = ['#eab308', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#06b6d4'];
+      activeNotes.forEach((mn) => {
+        if (mn.type === 0 && !mapLayers.deaths) return;
+        if (mn.type !== 0 && !mapLayers.teamGps) return;
+        const { px, py } = worldToIslandScreen(mn.x, mn.y, W, H, mapSize);
+        ctx.save();
+        if (mn.type === 0) {
+          // In-Game Death Skull Marker (type 0)
           ctx.beginPath();
-          ctx.arc(px - 14, py + 2, 8.5, 0, Math.PI * 2);
-          ctx.fillStyle = '#0f172a';
+          ctx.arc(px - 12, py + 2, 8.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#7f1d1d';
           ctx.fill();
           ctx.lineWidth = 1.5;
-          ctx.strokeStyle = '#e2e8f0';
+          ctx.strokeStyle = '#f87171';
           ctx.stroke();
+          ctx.font = '700 9px sans-serif';
+          ctx.textAlign = 'center';
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(px - 15.5, py - 3.5, 3, 11);
-          ctx.restore();
-        });
-      }
+          ctx.fillText('💀', px - 12, py + 5);
+        } else {
+          // In-Game Numbered Map Pin (type 1, e.g. "1", "2", "3", "4")
+          const pinColor = notePalette[(mn.color || 0) % notePalette.length];
+          ctx.beginPath();
+          ctx.arc(px, py, 8, 0, Math.PI * 2);
+          ctx.fillStyle = '#0f172a';
+          ctx.fill();
+          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = pinColor;
+          ctx.stroke();
+          ctx.font = '700 8.5px "JetBrains Mono", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = pinColor;
+          ctx.fillText(mn.label || '•', px, py + 3);
+        }
+        ctx.restore();
+      });
+    }
 
-      // Prefer live Rust+ teamMembers when connected, otherwise fall back to world.teamMembers
+    if (mapLayers.teamGps) {
+      // Prefer live Rust+ teamMembers when available
       const hasLiveRustPlusTeam =
-        appState.rustPlus?.connected && Array.isArray(appState.rustPlus.teamMembers) && appState.rustPlus.teamMembers.length > 0;
-      const players = hasLiveRustPlusTeam
-        ? appState.rustPlus.teamMembers.map((tm) => {
-            const isNorm = Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05;
-            const pos = isNorm
-              ? normalizedToIslandScreen(tm.x, tm.y, W, H)
-              : worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
-            return {
-              name: tm.name,
-              steamId: tm.steamId || tm.id,
-              px: pos.px,
-              py: pos.py,
-              online: tm.isOnline !== false && tm.online !== false
-            };
-          })
+        (appState.rustPlus?.connected || simWalkEnabled) &&
+        Array.isArray(appState.rustPlus?.teamMembers) &&
+        appState.rustPlus.teamMembers.length > 0;
+      const rawMembers = hasLiveRustPlusTeam
+        ? appState.rustPlus.teamMembers
         : Array.isArray(world.teamMembers) && world.teamMembers.length > 0
-        ? world.teamMembers.map((tm) => {
-            const pos = worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
-            return {
-              name: tm.name,
-              steamId: tm.steamId,
-              px: pos.px,
-              py: pos.py,
-              online: tm.online !== false
-            };
-          })
-        : (appState.rustPlus?.teamMembers || []).map((tm) => {
-            const isNorm = Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05;
-            const pos = isNorm
-              ? normalizedToIslandScreen(tm.x, tm.y, W, H)
-              : worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
-            return {
-              name: tm.name,
-              steamId: tm.steamId || tm.id,
-              px: pos.px,
-              py: pos.py,
-              online: tm.isOnline !== false && tm.online !== false
-            };
-          });
+        ? world.teamMembers
+        : appState.rustPlus?.teamMembers || [];
 
-      // Draw primary active player label & avatar badge (like "Smiguel" in top-right of island)
-      players.forEach((pl, idx) => {
-        // If Kanki & Smiguel are at the exact same base spot, draw Smiguel on top so labels don't overlap
-        if (idx > 0 && Math.hypot(pl.px - players[0].px, pl.py - players[0].py) < 8) return;
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+
+      rawMembers.forEach((tm, idx) => {
+        const key = String(tm.steamId || tm.id || tm.name || idx);
+        let targetWx, targetWy;
+        if (typeof tm.wx === 'number' && typeof tm.wy === 'number') {
+          targetWx = tm.wx;
+          targetWy = tm.wy;
+        } else if (Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05) {
+          targetWx = (tm.x - 0.5) * mapSize;
+          targetWy = (0.5 - tm.y) * mapSize;
+        } else {
+          targetWx = tm.x;
+          targetWy = tm.y;
+        }
+
+        // Smooth 60 FPS position interpolation + breadcrumb trail + heading angle
+        let st = playerRenderState.get(key);
+        if (!st) {
+          st = {
+            wx: targetWx,
+            wy: targetWy,
+            heading: 0,
+            isMoving: false,
+            trail: [{ wx: targetWx, wy: targetWy }]
+          };
+          playerRenderState.set(key, st);
+        } else {
+          const dx = targetWx - st.wx;
+          const dy = targetWy - st.wy;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 450) {
+            // Teleported / respawned across map
+            st.wx = targetWx;
+            st.wy = targetWy;
+            st.trail = [{ wx: targetWx, wy: targetWy }];
+            st.isMoving = false;
+          } else if (dist > 0.15) {
+            st.wx += dx * 0.16;
+            st.wy += dy * 0.16;
+            st.heading = Math.atan2(-dy, dx);
+            st.isMoving = dist > 0.6;
+            const lastPt = st.trail[st.trail.length - 1];
+            if (!lastPt || Math.hypot(st.wx - lastPt.wx, st.wy - lastPt.wy) > 10) {
+              st.trail.push({ wx: st.wx, wy: st.wy });
+              if (st.trail.length > 28) st.trail.shift();
+            }
+          } else {
+            st.wx = targetWx;
+            st.wy = targetWy;
+            st.isMoving = false;
+          }
+        }
+
+        // If "🎯 Follow Me" is enabled, lock camera onto primary player (idx === 0)
+        if (followPlayerEnabled && idx === 0 && !isDraggingMap) {
+          const curScreen = worldToIslandScreen(st.wx, st.wy, W, H, mapSize);
+          mapOffsetX = (W / 2 - curScreen.px) * mapZoom;
+          mapOffsetY = (H / 2 - curScreen.py) * mapZoom;
+        }
+
+        const pos = worldToIslandScreen(st.wx, st.wy, W, H, mapSize);
+        const gridStr = normalizedToGrid(
+          Math.min(0.999, Math.max(0, (st.wx + mapSize / 2) / mapSize)),
+          Math.min(0.999, Math.max(0, 1 - (st.wy + mapSize / 2) / mapSize))
+        );
+
+        // Draw breadcrumb movement trail if player has moved
+        if (st.trail.length > 1) {
+          ctx.save();
+          ctx.beginPath();
+          st.trail.forEach((pt, tIdx) => {
+            const tPos = worldToIslandScreen(pt.wx, pt.wy, W, H, mapSize);
+            if (tIdx === 0) ctx.moveTo(tPos.px, tPos.py);
+            else ctx.lineTo(tPos.px, tPos.py);
+          });
+          ctx.lineTo(pos.px, pos.py);
+          ctx.strokeStyle = idx === 0 ? 'rgba(245, 158, 11, 0.65)' : 'rgba(56, 189, 248, 0.55)';
+          ctx.lineWidth = 2.2;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.restore();
+        }
 
         ctx.save();
+
+        // Pulsing live GPS radar ring around player
         ctx.beginPath();
-        ctx.arc(pl.px, pl.py, 7, 0, Math.PI * 2);
-        ctx.fillStyle = '#f59e0b';
+        ctx.arc(pos.px, pos.py, 9 + pulse * 5, 0, Math.PI * 2);
+        ctx.fillStyle = idx === 0 ? 'rgba(245, 158, 11, 0.24)' : 'rgba(56, 189, 248, 0.2)';
+        ctx.fill();
+
+        // Directional heading arrow when moving
+        if (st.isMoving) {
+          ctx.save();
+          ctx.translate(pos.px, pos.py);
+          ctx.rotate(st.heading);
+          ctx.beginPath();
+          ctx.moveTo(13, 0);
+          ctx.lineTo(6, -4.5);
+          ctx.lineTo(6, 4.5);
+          ctx.closePath();
+          ctx.fillStyle = '#4ade80';
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Player dot
+        const isDead = tm.isAlive === false || tm.dead === true;
+        ctx.beginPath();
+        ctx.arc(pos.px, pos.py, 7, 0, Math.PI * 2);
+        ctx.fillStyle = isDead ? '#ef4444' : idx === 0 ? '#f59e0b' : '#38bdf8';
         ctx.fill();
         ctx.lineWidth = 1.8;
         ctx.strokeStyle = '#ffffff';
         ctx.stroke();
 
+        // Player name + live grid coordinate
+        const labelText = st.isMoving ? `${tm.name} [${gridStr}]` : tm.name;
         ctx.font = '700 10.5px "Inter", sans-serif';
         ctx.textAlign = 'left';
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
         ctx.lineWidth = 3;
-        ctx.strokeText(pl.name, pl.px + 10, pl.py + 3.5);
+        const yOff = idx === 0 ? 3.5 : 15.5;
+        ctx.strokeText(labelText, pos.px + 10, pos.py + yOff);
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(pl.name, pl.px + 10, pl.py + 3.5);
+        ctx.fillText(labelText, pos.px + 10, pos.py + yOff);
         ctx.restore();
       });
     }
@@ -1983,12 +2418,15 @@
         "[EU] Willjum's Casual Solo/Duo Monthly";
     }
 
-    const connStatusEl = document.getElementById('rpdConnStatusText');
+    const connStatusEl = document.getElementById('rustPlusStatusPill') || document.getElementById('rpdConnStatusText');
     if (connStatusEl) {
-      if (appState.rustPlus.connected) {
+      if (simWalkEnabled) {
+        connStatusEl.textContent = 'Live GPS Roam Active';
+        connStatusEl.style.color = '#4ade80';
+      } else if (appState.rustPlus.connected) {
         connStatusEl.textContent = appState.rustPlus.config?.useFacepunchProxy
           ? 'Fully connected (Proxy)'
-          : 'Fully connected';
+          : 'Fully connected (Live GPS)';
         connStatusEl.style.color = '#4ade80';
       } else if (appState.rustPlus.config?.ip && appState.rustPlus.config?.playerToken) {
         connStatusEl.textContent = 'Paired • Ready';
@@ -1996,25 +2434,31 @@
       }
     }
 
-    const fcmStatusEl = document.getElementById('rpdFcmStatusText');
+    const fcmStatusEl = document.getElementById('rpdPairingStatusText') || document.getElementById('rpdFcmStatusText');
     if (fcmStatusEl) {
       fcmStatusEl.textContent = appState.rustPlus.fcmListening ? 'Running' : 'Ready';
       fcmStatusEl.style.color = appState.rustPlus.fcmListening ? '#4ade80' : '#f59e0b';
     }
 
-    const hudTimeEl = document.getElementById('rpdHudTimeText');
+    const hudTimeEl = document.getElementById('rustPlusClockDisplay') || document.getElementById('rpdHudTimeText');
     if (hudTimeEl && appState.rustPlus.serverTime) {
-      hudTimeEl.textContent = appState.rustPlus.serverTime;
+      const icon = appState.rustPlus.isDaytime === false ? '🌙' : '☀️';
+      hudTimeEl.textContent = `${icon} ${appState.rustPlus.serverTime}`;
     }
-    const hudPopEl = document.getElementById('rpdHudPopText');
+    const hudPopEl = document.getElementById('rustPlusTeamDisplay') || document.getElementById('rpdHudPopText');
     if (hudPopEl && appState.rustPlus.playersOnline !== undefined) {
-      hudPopEl.textContent = `${appState.rustPlus.playersOnline}/${appState.rustPlus.playersMax || 175}`;
+      const popStr = String(appState.rustPlus.playersOnline).includes('/')
+        ? appState.rustPlus.playersOnline
+        : `${appState.rustPlus.playersOnline}/${appState.rustPlus.playersMax || 175}`;
+      hudPopEl.innerHTML = `👥 ${popStr} &nbsp;›`;
     }
 
     const playersGridEl = document.getElementById('rpdPlayersGrid');
     if (playersGridEl) {
       const hasLiveTeam =
-        appState.rustPlus.connected && Array.isArray(appState.rustPlus.teamMembers) && appState.rustPlus.teamMembers.length > 0;
+        (appState.rustPlus.connected || simWalkEnabled) &&
+        Array.isArray(appState.rustPlus.teamMembers) &&
+        appState.rustPlus.teamMembers.length > 0;
       const sourceTeam = hasLiveTeam
         ? appState.rustPlus.teamMembers
         : Array.isArray(world.teamMembers) && world.teamMembers.length > 0
@@ -2022,12 +2466,25 @@
         : appState.rustPlus.teamMembers || [];
 
       const playersList = sourceTeam.map((tm, i) => {
-        const isNorm = Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05;
-        const wx = isNorm ? (tm.x - 0.5) * mapSize : tm.x;
-        const wy = isNorm ? (0.5 - tm.y) * mapSize : tm.y;
+        let wx, wy;
+        if (typeof tm.wx === 'number' && typeof tm.wy === 'number') {
+          wx = tm.wx;
+          wy = tm.wy;
+        } else if (Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05) {
+          wx = (tm.x - 0.5) * mapSize;
+          wy = (0.5 - tm.y) * mapSize;
+        } else {
+          wx = tm.x;
+          wy = tm.y;
+        }
         const rawSteam = String(tm.steamId || tm.id || '765611980' + (25 + i));
+        const gridStr = normalizedToGrid(
+          Math.min(0.999, Math.max(0, (wx + mapSize / 2) / mapSize)),
+          Math.min(0.999, Math.max(0, 1 - (wy + mapSize / 2) / mapSize))
+        );
         return {
           name: tm.name,
+          grid: gridStr,
           steamShort: rawSteam.length > 11 ? rawSteam.slice(0, 11) + '...' : rawSteam,
           wx,
           wy,
@@ -2040,11 +2497,11 @@
       playersGridEl.innerHTML = playersList
         .map(
           (pl) => `
-          <div class="rpd-player-card" data-pwx="${pl.wx}" data-pwy="${pl.wy}" title="Click to center on ${pl.name}">
+          <div class="rpd-player-card" data-pwx="${pl.wx}" data-pwy="${pl.wy}" title="Click to center on ${pl.name} [${pl.grid}]">
             <div class="rpd-online-ring" style="${pl.online ? '' : 'border-color:#64748b;'}"></div>
             <div class="rpd-avatar" style="background:${pl.avatarBg};">${pl.avatarIcon}</div>
             <div class="rpd-player-meta">
-              <div class="rpd-player-name">${pl.name}</div>
+              <div class="rpd-player-name">${pl.name} <span style="font-size:10px; color:#f59e0b; font-family:var(--font-mono);">[${pl.grid}]</span></div>
               <div class="rpd-player-steam">${pl.steamShort}</div>
             </div>
           </div>
@@ -2308,11 +2765,17 @@
       chatDrawer?.classList.remove('open');
     });
 
-    // 6. Center on Player & Fullscreen Buttons
+    // 6. Center on Player, Follow Player (Live GPS Camera Lock), Test Live Walk & Fullscreen Buttons
     document.getElementById('rpdCenterPlayerBtn')?.addEventListener('click', () => {
       const world = window.RUST_WORLD_MAP || {};
-      if (Array.isArray(world.teamMembers) && world.teamMembers[0]) {
-        centerMapOnWorldPos(world.teamMembers[0].x, world.teamMembers[0].y, 1.65);
+      const mapSize = appState.mapConfig?.size || world.size || 3500;
+      const liveM = appState.rustPlus?.teamMembers?.[0];
+      if (liveM) {
+        const wx = typeof liveM.wx === 'number' ? liveM.wx : (liveM.x - 0.5) * mapSize;
+        const wy = typeof liveM.wy === 'number' ? liveM.wy : (0.5 - liveM.y) * mapSize;
+        centerMapOnWorldPos(wx, wy, 1.75);
+      } else if (Array.isArray(world.teamMembers) && world.teamMembers[0]) {
+        centerMapOnWorldPos(world.teamMembers[0].x, world.teamMembers[0].y, 1.75);
       } else {
         mapZoom = 1.0;
         mapOffsetX = 0;
@@ -2320,6 +2783,98 @@
         drawTacticalMap();
       }
     });
+
+    const followBtn = document.getElementById('rpdFollowPlayerBtn');
+    followBtn?.addEventListener('click', () => {
+      followPlayerEnabled = !followPlayerEnabled;
+      followBtn.classList.toggle('active', followPlayerEnabled);
+      followBtn.style.borderColor = followPlayerEnabled ? '#4ade80' : '';
+      followBtn.style.color = followPlayerEnabled ? '#4ade80' : '';
+      followBtn.textContent = followPlayerEnabled ? '🎯 Following ON' : '🎯 Follow Me';
+      if (followPlayerEnabled && mapZoom < 1.35) {
+        mapZoom = 1.65;
+      }
+      drawTacticalMap();
+    });
+
+    let simWalkInterval = null;
+    const simWalkBtn = document.getElementById('rpdSimWalkBtn');
+    simWalkBtn?.addEventListener('click', () => {
+      simWalkEnabled = !simWalkEnabled;
+      simWalkBtn.classList.toggle('active', simWalkEnabled);
+      simWalkBtn.style.borderColor = simWalkEnabled ? '#f59e0b' : '';
+      simWalkBtn.style.color = simWalkEnabled ? '#f59e0b' : '';
+      simWalkBtn.textContent = simWalkEnabled ? '⏹️ Stop Demo' : '🏃 Test Live Move';
+
+      if (simWalkInterval) {
+        clearInterval(simWalkInterval);
+        simWalkInterval = null;
+      }
+
+      if (simWalkEnabled) {
+        // Waypoint route: Base (791, 1200) -> Missile Silo (1006, 1230) -> Train Yard (404, 840) -> Water Treatment (648, 111) -> Outpost (-191, -213)
+        const waypoints = [
+          { x: 791.4, y: 1199.8 },
+          { x: 1005.9, y: 1229.8 },
+          { x: 403.9, y: 840.2 },
+          { x: 647.9, y: 111.4 },
+          { x: -190.8, y: -213.3 },
+          { x: 403.9, y: 840.2 }
+        ];
+        let wpIdx = 0;
+        let curX = waypoints[0].x;
+        let curY = waypoints[0].y;
+        const mapSize = appState.mapConfig?.size || window.RUST_WORLD_MAP?.size || 3500;
+
+        simWalkInterval = setInterval(() => {
+          const target = waypoints[(wpIdx + 1) % waypoints.length];
+          const dx = target.x - curX;
+          const dy = target.y - curY;
+          const dist = Math.hypot(dx, dy);
+          const step = 34; // meters per 350ms tick
+          if (dist <= step) {
+            curX = target.x;
+            curY = target.y;
+            wpIdx = (wpIdx + 1) % waypoints.length;
+          } else {
+            curX += (dx / dist) * step;
+            curY += (dy / dist) * step;
+          }
+          const nx = Math.min(0.999, Math.max(0, (curX + mapSize / 2) / mapSize));
+          const ny = Math.min(0.999, Math.max(0, 1 - (curY + mapSize / 2) / mapSize));
+          appState.rustPlus.teamMembers = [
+            {
+              id: '76561198025882443',
+              steamId: '76561198025882443',
+              name: 'Smiguel',
+              wx: Number(curX.toFixed(1)),
+              wy: Number(curY.toFixed(1)),
+              x: Number(nx.toFixed(4)),
+              y: Number(ny.toFixed(4)),
+              grid: normalizedToGrid(nx, ny),
+              isOnline: true,
+              isAlive: true
+            },
+            {
+              id: '76561198122964735',
+              steamId: '76561198122964735',
+              name: 'Kanki',
+              wx: Number((curX - 28).toFixed(1)),
+              wy: Number((curY + 22).toFixed(1)),
+              x: Number(Math.min(0.999, Math.max(0, (curX - 28 + mapSize / 2) / mapSize)).toFixed(4)),
+              y: Number(Math.min(0.999, Math.max(0, 1 - (curY + 22 + mapSize / 2) / mapSize)).toFixed(4)),
+              grid: normalizedToGrid(nx, ny),
+              isOnline: true,
+              isAlive: true
+            }
+          ];
+          renderRustPlusSidebar();
+        }, 350);
+      } else {
+        renderRustPlusSidebar();
+      }
+    });
+
     document.getElementById('rpdFullscreenBtn')?.addEventListener('click', () => {
       const ws = document.getElementById('rpdMainWorkspace') || document.documentElement;
       if (!document.fullscreenElement) {
@@ -2793,6 +3348,7 @@
         useFacepunchProxy
       };
       saveLocalFallback();
+      connectBrowserRustPlusSocket(appState.rustPlus.config);
       renderRustPlusSidebar();
 
       if (isServerConnected) {
@@ -2811,7 +3367,7 @@
           alert(data.message || 'Rust+ configuration updated!');
         } catch (_) {}
       } else {
-        alert('Saved Rust+ pairing config locally! Host on your Pterodactyl container for live server socket polling.');
+        alert('Connected via Browser Live Rust+ WebSocket! Move in-game to watch your character move on the map in real time.');
       }
       rpModal?.classList.remove('open');
     });
@@ -2972,18 +3528,22 @@
         const clampedX = Math.max(0, Math.min(0.999, nx));
         const clampedY = Math.max(0, Math.min(0.999, ny));
         const grid = normalizedToGrid(clampedX, clampedY);
+        const mapSize = appState.mapConfig?.size || window.RUST_WORLD_MAP?.size || 3500;
+        const wx = Number(((clampedX - 0.5) * mapSize).toFixed(1));
+        const wy = Number(((0.5 - clampedY) * mapSize).toFixed(1));
         if (window.RUST_WORLD_MAP?.teamMembers?.[0]) {
-          const mapSize = window.RUST_WORLD_MAP.size || 3500;
-          window.RUST_WORLD_MAP.teamMembers[0].x = Math.round(nx * mapSize);
-          window.RUST_WORLD_MAP.teamMembers[0].y = Math.round((1 - ny) * mapSize);
-          renderRustPlusSidebar();
+          window.RUST_WORLD_MAP.teamMembers[0].x = wx;
+          window.RUST_WORLD_MAP.teamMembers[0].y = wy;
         }
         if (appState.rustPlus?.teamMembers?.[0]) {
+          appState.rustPlus.teamMembers[0].wx = wx;
+          appState.rustPlus.teamMembers[0].wy = wy;
           appState.rustPlus.teamMembers[0].x = Number(clampedX.toFixed(4));
           appState.rustPlus.teamMembers[0].y = Number(clampedY.toFixed(4));
           appState.rustPlus.teamMembers[0].grid = grid;
           syncStateToServer();
         }
+        renderRustPlusSidebar();
         drawTacticalMap();
       } else {
         const type = mode.replace('pin_', '');
@@ -3017,15 +3577,29 @@
       }
     });
 
-    // Live animation loop for Rust+ moving entities (Cargo, Patrol Heli, Squad GPS pulse)
-    setInterval(() => {
+    // Smooth 60 FPS animation loop for real-time player movement, radar pulse, and camera follow
+    function animateMapLoop() {
       const mapTabActive = document.getElementById('tab-map')?.classList.contains('active');
-      if (mapTabActive && (liveEventsSimEnabled || mapLayers.liveEvents || mapLayers.vending)) {
+      if (
+        mapTabActive &&
+        (mapLayers.teamGps ||
+          simWalkEnabled ||
+          followPlayerEnabled ||
+          liveEventsSimEnabled ||
+          mapLayers.liveEvents ||
+          mapLayers.vending ||
+          (appState.rustPlus?.liveMarkers && appState.rustPlus.liveMarkers.length > 0))
+      ) {
         drawTacticalMap();
       }
-    }, 80);
+      requestAnimationFrame(animateMapLoop);
+    }
+    requestAnimationFrame(animateMapLoop);
 
     loadCustomMapImageIfConfigured();
+    if (appState.rustPlus?.config?.ip && appState.rustPlus?.config?.playerToken) {
+      connectBrowserRustPlusSocket(appState.rustPlus.config);
+    }
     renderRustPlusSidebar();
   }
 
