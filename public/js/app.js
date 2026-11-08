@@ -1044,22 +1044,28 @@
     if (p.includes('military_tunnel')) return 'military_tunnels';
     if (p.includes('oilrig_1')) return 'large_oil_rig';
     if (p.includes('oilrig_2')) return 'small_oil_rig';
+    if (p.includes('underwater_lab')) return 'underwater_labs';
     if (p.includes('excavator')) return 'giant_excavator';
+    if (p.includes('desert_military_base')) return 'desert_military_base';
+    if (p.includes('arctic_research')) return 'arctic_research';
+    if (p.includes('radtown_1')) return 'radtown';
     if (p.includes('water_treatment')) return 'water_treatment';
     if (p.includes('trainyard')) return 'train_yard';
     if (p.includes('powerplant')) return 'power_plant';
     if (p.includes('airfield')) return 'airfield';
-    if (p.includes('arctic_research')) return 'arctic_research';
-    if (p.includes('radtown_1')) return 'radtown';
-    if (p.includes('radtown_small') || p.includes('sewer')) return 'sewer_branch';
-    if (p.includes('sphere_tank')) return 'the_dome';
-    if (p.includes('underwater_lab')) return 'underwater_labs';
-    if (p.includes('satellite_dish')) return 'satellite_dish';
     if (p.includes('ferry_terminal')) return 'ferry_terminal';
+    if (p.includes('sphere_tank')) return 'the_dome';
+    if (p.includes('jungle_ziggurat') || p.includes('ziggurat')) return 'jungle_ziggurat';
+    if (p.includes('radtown_small') || p.includes('sewer')) return 'sewer_branch';
+    if (p.includes('satellite_dish')) return 'satellite_dish';
     if (p.includes('harbor')) return 'harbor';
-    if (p.includes('lighthouse')) return 'lighthouse';
+    if (p.includes('junkyard')) return 'junkyard';
+    if (p.includes('abandoned_cabins') || p.includes('swamp')) return 'abandoned_cabins';
     if (p.includes('gas_station')) return 'gas_station';
     if (p.includes('supermarket')) return 'supermarket';
+    if (p.includes('lighthouse')) return 'lighthouse';
+    if (p.includes('warehouse') || p.includes('mining_quarry')) return 'mining_outpost';
+    if (p.includes('compound') || p.includes('bandit') || p.includes('fishing_village') || p.includes('stables')) return 'outpost';
     return null;
   }
 
@@ -1693,28 +1699,47 @@
         });
       }
 
-      const players =
-        Array.isArray(world.teamMembers) && world.teamMembers.length > 0
-          ? world.teamMembers.map((tm) => {
-              const pos = worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
-              return {
-                name: tm.name,
-                steamId: tm.steamId,
-                px: pos.px,
-                py: pos.py,
-                online: tm.online !== false
-              };
-            })
-          : (appState.rustPlus?.teamMembers || []).map((tm) => {
-              const pos = normalizedToIslandScreen(tm.x, tm.y, W, H);
-              return {
-                name: tm.name,
-                steamId: tm.id,
-                px: pos.px,
-                py: pos.py,
-                online: tm.isOnline
-              };
-            });
+      // Prefer live Rust+ teamMembers when connected, otherwise fall back to world.teamMembers
+      const hasLiveRustPlusTeam =
+        appState.rustPlus?.connected && Array.isArray(appState.rustPlus.teamMembers) && appState.rustPlus.teamMembers.length > 0;
+      const players = hasLiveRustPlusTeam
+        ? appState.rustPlus.teamMembers.map((tm) => {
+            const isNorm = Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05;
+            const pos = isNorm
+              ? normalizedToIslandScreen(tm.x, tm.y, W, H)
+              : worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
+            return {
+              name: tm.name,
+              steamId: tm.steamId || tm.id,
+              px: pos.px,
+              py: pos.py,
+              online: tm.isOnline !== false && tm.online !== false
+            };
+          })
+        : Array.isArray(world.teamMembers) && world.teamMembers.length > 0
+        ? world.teamMembers.map((tm) => {
+            const pos = worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
+            return {
+              name: tm.name,
+              steamId: tm.steamId,
+              px: pos.px,
+              py: pos.py,
+              online: tm.online !== false
+            };
+          })
+        : (appState.rustPlus?.teamMembers || []).map((tm) => {
+            const isNorm = Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05;
+            const pos = isNorm
+              ? normalizedToIslandScreen(tm.x, tm.y, W, H)
+              : worldToIslandScreen(tm.x, tm.y, W, H, mapSize);
+            return {
+              name: tm.name,
+              steamId: tm.steamId || tm.id,
+              px: pos.px,
+              py: pos.py,
+              online: tm.isOnline !== false && tm.online !== false
+            };
+          });
 
       // Draw primary active player label & avatar badge (like "Smiguel" in top-right of island)
       players.forEach((pl, idx) => {
@@ -1756,10 +1781,27 @@
           ? m.cardsNeeded.map((c) => `<span class="keycard-tag keycard-${c}">${c} Card</span>`).join(' ')
           : '<span class="target-tier-tag">No Card Needed</span>';
 
+      const fuseBadge =
+        m.fusesNeeded > 0
+          ? `<span class="keycard-tag keycard-Fuse">🔌 ${m.fusesNeeded}x Electric Fuse</span>`
+          : `<span class="keycard-tag keycard-Green">✅ No Fuse Needed (0 Fuse)</span>`;
+
       const foundBadges =
         m.cardsFound.length > 0
           ? m.cardsFound.map((c) => `<span class="keycard-tag keycard-${c}">Gives ${c} Card</span>`).join(' ')
           : '<span class="target-tier-tag">Endgame Elite Loot</span>';
+
+      const utilitiesHtml =
+        Array.isArray(m.utilities) && m.utilities.length > 0
+          ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+              ${m.utilities
+                .map(
+                  (u) =>
+                    `<span style="font-size:10.5px; font-family:var(--font-mono); background:rgba(59,130,246,0.14); border:1px solid rgba(96,165,250,0.35); color:#93c5fd; padding:2px 7px; border-radius:4px;">⚙️ ${u}</span>`
+                )
+                .join('')}
+            </div>`
+          : '';
 
       detailEl.innerHTML = `
         <div style="background:linear-gradient(155deg, rgba(205,65,43,0.14), var(--bg-card)); border:1px solid var(--rust-orange); border-radius:8px; padding:14px;">
@@ -1769,7 +1811,8 @@
                 🏛️ ${m.name} <span style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow);">[${m.defaultPos.grid}]</span>
               </div>
               <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">
-                Tier ${m.tier} Monument • Radiation Required: <strong style="color:#fff;">${m.radRequired}</strong>
+                Tier ${m.tier} Monument • Radiation: <strong style="color:#fff;">${m.radRequired}</strong>
+                ${m.rusthelpUrl ? ` • <a href="${m.rusthelpUrl}" target="_blank" rel="noopener" style="color:#60a5fa; text-decoration:none; font-weight:600;">📖 RustHelp Wiki ↗</a>` : ''}
               </div>
             </div>
             <button class="btn btn-primary btn-sm" id="startMonumentTimerBtn" data-mid="${m.id}">
@@ -1779,11 +1822,11 @@
 
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin:10px 0;">
             <div><span style="font-size:11px; color:var(--text-secondary);">NEED:</span> ${neededBadges}</div>
-            <div>
-              <span class="keycard-tag keycard-Fuse">🔌 ${m.fusesNeeded}x Electric Fuse</span>
-            </div>
+            <div>${fuseBadge}</div>
             <div><span style="font-size:11px; color:var(--text-secondary);">GET:</span> ${foundBadges}</div>
           </div>
+
+          ${utilitiesHtml}
 
           <div style="display:flex; gap:12px; flex-wrap:wrap; font-family:var(--font-mono); font-size:11px; background:rgba(0,0,0,0.3); padding:8px 10px; border-radius:5px;">
             ${m.crates.locked ? `<span style="color:#ef4444;">🔒 ${m.crates.locked} Locked Crate</span>` : ''}
@@ -1815,13 +1858,17 @@
     listEl.innerHTML = filtered
       .map((item) => {
         const isAct = item.id === selectedMonumentId;
+        const fusePill =
+          item.fusesNeeded > 0
+            ? `<span class="keycard-tag keycard-Fuse">🔌 ${item.fusesNeeded} Fuse</span>`
+            : `<span class="keycard-tag keycard-Green">✅ 0 Fuse</span>`;
         return `
           <div class="monument-item ${isAct ? 'active' : ''}" data-mid="${item.id}">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <div style="font-family:var(--font-display); font-weight:700; font-size:14px; color:#fff;">
                 ${item.name} <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">[${item.defaultPos.grid}]</span>
               </div>
-              <span class="keycard-tag keycard-Fuse">🔌 ${item.fusesNeeded} Fuse</span>
+              ${fusePill}
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; font-size:11px;">
               <span style="color:var(--text-secondary);">Need: ${item.cardsNeeded.join(' + ') || 'None'}</span>
@@ -1925,9 +1972,9 @@
     if (!appState.rustPlus) return;
 
     const world = window.RUST_WORLD_MAP || {};
-    const mapSize = world.size || 3500;
+    const mapSize = appState.rustPlus.size || world.size || 3500;
 
-    // 0. RustPlusDesk Left Sidebar: Server Title & 2-Column Player Cards
+    // 0. RustPlusDesk Left Sidebar: Server Title, Live HUD & 2-Column Player Cards
     const titleEl = document.getElementById('rpdServerNameTitle');
     if (titleEl) {
       titleEl.textContent =
@@ -1936,32 +1983,63 @@
         "[EU] Willjum's Casual Solo/Duo Monthly";
     }
 
+    const connStatusEl = document.getElementById('rpdConnStatusText');
+    if (connStatusEl) {
+      if (appState.rustPlus.connected) {
+        connStatusEl.textContent = appState.rustPlus.config?.useFacepunchProxy
+          ? 'Fully connected (Proxy)'
+          : 'Fully connected';
+        connStatusEl.style.color = '#4ade80';
+      } else if (appState.rustPlus.config?.ip && appState.rustPlus.config?.playerToken) {
+        connStatusEl.textContent = 'Paired • Ready';
+        connStatusEl.style.color = '#38bdf8';
+      }
+    }
+
+    const fcmStatusEl = document.getElementById('rpdFcmStatusText');
+    if (fcmStatusEl) {
+      fcmStatusEl.textContent = appState.rustPlus.fcmListening ? 'Running' : 'Ready';
+      fcmStatusEl.style.color = appState.rustPlus.fcmListening ? '#4ade80' : '#f59e0b';
+    }
+
+    const hudTimeEl = document.getElementById('rpdHudTimeText');
+    if (hudTimeEl && appState.rustPlus.serverTime) {
+      hudTimeEl.textContent = appState.rustPlus.serverTime;
+    }
+    const hudPopEl = document.getElementById('rpdHudPopText');
+    if (hudPopEl && appState.rustPlus.playersOnline !== undefined) {
+      hudPopEl.textContent = `${appState.rustPlus.playersOnline}/${appState.rustPlus.playersMax || 175}`;
+    }
+
     const playersGridEl = document.getElementById('rpdPlayersGrid');
     if (playersGridEl) {
-      const playersList =
-        Array.isArray(world.teamMembers) && world.teamMembers.length > 0
-          ? world.teamMembers.map((tm, i) => ({
-              name: tm.name,
-              steamShort: String(tm.steamId || '').slice(0, 11) + '...',
-              wx: tm.x,
-              wy: tm.y,
-              online: tm.online !== false,
-              avatarBg: i === 0 ? 'linear-gradient(135deg, #f59e0b, #dc2626)' : 'linear-gradient(135deg, #cbd5e1, #334155)',
-              avatarIcon: i === 0 ? '🤠' : '🥷'
-            }))
-          : (appState.rustPlus.teamMembers || []).map((tm, i) => ({
-              name: tm.name,
-              steamShort: '765611980' + (25 + i) + '...',
-              wx: tm.x * mapSize,
-              wy: (1 - tm.y) * mapSize,
-              online: tm.isOnline !== false,
-              avatarBg: 'linear-gradient(135deg, #f59e0b, #dc2626)',
-              avatarIcon: '🤠'
-            }));
+      const hasLiveTeam =
+        appState.rustPlus.connected && Array.isArray(appState.rustPlus.teamMembers) && appState.rustPlus.teamMembers.length > 0;
+      const sourceTeam = hasLiveTeam
+        ? appState.rustPlus.teamMembers
+        : Array.isArray(world.teamMembers) && world.teamMembers.length > 0
+        ? world.teamMembers
+        : appState.rustPlus.teamMembers || [];
+
+      const playersList = sourceTeam.map((tm, i) => {
+        const isNorm = Math.abs(tm.x) <= 1.05 && Math.abs(tm.y) <= 1.05;
+        const wx = isNorm ? (tm.x - 0.5) * mapSize : tm.x;
+        const wy = isNorm ? (0.5 - tm.y) * mapSize : tm.y;
+        const rawSteam = String(tm.steamId || tm.id || '765611980' + (25 + i));
+        return {
+          name: tm.name,
+          steamShort: rawSteam.length > 11 ? rawSteam.slice(0, 11) + '...' : rawSteam,
+          wx,
+          wy,
+          online: tm.isOnline !== false && tm.online !== false,
+          avatarBg: i === 0 ? 'linear-gradient(135deg, #f59e0b, #dc2626)' : 'linear-gradient(135deg, #cbd5e1, #334155)',
+          avatarIcon: i === 0 ? '🤠' : '🥷'
+        };
+      });
 
       playersGridEl.innerHTML = playersList
         .map(
-          (pl, idx) => `
+          (pl) => `
           <div class="rpd-player-card" data-pwx="${pl.wx}" data-pwy="${pl.wy}" title="Click to center on ${pl.name}">
             <div class="rpd-online-ring" style="${pl.online ? '' : 'border-color:#64748b;'}"></div>
             <div class="rpd-avatar" style="background:${pl.avatarBg};">${pl.avatarIcon}</div>
@@ -2309,17 +2387,74 @@
 
     // Rust+ Pairing Modal Triggers (Manage servers "..." + Pairing Listener "..." + Top nav button)
     const rpModal = document.getElementById('rustPlusModal');
+
+    function renderPairedServersInModal() {
+      const listEl = document.getElementById('rpPairedServersList');
+      if (!listEl) return;
+      const servers = appState.rustPlus?.pairedServers || [];
+      if (!Array.isArray(servers) || servers.length === 0) {
+        listEl.innerHTML = `<div style="font-size:11.5px; color:var(--text-secondary); background:rgba(0,0,0,0.22); border:1px dashed var(--border-subtle); border-radius:6px; padding:8px 10px;">No paired servers discovered yet — use <strong>Option A (1-Click Steam Login & Cloud Sync)</strong> or <strong>Option B (Import profiles.json)</strong> above, or enter credentials manually below.</div>`;
+        return;
+      }
+      const activeCfg = appState.rustPlus?.config || {};
+      listEl.innerHTML = servers
+        .map((srv, idx) => {
+          const isCurrent =
+            srv.ip === activeCfg.ip && String(srv.port || '28082') === String(activeCfg.port || '28082');
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:${isCurrent ? 'rgba(34,197,94,0.12)' : 'var(--bg-input)'}; border:1px solid ${isCurrent ? '#4ade80' : 'var(--border-subtle)'}; border-radius:6px; padding:8px 10px;">
+              <div>
+                <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:#fff;">
+                  🛰️ ${srv.name || srv.serverName || `${srv.ip}:${srv.port}`}
+                  ${isCurrent ? '<span class="keycard-tag keycard-Green" style="margin-left:6px;">ACTIVE</span>' : ''}
+                </div>
+                <div style="font-family:var(--font-mono); font-size:10.5px; color:var(--text-secondary);">
+                  ${srv.ip}:${srv.port || '28082'} • SteamID: ${String(srv.playerId || '').slice(0, 10)}... • Token: ${srv.playerToken}
+                </div>
+              </div>
+              <button class="btn btn-sm ${isCurrent ? 'btn-primary' : ''} rp-connect-saved-srv-btn" data-srv-idx="${idx}">
+                ${isCurrent ? '🔄 Reconnect' : '🛰️ Connect'}
+              </button>
+            </div>
+          `;
+        })
+        .join('');
+
+      listEl.querySelectorAll('.rp-connect-saved-srv-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const idx = parseInt(btn.getAttribute('data-srv-idx'), 10);
+          const srv = servers[idx];
+          if (!srv) return;
+          const serverNameEl = document.getElementById('rpServerName');
+          if (serverNameEl) serverNameEl.value = srv.name || srv.serverName || '';
+          document.getElementById('rpServerIp').value = srv.ip || '';
+          document.getElementById('rpServerPort').value = String(srv.port || '28082');
+          document.getElementById('rpPlayerId').value = String(srv.playerId || '');
+          document.getElementById('rpPlayerToken').value = String(srv.playerToken || '');
+          document.getElementById('connectRustPlusBtn')?.click();
+        });
+      });
+    }
+
     function openRustPlusPairingModal() {
       const cfg = appState.rustPlus?.config || {};
+      const serverNameEl = document.getElementById('rpServerName');
+      if (serverNameEl) {
+        serverNameEl.value = cfg.serverName || window.RUST_WORLD_MAP?.serverName || '';
+      }
       document.getElementById('rpServerIp').value = cfg.ip || window.RUST_WORLD_MAP?.host || '';
-      document.getElementById('rpServerPort').value = cfg.port || String(window.RUST_WORLD_MAP?.port || '28017');
+      document.getElementById('rpServerPort').value = cfg.port || String(window.RUST_WORLD_MAP?.port || '28082');
       document.getElementById('rpPlayerId').value = cfg.playerId || '';
       document.getElementById('rpPlayerToken').value = cfg.playerToken || '';
+      const proxyCb = document.getElementById('rpUseProxyCheckbox');
+      if (proxyCb) proxyCb.checked = Boolean(cfg.useFacepunchProxy);
+
       const fcmBadge = document.getElementById('fcmListenerBadge');
       if (fcmBadge) {
-        fcmBadge.textContent = appState.rustPlus?.fcmListening ? '🟢 LISTENING FOR IN-GAME PAIR' : 'LISTENER READY';
+        fcmBadge.textContent = appState.rustPlus?.fcmListening ? '🟢 CLOUD SYNC & LISTENER ACTIVE' : 'READY TO PAIR';
         fcmBadge.className = appState.rustPlus?.fcmListening ? 'keycard-tag keycard-Green' : 'keycard-tag keycard-Fuse';
       }
+      renderPairedServersInModal();
       rpModal?.classList.add('open');
     }
 
@@ -2331,6 +2466,83 @@
       rpModal?.classList.remove('open');
     });
 
+    // Option A: 1-Click Steam Popup OAuth Login & Auto-Sync
+    document.getElementById('rpPopupSteamLoginBtn')?.addEventListener('click', () => {
+      if (!isServerConnected) {
+        window.open('https://companion-rust.facepunch.com/login', '_blank', 'noopener');
+        return;
+      }
+      const w = 560;
+      const h = 720;
+      const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+      const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
+      window.open(
+        '/api/rustplus/login',
+        'RustPlusSteamLogin',
+        `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+      );
+    });
+
+    // Listen for postMessage from the /api/rustplus/callback popup trampoline
+    window.addEventListener('message', (evt) => {
+      if (evt.data && evt.data.type === 'RUSTPLUS_AUTH_SUCCESS') {
+        const resData = evt.data.data || {};
+        if (Array.isArray(resData.pairedServers)) {
+          appState.rustPlus.pairedServers = resData.pairedServers;
+        }
+        appState.rustPlus.fcmListening = true;
+        const fcmBadge = document.getElementById('fcmListenerBadge');
+        if (fcmBadge) {
+          fcmBadge.textContent = '🟢 CLOUD SYNC & LISTENER ACTIVE';
+          fcmBadge.className = 'keycard-tag keycard-Green';
+        }
+        renderPairedServersInModal();
+        renderRustPlusSidebar();
+        drawTacticalMap();
+        alert('🎉 ' + (resData.message || 'Rust+ Paired & Synced with Facepunch Cloud!'));
+      }
+    });
+
+    // 1-Click Sync Paired Servers & Switches from Facepunch Cloud (/api/history/read)
+    document.getElementById('rpSyncHistoryBtn')?.addEventListener('click', async () => {
+      if (!isServerConnected) {
+        alert('Host the app on your Pterodactyl container or local Node.js server to sync with Facepunch Cloud.');
+        return;
+      }
+      const btn = document.getElementById('rpSyncHistoryBtn');
+      const oldText = btn.textContent;
+      btn.textContent = '⏳ Syncing from Facepunch Cloud...';
+      try {
+        const tokenInput = document.getElementById('fcmTokenInput')?.value.trim() || '';
+        const res = await fetch('/api/rustplus/sync-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+          body: JSON.stringify({ tokenInput })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (Array.isArray(data.pairedServers)) {
+            appState.rustPlus.pairedServers = data.pairedServers;
+          }
+          if (data.activeConfig && data.activeConfig.ip) {
+            appState.rustPlus.config = data.activeConfig;
+            openRustPlusPairingModal();
+          } else {
+            renderPairedServersInModal();
+          }
+          renderRustPlusSidebar();
+          drawTacticalMap();
+          alert('🎉 ' + data.message);
+        } else {
+          alert('Sync notice: ' + (data.error || 'Please sign in with Steam first.'));
+        }
+      } catch (err) {
+        alert('Sync request failed: ' + err.message);
+      } finally {
+        btn.textContent = oldText;
+      }
+    });
+
     // Copy %APPDATA%\RustPlusDesk path button
     document.getElementById('copyRustPlusDeskPathBtn')?.addEventListener('click', () => {
       const pathStr = '%APPDATA%\\RustPlusDesk';
@@ -2338,31 +2550,24 @@
       const statusBox = document.getElementById('rpImportStatusBox');
       if (statusBox) {
         statusBox.style.display = 'block';
-        statusBox.textContent = '✓ Copied "%APPDATA%\\RustPlusDesk" to clipboard! Now click "2. Select profiles.json or rustplusjs-config.json" and press Ctrl+V in the File Explorer address bar.';
+        statusBox.textContent = '✓ Copied "%APPDATA%\\RustPlusDesk" to clipboard! Now click "2. Select profiles.json / rustplusjs-config.json" and press Ctrl+V in the File Explorer address bar.';
       }
     });
 
-    // Copy F12 Console 1-Liner helper
-    document.getElementById('copyConsoleExtractorBtn')?.addEventListener('click', () => {
-      const snippet = `copy(document.documentElement.outerHTML); alert('Copied! Paste into Rust Tactical Companion.');`;
-      navigator.clipboard?.writeText(snippet);
-      alert('Copied F12 Console Extractor! On the Facepunch Steam Login page, press F12 -> Console, press Ctrl+V and Enter, then paste into the box below.');
-    });
-
-    // Activate Live In-Game FCM Pairing Listener
+    // Exchange OAuth Code / AuthToken & Sync Cloud Pairings
     document.getElementById('activateFcmListenerBtn')?.addEventListener('click', async () => {
       const tokenInput = document.getElementById('fcmTokenInput')?.value.trim();
       if (!tokenInput) {
-        alert('First paste the output from the F12 Console Extractor or upload rustplusjs-config.json from %APPDATA%\\RustPlusDesk!');
+        alert('Paste the Redirect URL (?code=... / #code=...) from your Facepunch login tab, or upload rustplusjs-config.json / profiles.json!');
         return;
       }
       if (!isServerConnected) {
-        alert('Host the app on your Pterodactyl container so the backend can register with Facepunch FCM and listen for in-game pairing!');
+        alert('Host the app on your Pterodactyl container so the backend can exchange the code and sync with Facepunch Cloud!');
         return;
       }
       const btn = document.getElementById('activateFcmListenerBtn');
       const oldText = btn.textContent;
-      btn.textContent = '⏳ Registering with Facepunch FCM & Starting Listener...';
+      btn.textContent = '⏳ Exchanging & Syncing...';
       try {
         const res = await fetch('/api/rustplus/fcm-register', {
           method: 'POST',
@@ -2371,14 +2576,21 @@
         });
         const data = await res.json();
         if (res.ok) {
-          alert('🎉 ' + data.message);
+          if (Array.isArray(data.pairedServers)) {
+            appState.rustPlus.pairedServers = data.pairedServers;
+          }
+          appState.rustPlus.fcmListening = true;
           const fcmBadge = document.getElementById('fcmListenerBadge');
           if (fcmBadge) {
-            fcmBadge.textContent = '🟢 LISTENING FOR IN-GAME PAIR';
+            fcmBadge.textContent = '🟢 CLOUD SYNC & LISTENER ACTIVE';
             fcmBadge.className = 'keycard-tag keycard-Green';
           }
+          renderPairedServersInModal();
+          renderRustPlusSidebar();
+          drawTacticalMap();
+          alert('🎉 ' + data.message);
         } else {
-          alert('Error: ' + (data.error || 'Failed to register FCM'));
+          alert('Error: ' + (data.error || 'Failed to register with Facepunch Cloud'));
         }
       } catch (err) {
         alert('Request failed: ' + err.message);
@@ -2387,7 +2599,7 @@
       }
     });
 
-    // 1-Click Upload from RustPlusDesk (profiles.json or rustplusjs-config.json) or rustplus.config.json
+    // 1-Click Upload from RustPlusDesk (profiles.json, rustplusjs-config.json, or notifications_history.json)
     document.getElementById('rpJsonFileInput')?.addEventListener('change', async (evt) => {
       const files = Array.from(evt.target.files || []);
       if (files.length === 0) return;
@@ -2398,42 +2610,74 @@
           const text = await file.text();
           const parsed = JSON.parse(text);
 
-          // Case 1: RustPlusDesk profiles.json (Array of server profiles with PascalCase keys)
-          if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].Host || parsed[0].PlayerToken)) {
+          // Case 1: RustPlusDesk profiles.json OR notifications_history.json
+          if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].Host || parsed[0].PlayerToken || parsed[0].Ip)) {
+            const allServers = parsed
+              .filter((p) => (p.Host || p.Ip) && p.PlayerToken)
+              .map((p) => ({
+                serverId: p.Id || p.ServerId || `${p.Host || p.Ip}:${p.Port || '28082'}`,
+                name: p.Name || p.ServerName || `${p.Host || p.Ip}:${p.Port || '28082'}`,
+                serverName: p.Name || p.ServerName || `${p.Host || p.Ip}:${p.Port || '28082'}`,
+                ip: String(p.Host || p.Ip),
+                port: String(p.Port || '28082'),
+                playerId: String(p.SteamId64 || p.PlayerId || ''),
+                playerToken: String(p.PlayerToken || ''),
+                useFacepunchProxy: Boolean(p.UseFacepunchProxy)
+              }));
+
             let profile = parsed[parsed.length - 1];
-            if (parsed.length > 1) {
+            if (parsed.length > 1 && parsed[0].Host) {
               const names = parsed.map((p, i) => `${i + 1}: ${p.Name || p.Host}`).join('\n');
-              const choice = prompt(`Found ${parsed.length} servers in profiles.json:\n${names}\n\nEnter number to import (default ${parsed.length}):`, String(parsed.length));
+              const choice = prompt(`Found ${parsed.length} servers in ${file.name}:\n${names}\n\nEnter number to connect now (all ${parsed.length} will be saved to your Paired Servers list):`, String(parsed.length));
               const idx = (parseInt(choice, 10) || parsed.length) - 1;
               if (parsed[idx]) profile = parsed[idx];
             }
 
-            const ip = profile.Host || '';
+            const ip = profile.Host || profile.Ip || '';
             const port = String(profile.Port || '28082');
-            const playerId = String(profile.SteamId64 || '');
+            const playerId = String(profile.SteamId64 || profile.PlayerId || '');
             const playerToken = String(profile.PlayerToken || '');
-            const serverName = profile.Name || `${ip}:${port}`;
+            const serverName = profile.Name || profile.ServerName || `${ip}:${port}`;
             const useFacepunchProxy = Boolean(profile.UseFacepunchProxy);
             const customImageUrl = profile.CustomMapUrl || '';
             const battlemetricsId = profile.BattleMetricsId || '';
 
-            const smartDevices = Array.isArray(profile.Devices)
-              ? profile.Devices.map((d) => ({
-                  id: 'sd-' + d.EntityId,
-                  entityId: String(d.EntityId),
-                  name: d.Name || d.Alias || `Smart Device #${d.EntityId}`,
-                  type: d.Kind === 2 ? 'alarm' : 'switch',
-                  active: Boolean(d.IsOn),
+            const smartDevices = [];
+            parsed.forEach((p) => {
+              if (Array.isArray(p.Devices)) {
+                p.Devices.forEach((d) => {
+                  smartDevices.push({
+                    id: 'sd-' + d.EntityId,
+                    entityId: String(d.EntityId),
+                    name: d.Name || d.Alias || `Smart Device #${d.EntityId}`,
+                    type: d.Kind === 2 ? 'alarm' : 'switch',
+                    active: Boolean(d.IsOn),
+                    grid: 'PAIRED'
+                  });
+                });
+              } else if (p.EntityId) {
+                smartDevices.push({
+                  id: 'sd-' + p.EntityId,
+                  entityId: String(p.EntityId),
+                  name: p.EntityName || p.Title || `Smart Device #${p.EntityId}`,
+                  type: String(p.EntityType) === '2' ? 'alarm' : 'switch',
+                  active: false,
                   grid: 'PAIRED'
-                }))
-              : [];
+                });
+              }
+            });
 
+            const serverNameEl = document.getElementById('rpServerName');
+            if (serverNameEl) serverNameEl.value = serverName;
             document.getElementById('rpServerIp').value = ip;
             document.getElementById('rpServerPort').value = port;
             document.getElementById('rpPlayerId').value = playerId;
             document.getElementById('rpPlayerToken').value = playerToken;
+            const proxyCb = document.getElementById('rpUseProxyCheckbox');
+            if (proxyCb) proxyCb.checked = useFacepunchProxy;
 
             appState.rustPlus.config = { serverName, ip, port, playerId, playerToken, useFacepunchProxy };
+            appState.rustPlus.pairedServers = allServers;
             if (smartDevices.length > 0) {
               smartDevices.forEach((sd) => {
                 if (!appState.rustPlus.smartDevices.some((existing) => String(existing.entityId) === sd.entityId)) {
@@ -2442,6 +2686,7 @@
               });
             }
             saveLocalFallback();
+            renderPairedServersInModal();
             renderRustPlusSidebar();
 
             if (isServerConnected) {
@@ -2455,6 +2700,7 @@
                   playerId,
                   playerToken,
                   useFacepunchProxy,
+                  pairedServers: allServers,
                   smartDevices,
                   customImageUrl,
                   battlemetricsId
@@ -2463,44 +2709,52 @@
               const data = await res.json();
               if (statusBox) {
                 statusBox.style.display = 'block';
-                statusBox.textContent = `✓ Imported "${serverName}" + ${smartDevices.length} Smart Device(s) from profiles.json! ${data.message || ''}`;
+                statusBox.textContent = `✓ Imported ${allServers.length} server(s) + ${smartDevices.length} Smart Device(s) from ${file.name}! ${data.message || ''}`;
               }
-              alert(`🎉 Imported "${serverName}" (${ip}:${port}) and ${smartDevices.length} Smart Switch/Alarm(s) from Rust+ Desktop!`);
+              alert(`🎉 Imported ${allServers.length} server(s) and ${smartDevices.length} Smart Switch/Alarm(s) from ${file.name}!`);
             } else {
-              alert(`Imported "${serverName}" (${ip}:${port}) and ${smartDevices.length} Smart Switch(es) from profiles.json!`);
+              alert(`Imported ${allServers.length} server(s) and ${smartDevices.length} Smart Switch(es) from ${file.name}!`);
             }
             continue;
           }
 
           // Case 2: RustPlusDesk rustplusjs-config.json (contains fcm_credentials + rustplus_auth_token)
           if (parsed.fcm_credentials || parsed.rustplus_auth_token) {
-            document.getElementById('fcmTokenInput').value = text;
+            document.getElementById('fcmTokenInput').value = parsed.rustplus_auth_token || text;
             if (isServerConnected) {
               const res = await fetch('/api/rustplus/fcm-register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
                 body: JSON.stringify({
                   fcmCredentials: parsed.fcm_credentials,
+                  authToken: parsed.rustplus_auth_token || '',
                   tokenInput: text
                 })
               });
               const data = await res.json();
               if (res.ok) {
+                if (Array.isArray(data.pairedServers)) {
+                  appState.rustPlus.pairedServers = data.pairedServers;
+                }
+                appState.rustPlus.fcmListening = true;
                 const fcmBadge = document.getElementById('fcmListenerBadge');
                 if (fcmBadge) {
-                  fcmBadge.textContent = '🟢 LISTENING FOR IN-GAME PAIR';
+                  fcmBadge.textContent = '🟢 CLOUD SYNC & LISTENER ACTIVE';
                   fcmBadge.className = 'keycard-tag keycard-Green';
                 }
                 if (statusBox) {
                   statusBox.style.display = 'block';
                   statusBox.textContent = `✓ ${data.message}`;
                 }
+                renderPairedServersInModal();
+                renderRustPlusSidebar();
+                drawTacticalMap();
                 alert('🎉 ' + data.message);
               } else {
                 alert('FCM Import Error: ' + (data.error || 'Failed'));
               }
             } else {
-              alert('Loaded rustplusjs-config.json! Click "Activate Live In-Game Pairing Listener" when connected to your Pterodactyl server.');
+              alert('Loaded rustplusjs-config.json! Click "Exchange & Sync" when connected to your Pterodactyl server.');
             }
             continue;
           }
@@ -2514,7 +2768,7 @@
           if (port) document.getElementById('rpServerPort').value = port;
           if (playerId) document.getElementById('rpPlayerId').value = playerId;
           if (playerToken) document.getElementById('rpPlayerToken').value = playerToken;
-          alert('Loaded credentials from JSON! Click "Connect & Sync Paired Rust+ Server" below.');
+          alert('Loaded credentials from JSON! Click "Connect & Sync Active Rust+ Server" below.');
         } catch (err) {
           alert(`Failed to parse ${file.name}: ${err.message}`);
         }
@@ -2523,21 +2777,37 @@
     });
 
     document.getElementById('connectRustPlusBtn')?.addEventListener('click', async () => {
+      const serverName = document.getElementById('rpServerName')?.value.trim() || '';
       const ip = document.getElementById('rpServerIp').value.trim();
       const port = document.getElementById('rpServerPort').value.trim() || '28082';
       const playerId = document.getElementById('rpPlayerId').value.trim();
       const playerToken = document.getElementById('rpPlayerToken').value.trim();
-      appState.rustPlus.config = { ip, port, playerId, playerToken };
+      const useFacepunchProxy = Boolean(document.getElementById('rpUseProxyCheckbox')?.checked);
+
+      appState.rustPlus.config = {
+        serverName: serverName || appState.rustPlus.config?.serverName || `${ip}:${port}`,
+        ip,
+        port,
+        playerId,
+        playerToken,
+        useFacepunchProxy
+      };
       saveLocalFallback();
+      renderRustPlusSidebar();
 
       if (isServerConnected) {
         try {
           const res = await fetch('/api/rustplus/connect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
-            body: JSON.stringify({ ip, port, playerId, playerToken })
+            body: JSON.stringify(appState.rustPlus.config)
           });
           const data = await res.json();
+          if (Array.isArray(data.pairedServers)) {
+            appState.rustPlus.pairedServers = data.pairedServers;
+          }
+          renderPairedServersInModal();
+          renderRustPlusSidebar();
           alert(data.message || 'Rust+ configuration updated!');
         } catch (_) {}
       } else {
@@ -2593,8 +2863,8 @@
       const wy = (sy - H / 2 - mapOffsetY) / mapZoom + H / 2;
       const island = getIslandRect(W, H);
       return {
-        nx: (wx - island.ox) / island.S,
-        ny: (wy - island.oy) / island.S
+        nx: (wx - island.ix) / island.S,
+        ny: (wy - island.iy) / island.S
       };
     }
 
@@ -2664,15 +2934,15 @@
         const world = window.RUST_WORLD_MAP || {};
         const mapSize = world.size || 3500;
         let bestAtlasId = null;
-        let minWorldDist = 0.038;
+        let minWorldDist = 0.042;
 
         if (Array.isArray(world.monuments)) {
           world.monuments.forEach((wm) => {
-            const mnx = wm.x / mapSize;
-            const mny = 1 - wm.y / mapSize;
+            const mnx = (wm.x + mapSize / 2) / mapSize;
+            const mny = 1 - (wm.y + mapSize / 2) / mapSize;
             const d = Math.hypot(mnx - nx, mny - ny);
             if (d < minWorldDist) {
-              const atlasId = prefabToMonumentAtlasId(wm.prefab);
+              const atlasId = prefabToMonumentAtlasId(wm.i || wm.prefab);
               if (atlasId) {
                 minWorldDist = d;
                 bestAtlasId = atlasId;

@@ -67,7 +67,7 @@ const DEFAULT_STATE = {
   squadName: 'RUST SQUAD ALPHA',
   mapConfig: {
     seed: '1337420',
-    size: 4250,
+    size: 3500,
     customImageUrl: '',
     wipeDate: new Date(Date.now() - 2 * 86400000).toISOString()
   },
@@ -75,27 +75,28 @@ const DEFAULT_STATE = {
     connected: false,
     fcmListening: false,
     mode: 'simulated_live',
+    authToken: '',
+    steamId: '',
+    lastHistoryNotificationId: 0,
+    pairedServers: [],
     config: {
-      serverName: '',
-      ip: process.env.RUSTPLUS_IP || '',
-      port: process.env.RUSTPLUS_PORT || '28082',
-      playerId: process.env.RUSTPLUS_PLAYER_ID || '',
+      serverName: "[EU] Willjum's Casual Solo/Duo Monthly",
+      ip: process.env.RUSTPLUS_IP || '185.83.154.88',
+      port: process.env.RUSTPLUS_PORT || '28017',
+      playerId: process.env.RUSTPLUS_PLAYER_ID || '76561198025882443',
       playerToken: process.env.RUSTPLUS_PLAYER_TOKEN || ''
     },
-    serverTime: '14:35',
+    serverTime: '14:39',
     isDaytime: true,
     liveMarkers: [],
     teamMembers: [
-      { id: 'tm-1', name: 'Tang [Leader]', x: 0.52, y: 0.44, grid: 'N11', isOnline: true, isAlive: true, deathX: 0.75, deathY: 0.45, deathGrid: 'T11' },
-      { id: 'tm-2', name: 'Scout_AK', x: 0.08, y: 0.45, grid: 'B11', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' },
-      { id: 'tm-3', name: 'BerryFarmer', x: 0.53, y: 0.45, grid: 'N11', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' },
-      { id: 'tm-4', name: 'RigController', x: 0.83, y: 0.23, grid: 'V5', isOnline: false, isAlive: true, deathX: null, deathY: null, deathGrid: '' }
+      { id: '76561198025882443', name: 'Smiguel', x: 0.2261, y: 0.6572, grid: 'S6', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' },
+      { id: '76561198122964735', name: 'Kanki', x: 0.2258, y: 0.6552, grid: 'S6', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' }
     ],
     smartDevices: [
-      { id: 'sd-1', entityId: '1048291', name: 'Compound Auto Turrets (12x)', type: 'switch', active: true, grid: 'N11' },
-      { id: 'sd-2', entityId: '1048295', name: 'Roof SAM Sites (3x)', type: 'switch', active: false, grid: 'N11' },
-      { id: 'sd-3', entityId: '1048310', name: 'Boat Base Smart Doors', type: 'switch', active: false, grid: 'V5' },
-      { id: 'sd-4', entityId: '1048400', name: 'Core Wall Seismic / Smart Alarm', type: 'alarm', active: true, triggered: false, grid: 'N11' }
+      { id: 'sd-16114601', entityId: '16114601', name: 'Smart Alarm', type: 'alarm', active: true, triggered: false, grid: 'S6' },
+      { id: 'sd-1', entityId: '1048291', name: 'Compound Auto Turrets (12x)', type: 'switch', active: true, grid: 'S6' },
+      { id: 'sd-2', entityId: '1048295', name: 'Roof SAM Sites (3x)', type: 'switch', active: false, grid: 'S6' }
     ],
     teamChat: [
       { id: 'tc-1', author: 'Tang [Leader]', text: 'Small Rig crate hacked! 15m timer started.', time: '22:10', color: '#4ade80' },
@@ -303,13 +304,13 @@ function normalizedToGrid(nx, ny) {
 }
 
 // ============================================================================
-// NATIVE RUST+ WEBSOCKET CONNECTOR
+// NATIVE RUST+ WEBSOCKET CONNECTOR (WITH AUTO FACEPUNCH PROXY FALLBACK)
 // ============================================================================
 let activeRustPlusClient = null;
 let rustPlusPollTimer = null;
 let cachedRustPlusMapBuffer = null;
 
-function connectRustPlusSocket(cfg) {
+function connectRustPlusSocket(cfg, triedProxyFallback = false) {
   if (!RustPlus || !cfg || !cfg.ip || !cfg.playerId || !cfg.playerToken) {
     return false;
   }
@@ -320,17 +321,29 @@ function connectRustPlusSocket(cfg) {
     }
     if (rustPlusPollTimer) clearInterval(rustPlusPollTimer);
 
+    const useProxy = Boolean(cfg.useFacepunchProxy);
     const rp = new RustPlus(
       cfg.ip,
       cfg.port || 28082,
       cfg.playerId,
       cfg.playerToken,
-      Boolean(cfg.useFacepunchProxy)
+      useProxy
     );
     activeRustPlusClient = rp;
 
+    let didConnect = false;
+    const fallbackTimeout = setTimeout(() => {
+      if (!didConnect && !triedProxyFallback) {
+        console.log(`[Rust+] Direct connection to ${cfg.ip}:${cfg.port} timed out; auto-retrying via Facepunch Proxy...`);
+        cfg.useFacepunchProxy = !useProxy;
+        connectRustPlusSocket(cfg, true);
+      }
+    }, 6500);
+
     rp.on('connected', () => {
-      console.log(`[Rust+] Connected to live Rust server ${cfg.ip}:${cfg.port}`);
+      didConnect = true;
+      clearTimeout(fallbackTimeout);
+      console.log(`[Rust+] Connected to live Rust server ${cfg.ip}:${cfg.port} (proxy=${useProxy})`);
       squadState.rustPlus.connected = true;
       squadState.rustPlus.mode = 'real_rustplus';
       saveState(squadState);
@@ -348,8 +361,8 @@ function connectRustPlusSocket(cfg) {
       });
 
       // 2. Poll live markers, team info & server time every 4s
-      rustPlusPollTimer = setInterval(() => {
-        const mapSize = squadState.mapConfig?.size || 4250;
+      const pollTelemetry = () => {
+        const mapSize = squadState.mapConfig?.size || 3500;
 
         rp.getInfo((msg) => {
           const info = msg?.response?.info;
@@ -357,6 +370,19 @@ function connectRustPlusSocket(cfg) {
             squadState.mapConfig.size = info.mapSize || mapSize;
             squadState.mapConfig.seed = String(info.seed || squadState.mapConfig.seed);
             if (info.name) squadState.rustPlus.config.serverName = info.name;
+            if (info.players !== undefined && info.maxPlayers !== undefined) {
+              squadState.rustPlus.playersOnline = `${info.players}/${info.maxPlayers}`;
+            }
+          }
+        });
+
+        rp.getTime?.((msg) => {
+          const timeObj = msg?.response?.time;
+          if (timeObj && typeof timeObj.time === 'number') {
+            const hrs = Math.floor(timeObj.time);
+            const mins = Math.floor((timeObj.time - hrs) * 60);
+            squadState.rustPlus.serverTime = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+            squadState.rustPlus.isDaytime = hrs >= 7 && hrs < 19;
           }
         });
 
@@ -368,7 +394,10 @@ function connectRustPlusSocket(cfg) {
               const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
               return {
                 id: String(m.steamId),
+                steamId: String(m.steamId),
                 name: m.name,
+                wx: m.x,
+                wy: m.y,
                 x: Number(nx.toFixed(4)),
                 y: Number(ny.toFixed(4)),
                 grid: normalizedToGrid(nx, ny),
@@ -389,7 +418,6 @@ function connectRustPlusSocket(cfg) {
               const nx = Math.min(1, Math.max(0, mk.x / mapSize));
               const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
               const grid = normalizedToGrid(nx, ny);
-              // Type 3 = VendingMachine
               if (mk.type === 3 && Array.isArray(mk.sellOrders) && mk.sellOrders.length > 0) {
                 liveVms.push({
                   id: `vm-${mk.id}`,
@@ -421,10 +449,12 @@ function connectRustPlusSocket(cfg) {
             squadState.rustPlus.liveMarkers = liveEvts;
           }
         });
-      }, 4000);
+      };
+
+      pollTelemetry();
+      rustPlusPollTimer = setInterval(pollTelemetry, 4000);
     });
 
-    // Listen for real-time In-Game Team Chat & Smart Switch changes
     rp.on('message', (msg) => {
       const tmMsg = msg?.broadcast?.teamMessage?.message;
       if (tmMsg) {
@@ -454,6 +484,7 @@ function connectRustPlusSocket(cfg) {
     });
 
     rp.on('disconnected', () => {
+      clearTimeout(fallbackTimeout);
       squadState.rustPlus.connected = false;
       if (rustPlusPollTimer) clearInterval(rustPlusPollTimer);
       broadcastState('rustplus_disconnected');
@@ -461,6 +492,11 @@ function connectRustPlusSocket(cfg) {
 
     rp.on('error', (err) => {
       console.error('[Rust+ Socket Error]', err.message || err);
+      if (!didConnect && !triedProxyFallback) {
+        clearTimeout(fallbackTimeout);
+        cfg.useFacepunchProxy = !useProxy;
+        connectRustPlusSocket(cfg, true);
+      }
     });
 
     rp.connect();
@@ -472,9 +508,13 @@ function connectRustPlusSocket(cfg) {
 }
 
 // ============================================================================
-// RUST+ DESKTOP STYLE AUTO-PAIRING (FCM PUSH RECEIVER + FACEPUNCH REGISTER)
+// OVERHAULED RUST+ PAIRING ENGINE v3.0:
+// 1. Facepunch Code Exchange (/login/exchange) + 1-Click Popup Trampoline
+// 2. Instant & Continuous Facepunch Cloud History Sync (/api/history/read)
+// 3. 2026 Native 4-Step Android Firebase (FIS_v2) + C2DM + Expo Registration
 // ============================================================================
 let fcmClient = null;
+let historySyncTimer = null;
 
 function postJsonHttps(urlStr, bodyObj, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -486,12 +526,13 @@ function postJsonHttps(urlStr, bodyObj, headers = {}) {
         path: parsed.pathname + parsed.search,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
-          'User-Agent': 'RustTacticalCompanion/2.1',
+          'User-Agent': 'okhttp/4.9.2',
           ...headers
         },
-        timeout: 10000
+        timeout: 12000
       },
       (res) => {
         let data = '';
@@ -500,10 +541,10 @@ function postJsonHttps(urlStr, bodyObj, headers = {}) {
           try {
             const json = data ? JSON.parse(data) : {};
             if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
-            else reject(new Error(json?.error || `HTTP ${res.statusCode}: ${data.slice(0, 120)}`));
+            else reject(new Error(json?.error || `HTTP ${res.statusCode}: ${data.slice(0, 140)}`));
           } catch (_) {
             if (res.statusCode >= 200 && res.statusCode < 300) resolve({ raw: data });
-            else reject(new Error(`HTTP ${res.statusCode}`));
+            else reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 140)}`));
           }
         });
       }
@@ -514,40 +555,276 @@ function postJsonHttps(urlStr, bodyObj, headers = {}) {
   });
 }
 
-function extractFacepunchToken(rawInput) {
+function postFormHttps(urlStr, formParams, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const payload = new URLSearchParams(formParams).toString();
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(payload),
+          'User-Agent': 'okhttp/4.9.2',
+          ...headers
+        },
+        timeout: 12000
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
+          else reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 140)}`));
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function exchangeCodeForToken(code) {
+  const res = await postJsonHttps('https://companion-rust.facepunch.com/login/exchange', {
+    code: String(code).trim()
+  });
+  const token = res?.token || res?.Token || res?.auth_token || res?.rustplus_auth_token || '';
+  const steamId = String(res?.steamId || res?.SteamId || res?.steam_id || '');
+  if (!token) {
+    throw new Error('Facepunch /login/exchange did not return a valid token.');
+  }
+  return { token, steamId };
+}
+
+async function resolveFacepunchAuth(rawInput) {
   const str = String(rawInput || '').trim();
   if (!str) return null;
 
-  // 1. Direct JSON object {"SteamId":"...","Token":"..."} or RustPlusDesk rustplusjs-config.json
+  // 1. JSON object (rustplusjs-config.json, {"code":"..."}, or {"Token":"..."})
   try {
     const j = JSON.parse(str);
     if (j.fcm_credentials && j.fcm_credentials.gcm && j.fcm_credentials.fcm) {
       return {
         fcmCredentials: j.fcm_credentials,
+        expoPushToken: j.expo_push_token || '',
         token: j.rustplus_auth_token || j.Token || j.token || '',
-        steamId: j.steam_id || j.SteamId || j.steamId || ''
+        steamId: String(j.steam_id || j.SteamId || j.steamId || '')
       };
     }
-    if (j.Token || j.token || j.rustplus_auth_token) {
+    if (j.Token || j.token || j.rustplus_auth_token || j.AuthToken) {
       return {
-        token: j.Token || j.token || j.rustplus_auth_token,
-        steamId: j.SteamId || j.steamId || j.steam_id || ''
+        token: j.Token || j.token || j.rustplus_auth_token || j.AuthToken,
+        steamId: String(j.SteamId || j.steamId || j.steam_id || '')
       };
+    }
+    if (j.code || j.Code) {
+      return await exchangeCodeForToken(j.code || j.Code);
     }
   } catch (_) {}
 
-  // 2. Extracted from HTML DOM / page source of companion-rust.facepunch.com/login
-  const tokenMatch = str.match(/["']Token["']\s*:\s*["']([^"']+)["']/i);
-  const steamMatch = str.match(/["']SteamId["']\s*:\s*["'](\d+)["']/i);
+  // 2. URL or query/hash string containing ?code=..., #code=..., or ?token=...
+  const codeMatch = str.match(/[?#&]code=([^&#\s"']+)/i);
+  if (codeMatch && codeMatch[1]) {
+    const decodedCode = decodeURIComponent(codeMatch[1]);
+    return await exchangeCodeForToken(decodedCode);
+  }
+  const urlTokenMatch = str.match(/[?#&](?:token|auth_token)=([^&#\s"']+)/i);
+  const urlSteamMatch = str.match(/[?#&](?:steamId|steam_id)=(\d+)/i);
+  if (urlTokenMatch && urlTokenMatch[1]) {
+    return {
+      token: decodeURIComponent(urlTokenMatch[1]),
+      steamId: urlSteamMatch ? urlSteamMatch[1] : ''
+    };
+  }
+
+  // 3. Extracted from HTML DOM / page source
+  const tokenMatch = str.match(/["'](?:Token|rustplus_auth_token)["']\s*:\s*["']([^"']+)["']/i);
+  const steamMatch = str.match(/["'](?:SteamId|steam_id)["']\s*:\s*["']?(\d+)["']?/i);
   if (tokenMatch) {
     return { token: tokenMatch[1], steamId: steamMatch ? steamMatch[1] : '' };
   }
 
-  // 3. Raw token string (JWT / base64 Facepunch token)
-  if (str.length > 25 && !str.includes(' ') && !str.includes('<html')) {
-    return { token: str, steamId: '' };
+  // 4. Raw JWT / token or short exchange code
+  if (!str.includes(' ') && !str.includes('<html')) {
+    if (str.length > 45 && str.includes('.')) {
+      return { token: str, steamId: '' };
+    }
+    if (str.length >= 12 && str.length <= 90) {
+      try {
+        return await exchangeCodeForToken(str);
+      } catch (_) {
+        return { token: str, steamId: '' };
+      }
+    }
   }
+
   return null;
+}
+
+function applyIncomingPairingPayload(body, notificationId = 0) {
+  if (!body || typeof body !== 'object') return { serverPaired: null, entityPaired: null };
+  let serverPaired = null;
+  let entityPaired = null;
+
+  if (body.ip && body.playerToken) {
+    const srvObj = {
+      id: body.id || `${body.ip}:${body.port || '28082'}`,
+      serverName: body.name || `${body.ip}:${body.port || '28082'}`,
+      ip: String(body.ip),
+      port: String(body.port || '28082'),
+      playerId: String(body.playerId || squadState.rustPlus.steamId || ''),
+      playerToken: String(body.playerToken),
+      img: body.img || '',
+      desc: body.desc || '',
+      pairedAt: Date.now()
+    };
+
+    if (!Array.isArray(squadState.rustPlus.pairedServers)) {
+      squadState.rustPlus.pairedServers = [];
+    }
+    const existingIdx = squadState.rustPlus.pairedServers.findIndex(
+      (s) => s.ip === srvObj.ip && String(s.port) === String(srvObj.port)
+    );
+    if (existingIdx >= 0) {
+      squadState.rustPlus.pairedServers[existingIdx] = srvObj;
+    } else {
+      squadState.rustPlus.pairedServers.unshift(srvObj);
+    }
+
+    if (body.type === 'server' || !squadState.rustPlus.config?.playerToken) {
+      squadState.rustPlus.config = {
+        serverName: srvObj.serverName,
+        ip: srvObj.ip,
+        port: srvObj.port,
+        playerId: srvObj.playerId,
+        playerToken: srvObj.playerToken
+      };
+      serverPaired = srvObj;
+    }
+  }
+
+  if (body.entityId) {
+    const entityIdStr = String(body.entityId);
+    const devType = String(body.entityType) === '2' ? 'alarm' : String(body.entityType) === '3' ? 'monitor' : 'switch';
+    const devName =
+      body.entityName ||
+      (devType === 'alarm' ? `Smart Alarm #${entityIdStr}` : `Smart Switch #${entityIdStr}`);
+
+    if (!Array.isArray(squadState.rustPlus.smartDevices)) {
+      squadState.rustPlus.smartDevices = [];
+    }
+    const existing = squadState.rustPlus.smartDevices.find(
+      (d) => String(d.entityId) === entityIdStr
+    );
+    if (!existing) {
+      squadState.rustPlus.smartDevices.unshift({
+        id: 'sd-' + entityIdStr,
+        entityId: entityIdStr,
+        name: devName,
+        type: devType === 'alarm' ? 'alarm' : 'switch',
+        active: false,
+        grid: 'PAIRED'
+      });
+      entityPaired = { entityId: entityIdStr, name: devName, type: devType };
+    }
+  }
+
+  if (notificationId && notificationId > (squadState.rustPlus.lastHistoryNotificationId || 0)) {
+    squadState.rustPlus.lastHistoryNotificationId = notificationId;
+  }
+
+  return { serverPaired, entityPaired };
+}
+
+/**
+ * Syncs all paired servers and Smart Switches/Alarms directly from Facepunch's
+ * official cloud notification history: POST https://companion-rust.facepunch.com/api/history/read
+ */
+async function syncPairingsFromFacepunchHistory(authToken, isBackgroundPoll = false) {
+  const token = authToken || squadState.rustPlus.authToken;
+  if (!token) return { serversFound: 0, devicesFound: 0 };
+
+  const res = await postJsonHttps(
+    'https://companion-rust.facepunch.com/api/history/read',
+    { AuthToken: token },
+    { Authorization: `Bearer ${token}` }
+  );
+
+  const notifications = Array.isArray(res?.notifications)
+    ? res.notifications
+    : Array.isArray(res?.messages)
+      ? res.messages
+      : [];
+
+  // Process oldest to newest so the newest server becomes the active one
+  const sorted = [...notifications].sort((a, b) => (a.notificationId || 0) - (b.notificationId || 0));
+  const prevMaxId = squadState.rustPlus.lastHistoryNotificationId || 0;
+
+  let serversFound = 0;
+  let devicesFound = 0;
+  let newestServer = null;
+  let newestEntity = null;
+
+  for (const item of sorted) {
+    const nid = Number(item.notificationId || 0);
+    if (isBackgroundPoll && prevMaxId > 0 && nid <= prevMaxId) {
+      continue;
+    }
+    const rawData = item.data || item.body;
+    if (!rawData) continue;
+    try {
+      const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+      const { serverPaired, entityPaired } = applyIncomingPairingPayload(parsed, nid);
+      if (serverPaired) {
+        serversFound++;
+        newestServer = serverPaired;
+      }
+      if (entityPaired) {
+        devicesFound++;
+        newestEntity = entityPaired;
+      }
+    } catch (_) {}
+  }
+
+  if (serversFound > 0 || devicesFound > 0 || !isBackgroundPoll) {
+    squadState.rustPlus.fcmListening = true;
+    saveState(squadState);
+    if (newestServer) {
+      connectRustPlusSocket(squadState.rustPlus.config);
+      if (isBackgroundPoll) {
+        broadcastState('rustplus_paired_server', { pairedServer: newestServer });
+      }
+    }
+    if (newestEntity && isBackgroundPoll) {
+      broadcastState('rustplus_paired_entity', { pairedEntity: newestEntity });
+    }
+    if (!isBackgroundPoll) {
+      broadcastState('state_update');
+    }
+  }
+
+  return {
+    serversFound,
+    devicesFound,
+    totalHistoryItems: notifications.length,
+    activeServer: squadState.rustPlus.config
+  };
+}
+
+function startHistorySyncPoller(authToken) {
+  if (authToken) {
+    squadState.rustPlus.authToken = authToken;
+  }
+  if (historySyncTimer) clearInterval(historySyncTimer);
+  squadState.rustPlus.fcmListening = true;
+  historySyncTimer = setInterval(() => {
+    if (squadState.rustPlus.authToken) {
+      syncPairingsFromFacepunchHistory(squadState.rustPlus.authToken, true).catch(() => {});
+    }
+  }, 6000);
 }
 
 function handleIncomingFcmNotification(notification) {
@@ -557,54 +834,14 @@ function handleIncomingFcmNotification(notification) {
     const body = typeof data.body === 'string' ? JSON.parse(data.body) : data.body;
     console.log('[Rust+ FCM Push Received]', body.type, body.name || body.entityName || '');
 
-    if (body.type === 'server' && body.ip && body.playerToken) {
-      // Auto-Pair Server!
-      squadState.rustPlus.config = {
-        serverName: body.name || `${body.ip}:${body.port}`,
-        ip: body.ip,
-        port: String(body.port || '28082'),
-        playerId: String(body.playerId || ''),
-        playerToken: String(body.playerToken || '')
-      };
-      saveState(squadState);
+    const { serverPaired, entityPaired } = applyIncomingPairingPayload(body);
+    saveState(squadState);
+    if (serverPaired) {
       connectRustPlusSocket(squadState.rustPlus.config);
-      broadcastState('rustplus_paired_server', {
-        pairedServer: squadState.rustPlus.config
-      });
-    } else if (body.type === 'entity' && body.entityId) {
-      // Auto-Pair Smart Switch / Smart Alarm / Storage Monitor!
-      if (body.ip && body.playerToken && !squadState.rustPlus.config.ip) {
-        squadState.rustPlus.config = {
-          serverName: body.name || `${body.ip}:${body.port}`,
-          ip: body.ip,
-          port: String(body.port || '28082'),
-          playerId: String(body.playerId || ''),
-          playerToken: String(body.playerToken || '')
-        };
-        connectRustPlusSocket(squadState.rustPlus.config);
-      }
-
-      const entityIdStr = String(body.entityId);
-      const existing = (squadState.rustPlus.smartDevices || []).find(
-        (d) => String(d.entityId) === entityIdStr
-      );
-      const devType = String(body.entityType) === '2' ? 'alarm' : 'switch';
-      const devName = body.entityName || (devType === 'alarm' ? `Smart Alarm #${entityIdStr}` : `Smart Switch #${entityIdStr}`);
-
-      if (!existing) {
-        squadState.rustPlus.smartDevices.unshift({
-          id: 'sd-' + Date.now(),
-          entityId: entityIdStr,
-          name: devName,
-          type: devType,
-          active: false,
-          grid: 'PAIRED'
-        });
-      }
-      saveState(squadState);
-      broadcastState('rustplus_paired_entity', {
-        pairedEntity: { entityId: entityIdStr, name: devName, type: devType }
-      });
+      broadcastState('rustplus_paired_server', { pairedServer: serverPaired });
+    }
+    if (entityPaired) {
+      broadcastState('rustplus_paired_entity', { pairedEntity: entityPaired });
     }
   } catch (err) {
     console.error('[Rust+ FCM Parse Error]', err.message);
@@ -612,7 +849,13 @@ function handleIncomingFcmNotification(notification) {
 }
 
 async function startFcmPairingListener(credentials) {
-  if (!PushReceiver || !credentials) return false;
+  if (!credentials) return false;
+  if (credentials.authToken || credentials.rustplus_auth_token) {
+    startHistorySyncPoller(credentials.authToken || credentials.rustplus_auth_token);
+  }
+  if (!PushReceiver || !credentials.gcm || !credentials.fcm) {
+    return Boolean(squadState.rustPlus.authToken);
+  }
   try {
     if (fcmClient) {
       try { fcmClient.destroy?.(); } catch (_) {}
@@ -621,57 +864,133 @@ async function startFcmPairingListener(credentials) {
     squadState.rustPlus.fcmListening = true;
     saveState(squadState);
     broadcastState('state_update');
-    console.log('[Rust+ FCM] Live In-Game Pairing Listener ACTIVE! Click "Pair" in-game anytime.');
+    console.log('[Rust+ FCM] Live In-Game Pairing Listener + Cloud History Poller ACTIVE!');
     return true;
   } catch (err) {
-    console.error('[Rust+ FCM Listen Error]', err.message);
-    return false;
+    console.warn('[Rust+ FCM Socket Warning]', err.message);
+    return Boolean(squadState.rustPlus.authToken);
   }
 }
 
-async function registerFacepunchFcm(authToken) {
-  if (!PushReceiver) {
-    throw new Error('Package @liamcottle/push-receiver is not installed yet. Run npm install on your container.');
-  }
+function generateFirebaseFid() {
+  const bytes = crypto.randomBytes(17);
+  bytes[0] = 0b01110000 | (bytes[0] & 0b00001111);
+  return bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 22);
+}
 
-  // 1. Register with Google FCM using Facepunch's Sender ID
-  const fcmCredentials = await PushReceiver.register(FACEPUNCH_GCM_SENDER_ID);
-  const fcmToken = fcmCredentials?.fcm?.token;
-  if (!fcmToken) {
-    throw new Error('Failed to obtain FCM token from push-receiver');
-  }
+/**
+ * 2026 Native 4-Step Android Firebase (FIS_v2) + C2DM + Expo Registration
+ * Plus immediate & continuous Facepunch Cloud History Sync (/api/history/read)!
+ */
+async function registerFacepunchFcm(authToken, steamId = '') {
+  squadState.rustPlus.authToken = authToken;
+  if (steamId) squadState.rustPlus.steamId = steamId;
 
-  // 2. Fetch Expo Push Token for @facepunch/rustcompanion
-  const expoRes = await postJsonHttps('https://exp.host/--/api/v2/push/getExpoPushToken', {
-    deviceId: crypto.randomUUID ? crypto.randomUUID() : 'rust-companion-' + Date.now(),
-    experienceId: '@facepunch/rustcompanion',
-    appId: 'com.facepunch.rust.companion',
-    deviceToken: fcmToken,
-    type: 'fcm',
-    development: false
+  // 1. Immediately sync all existing paired servers & Smart Switches from Facepunch Cloud History!
+  const historySyncResult = await syncPairingsFromFacepunchHistory(authToken, false).catch((err) => {
+    console.warn('[Rust+ History Sync Warning]', err.message);
+    return { serversFound: 0, devicesFound: 0 };
   });
 
-  const expoPushToken = expoRes?.data?.expoPushToken;
-  if (!expoPushToken) {
-    throw new Error('Failed to obtain Expo Push Token');
+  // 2. Start continuous 6s Cloud History Poller (catches in-game pairings over HTTPS Port 443!)
+  startHistorySyncPoller(authToken);
+
+  // 3. Also attempt 2026 Native 4-Step Android Firebase + Expo Push Registration in background
+  try {
+    const checkinRes = await postJsonHttps('https://android.clients.google.com/checkin', {
+      checkin: {
+        type: 3,
+        chromeBuild: { platform: 2, chromeVersion: '63.0.3234.0', channel: 1 }
+      },
+      version: 3
+    });
+    const androidId = String(checkinRes.androidId || checkinRes.android_id || '');
+    const securityToken = String(checkinRes.securityToken || checkinRes.security_token || '');
+
+    if (androidId && securityToken) {
+      const fid = generateFirebaseFid();
+      const fisRes = await postJsonHttps(
+        'https://firebaseinstallations.googleapis.com/v1/projects/rust-companion-app/installations',
+        {
+          fid,
+          appId: '1:976529667804:android:d6f1ddeb4403b338fea619',
+          authVersion: 'FIS_v2',
+          sdkVersion: 'a:17.0.0'
+        },
+        {
+          'x-goog-api-key': 'AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY',
+          'X-Android-Package': 'com.facepunch.rust.companion',
+          'X-Android-Cert': 'E28D05345FB78A7A1A63D70F4A302DBF426CA5AD',
+          'x-firebase-client': 'fire-abt/21.1.1 fire-installations/17.0.0 fire-android/ fire-core/20.3.1',
+          'x-firebase-app-name-hash': 'R1dAH9Ui7M-ynoznwBdw01tLxhI'
+        }
+      );
+
+      const fisToken = fisRes?.authToken?.token;
+      if (fisToken) {
+        const c2dmRaw = await postFormHttps(
+          'https://android.clients.google.com/c2dm/register3',
+          {
+            'X-subtype': '976529667804',
+            sender: '976529667804',
+            'X-app_ver': '25',
+            'X-osv': '29',
+            'X-cliv': 'fiid-21.1.1',
+            'X-gmsv': '220217001',
+            'X-scope': '*',
+            'X-Goog-Firebase-Installations-Auth': fisToken,
+            'X-gms_app_id': '1:976529667804:android:d6f1ddeb4403b338fea619',
+            'X-Firebase-Client': 'fire-abt/21.1.1 fire-installations/17.0.0 fire-android/ fire-core/20.3.1',
+            'X-firebase-app-name-hash': 'R1dAH9Ui7M-ynoznwBdw01tLxhI',
+            'X-Goog-Firebase-Installations-Auth-Version': 'FIS_v2',
+            app: 'com.facepunch.rust.companion',
+            device: androidId,
+            cert: 'e28d05345fb78a7a1a63d70f4a302dbf426ca5ad',
+            target_ver: '31'
+          },
+          { Authorization: `AidLogin ${androidId}:${securityToken}` }
+        );
+
+        const fcmToken = c2dmRaw.startsWith('token=') ? c2dmRaw.replace('token=', '').trim() : '';
+        if (fcmToken) {
+          const deviceId = crypto.randomUUID ? crypto.randomUUID() : 'rustplus-' + Date.now();
+          const expoRes = await postJsonHttps('https://exp.host/--/api/v2/push/getExpoPushToken', {
+            type: 'fcm',
+            deviceId,
+            development: false,
+            appId: 'com.facepunch.rust.companion',
+            deviceToken: fcmToken,
+            projectId: '49451aca-a822-41e6-ad59-955718d0ff9c'
+          });
+
+          const expoPushToken = expoRes?.data?.expoPushToken;
+          if (expoPushToken) {
+            await postJsonHttps(
+              'https://companion-rust.facepunch.com/api/push/register',
+              {
+                AuthToken: authToken,
+                DeviceId: deviceId,
+                PushKind: 3,
+                PushToken: expoPushToken
+              },
+              { Authorization: `Bearer ${authToken}` }
+            );
+          }
+        }
+      }
+    }
+  } catch (fcmErr) {
+    console.log('[Rust+ Push Registration Note] Using Facepunch Cloud History Poller:', fcmErr.message);
   }
 
-  // 3. Register with Facepunch Rust+ Companion API
-  await postJsonHttps(
-    'https://companion-rust.facepunch.com:443/api/push/register',
-    {
-      AuthToken: authToken,
-      DeviceId: 'rust-tactical-companion',
-      PushKind: 0,
-      PushToken: expoPushToken
-    },
-    { Authorization: `Bearer ${authToken}` }
+  fs.writeFileSync(
+    FCM_FILE,
+    JSON.stringify({ authToken, steamId, updatedAt: Date.now() }, null, 2),
+    'utf8'
   );
-
-  // 4. Save FCM credentials & start listening!
-  fs.writeFileSync(FCM_FILE, JSON.stringify(fcmCredentials, null, 2), 'utf8');
-  await startFcmPairingListener(fcmCredentials);
-  return true;
+  saveState(squadState);
+  broadcastState('state_update');
+  return historySyncResult;
 }
 
 // ============================================================================
@@ -879,61 +1198,226 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 3. Rust+ Desktop Style Auto-Pairing (FCM Registration & Listener)
-    if (pathname === '/api/rustplus/fcm-register' && req.method === 'POST') {
-      if (!checkPin(req, res)) return;
-      const body = await readJsonBody(req);
+    // 3A. 1-Click Steam Popup OAuth Redirect -> Facepunch Companion Login
+    if (pathname === '/api/rustplus/login' && req.method === 'GET') {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`;
+      const callbackUrl = `${proto}://${host}/api/rustplus/callback`;
+      const targetUrl = `https://companion-rust.facepunch.com/login?returnUrl=${encodeURIComponent(callbackUrl)}`;
+      res.writeHead(302, { Location: targetUrl });
+      return res.end();
+    }
 
-      // Direct fcm_credentials import from RustPlusDesk's rustplusjs-config.json
-      const directFcm = body.fcmCredentials || extractFacepunchToken(body.tokenInput)?.fcmCredentials;
+    // 3B. Facepunch Companion Login Callback Trampoline Page (reads ?code=... and #code=... hash fragment)
+    if (pathname === '/api/rustplus/callback' && req.method === 'GET') {
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rust+ Companion Pairing</title>
+  <style>
+    body { background: #0f172a; color: #f8fafc; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 28px 32px; max-width: 460px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    h2 { margin: 0 0 10px; color: #4ade80; font-size: 20px; }
+    p { margin: 0 0 16px; color: #94a3b8; font-size: 14px; line-height: 1.5; }
+    .status { font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; padding: 10px; background: #090d16; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2 id="title">Completing Rust+ Pairing...</h2>
+    <p id="desc">Exchanging Facepunch token & syncing your paired servers and Smart Switches...</p>
+    <div class="status" id="statusBox">Reading callback parameters...</div>
+  </div>
+  <script>
+    (async function() {
+      const statusBox = document.getElementById('statusBox');
+      const titleEl = document.getElementById('title');
+      const descEl = document.getElementById('desc');
+      try {
+        const payload = {
+          fullUrl: window.location.href,
+          search: window.location.search,
+          hash: window.location.hash
+        };
+        statusBox.textContent = 'Registering with Facepunch Cloud & syncing servers...';
+        const res = await fetch('/api/rustplus/callback/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to complete pairing');
+        }
+        titleEl.textContent = '✅ Rust+ Paired & Synced!';
+        descEl.textContent = data.message || 'Your servers and Smart Switches are now active.';
+        statusBox.textContent = 'Closing window...';
+        if (window.opener) {
+          window.opener.postMessage({ type: 'RUSTPLUS_AUTH_SUCCESS', data }, '*');
+        }
+        setTimeout(() => window.close(), 1200);
+      } catch (err) {
+        titleEl.style.color = '#f87171';
+        titleEl.textContent = '⚠️ Automatic Callback Needs URL Copy';
+        descEl.textContent = err.message;
+        statusBox.textContent = window.location.href;
+      }
+    })();
+  </script>
+</body>
+</html>`;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(html);
+    }
+
+    // 3C. Callback Submit & Rust+ Auto-Pairing (2026 OAuth Code Exchange + Cloud History Sync + FCM v1)
+    if ((pathname === '/api/rustplus/callback/submit' || pathname === '/api/rustplus/fcm-register') && req.method === 'POST') {
+      if (pathname === '/api/rustplus/fcm-register' && !checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      const rawCandidate = body.tokenInput || body.fullUrl || body.hash || body.search || body.code || body.token || '';
+
+      // Check for direct fcm_credentials import from RustPlusDesk's rustplusjs-config.json
+      const extractedSync = extractFacepunchToken(rawCandidate);
+      const directFcm = body.fcmCredentials || extractedSync?.fcmCredentials;
+
+      // Also resolve token or one-time OAuth code asynchronously
+      const resolvedAuth = await resolveFacepunchAuth(rawCandidate).catch(() => null);
+      const authToken = resolvedAuth?.token || extractedSync?.token || body.authToken || '';
+      const steamId = resolvedAuth?.steamId || extractedSync?.steamId || body.steamId || '';
+
       if (directFcm && directFcm.gcm && directFcm.fcm) {
         try {
           fs.writeFileSync(FCM_FILE, JSON.stringify(directFcm, null, 2), 'utf8');
           const ok = await startFcmPairingListener(directFcm);
-          if (!ok) {
-            return sendJson(res, 500, {
-              error: 'Saved FCM credentials, but @liamcottle/push-receiver could not start listener. Check server logs.'
-            });
+          let historyResult = { serversAdded: 0, devicesAdded: 0 };
+          if (authToken) {
+            squadState.rustPlus.authToken = authToken;
+            if (steamId) squadState.rustPlus.steamId = steamId;
+            startHistorySyncPoller(authToken);
+            historyResult = await syncPairingsFromFacepunchHistory(authToken, false).catch(() => ({ serversAdded: 0, devicesAdded: 0 }));
           }
+          saveState(squadState);
+          broadcastState('state_update');
           return sendJson(res, 200, {
             ok: true,
-            message: 'Imported Rust+ Desktop FCM Credentials! Live In-Game Pairing Listener is now ACTIVE.'
+            fcmActive: ok,
+            pairedServers: squadState.rustPlus.pairedServers || [],
+            message: `Imported Rust+ Desktop config! Live Listener active${historyResult.serversAdded ? ` + synced ${historyResult.serversAdded} server(s) from Facepunch Cloud` : ''}.`
           });
         } catch (err) {
           return sendJson(res, 500, { error: err.message });
         }
       }
 
-      const extracted = extractFacepunchToken(body.tokenInput);
-      if (!extracted || !extracted.token) {
+      if (!authToken) {
         return sendJson(res, 400, {
           error:
-            'No Facepunch Token found! Note: Pressing Ctrl+U on the Facepunch Login page reloads the page and clears your login. Instead, either upload your Rust+ Desktop files (%APPDATA%\\RustPlusDesk\\profiles.json or rustplusjs-config.json) OR press F12 -> Console on the Facepunch page and run the 1-Click Extractor!'
+            'Could not find a Facepunch Token or Login Code (?code=...). Click "1-Click Sign In with Steam (Auto-Pair Popup)", or after signing in on companion-rust.facepunch.com/login copy the URL from your browser address bar and paste it here, or upload %APPDATA%\\RustPlusDesk\\profiles.json / rustplusjs-config.json!'
         });
       }
+
       try {
-        await registerFacepunchFcm(extracted.token);
+        const regResult = await registerFacepunchFcm(authToken, steamId);
+        const totalServers = (squadState.rustPlus.pairedServers || []).length;
         return sendJson(res, 200, {
           ok: true,
-          message: 'Live In-Game Pairing Listener is now ACTIVE! Open Rust and click "Pair with Server" or pair any Smart Switch in-game.'
+          ...regResult,
+          pairedServers: squadState.rustPlus.pairedServers || [],
+          message: `Rust+ Cloud Pairing Active! Synced ${totalServers} paired server(s) from Facepunch Cloud. Any new "Pair with Server" or Smart Switch click in-game will appear automatically!`
         });
       } catch (err) {
         return sendJson(res, 500, { error: err.message });
       }
     }
 
+    // 3D. On-Demand Facepunch Cloud Notification History Sync (/api/history/read)
+    if (pathname === '/api/rustplus/sync-history' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      let tokenToUse = body.authToken || squadState.rustPlus.authToken || '';
+      if (body.tokenInput) {
+        const resolved = await resolveFacepunchAuth(body.tokenInput).catch(() => null);
+        if (resolved?.token) tokenToUse = resolved.token;
+      }
+      if (!tokenToUse) {
+        return sendJson(res, 400, {
+          error: 'No Facepunch AuthToken saved yet. Please sign in via Step 1 or import your rustplusjs-config.json first.'
+        });
+      }
+      squadState.rustPlus.authToken = tokenToUse;
+      startHistorySyncPoller(tokenToUse);
+      const syncStats = await syncPairingsFromFacepunchHistory(tokenToUse, false);
+      if (!syncStats.ok) {
+        return sendJson(res, 502, { error: syncStats.error || 'Failed to read Facepunch cloud history' });
+      }
+      saveState(squadState);
+      broadcastState('state_update');
+      return sendJson(res, 200, {
+        ok: true,
+        ...syncStats,
+        pairedServers: squadState.rustPlus.pairedServers || [],
+        activeConfig: squadState.rustPlus.config,
+        message: `Synced Facepunch Cloud History (${syncStats.totalNotifications || 0} notifications): ${ (squadState.rustPlus.pairedServers || []).length } server(s) & ${ (squadState.rustPlus.smartDevices || []).length } Smart Device(s) ready!`
+      });
+    }
+
     // 4. Rust+ Direct Config / RustPlusDesk profiles.json Import
     if (pathname === '/api/rustplus/connect' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
-      squadState.rustPlus.config = {
+      const newCfg = {
         serverName: body.serverName || squadState.rustPlus.config.serverName || '',
-        ip: body.ip || '',
-        port: String(body.port || '28082'),
-        playerId: String(body.playerId || ''),
-        playerToken: String(body.playerToken || ''),
-        useFacepunchProxy: Boolean(body.useFacepunchProxy)
+        ip: String(body.ip || '').trim(),
+        port: String(body.port || '28082').trim(),
+        playerId: String(body.playerId || '').trim(),
+        playerToken: String(body.playerToken || '').trim(),
+        useFacepunchProxy: Boolean(body.useFacepunchProxy),
+        serverId: body.serverId || ''
       };
+      squadState.rustPlus.config = newCfg;
+
+      // Also save/update in pairedServers list
+      if (newCfg.ip && newCfg.playerId && newCfg.playerToken) {
+        if (!Array.isArray(squadState.rustPlus.pairedServers)) {
+          squadState.rustPlus.pairedServers = [];
+        }
+        const idx = squadState.rustPlus.pairedServers.findIndex(
+          (s) => s.ip === newCfg.ip && String(s.port) === String(newCfg.port)
+        );
+        const entry = {
+          ...newCfg,
+          name: newCfg.serverName || `${newCfg.ip}:${newCfg.port}`,
+          pairedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        if (idx >= 0) squadState.rustPlus.pairedServers[idx] = { ...squadState.rustPlus.pairedServers[idx], ...entry };
+        else squadState.rustPlus.pairedServers.unshift(entry);
+      }
+
+      // If imported from RustPlusDesk profiles.json with bulk pairedServers
+      if (Array.isArray(body.pairedServers) && body.pairedServers.length > 0) {
+        if (!Array.isArray(squadState.rustPlus.pairedServers)) {
+          squadState.rustPlus.pairedServers = [];
+        }
+        body.pairedServers.forEach((srv) => {
+          if (!srv.ip || !srv.playerToken) return;
+          const existsIdx = squadState.rustPlus.pairedServers.findIndex(
+            (s) => s.ip === srv.ip && String(s.port) === String(srv.port || '28082')
+          );
+          const entry = {
+            serverId: srv.serverId || `${srv.ip}:${srv.port || '28082'}`,
+            name: srv.serverName || srv.name || `${srv.ip}:${srv.port || '28082'}`,
+            serverName: srv.serverName || srv.name || `${srv.ip}:${srv.port || '28082'}`,
+            ip: String(srv.ip),
+            port: String(srv.port || '28082'),
+            playerId: String(srv.playerId || ''),
+            playerToken: String(srv.playerToken || ''),
+            pairedAt: 'Imported'
+          };
+          if (existsIdx >= 0) squadState.rustPlus.pairedServers[existsIdx] = entry;
+          else squadState.rustPlus.pairedServers.push(entry);
+        });
+      }
 
       // If imported from RustPlusDesk profiles.json with Smart Switches / Alarms
       if (Array.isArray(body.smartDevices) && body.smartDevices.length > 0) {
@@ -969,8 +1453,9 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         nativeSocketStarted: started,
         nativeLibraryInstalled: Boolean(RustPlus),
+        pairedServers: squadState.rustPlus.pairedServers || [],
         message: started
-          ? `Connected to Rust+ server ${squadState.rustPlus.config.serverName || squadState.rustPlus.config.ip + ':' + squadState.rustPlus.config.port}!`
+          ? `Connecting to Rust+ server ${squadState.rustPlus.config.serverName || squadState.rustPlus.config.ip + ':' + squadState.rustPlus.config.port}...`
           : 'Saved Rust+ server & devices configuration!'
       });
     }
@@ -1117,12 +1602,16 @@ setInterval(() => {
   }
 }, 25000);
 
-// Resume saved FCM Pairing Listener & Rust+ Socket on startup
+// Resume saved FCM Pairing Listener, Facepunch Cloud History Poller & Rust+ Socket on startup
 if (fs.existsSync(FCM_FILE)) {
   try {
     const savedFcm = JSON.parse(fs.readFileSync(FCM_FILE, 'utf8'));
     startFcmPairingListener(savedFcm);
   } catch (_) {}
+}
+if (squadState.rustPlus?.authToken) {
+  startHistorySyncPoller(squadState.rustPlus.authToken);
+  syncPairingsFromFacepunchHistory(squadState.rustPlus.authToken, false).catch(() => {});
 }
 if (squadState.rustPlus?.config?.ip && squadState.rustPlus?.config?.playerToken) {
   connectRustPlusSocket(squadState.rustPlus.config);
@@ -1130,10 +1619,10 @@ if (squadState.rustPlus?.config?.ip && squadState.rustPlus?.config?.playerToken)
 
 server.listen(PORT, HOST, () => {
   console.log('==========================================================');
-  console.log('  RUST TACTICAL COMPANION — ONLINE (RUST+ AUTO-PAIR v2.1)');
+  console.log('  RUST TACTICAL COMPANION — ONLINE (RUST+ CLOUD PAIR v3.0)');
   console.log(`  Listening on: http://${HOST}:${PORT}`);
   console.log(`  Squad State : ${STATE_FILE}`);
   console.log(`  Rust+ Lib   : ${RustPlus ? 'READY (@liamcottle/rustplus.js)' : 'BUILT-IN TELEMETRY MODE'}`);
-  console.log(`  FCM Pairing : ${PushReceiver ? 'READY (@liamcottle/push-receiver)' : 'INSTALL VIA NPM'}`);
+  console.log(`  FCM Pairing : ${PushReceiver ? 'READY (@liamcottle/push-receiver + Cloud History Sync)' : 'CLOUD HISTORY SYNC READY'}`);
   console.log('==========================================================');
 });
