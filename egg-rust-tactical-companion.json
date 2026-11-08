@@ -1,0 +1,104 @@
+{
+  "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-11-08T22:35:00+01:00",
+  "name": "Rust Tactical Companion",
+  "author": "tang@users.noreply.github.com",
+  "description": "All-in-one Rust Companion Web App (Raidboi Optimizer, Interactive Map, Monument Timers, 6-Gene Solver, Recycler & BattleMetrics) with real-time Squad SSE Sync.",
+  "features": null,
+  "docker_images": {
+    "Node.js 22": "ghcr.io/parkervcp/yolks:nodejs_22",
+    "Node.js 20": "ghcr.io/parkervcp/yolks:nodejs_20",
+    "Node.js 18": "ghcr.io/parkervcp/yolks:nodejs_18"
+  },
+  "file_denylist": [],
+  "startup": "if [[ -d .git ]] && [[ {{AUTO_UPDATE}} == \"1\" ]]; then git pull; fi; /usr/local/bin/node /home/container/{{MAIN_FILE}}",
+  "config": {
+    "files": "{}",
+    "startup": "{\r\n    \"done\": \"RUST TACTICAL COMPANION\"\r\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\r\n# Rust Tactical Companion Installation Script\r\n#\r\n# Server Files: /mnt/server\r\napt update\r\napt install -y git curl ca-certificates\r\n\r\nmkdir -p /mnt/server\r\ncd /mnt/server || exit 1\r\n\r\nif [ \"$(ls -A /mnt/server)\" ]; then\r\n    echo \"Directory is not empty, checking for existing git repo...\"\r\n    if [ -d .git ]; then\r\n        git pull origin ${BRANCH}\r\n    else\r\n        git init\r\n        git remote add origin ${GIT_ADDRESS}\r\n        git fetch origin\r\n        git checkout -f -t origin/${BRANCH}\r\n    fi\r\nelse\r\n    echo \"Cloning ${GIT_ADDRESS} (branch: ${BRANCH})...\"\r\n    git clone --single-branch --branch ${BRANCH} ${GIT_ADDRESS} .\r\nfi\r\n\r\nmkdir -p /mnt/server/data\r\n\r\nif [ -f /mnt/server/package.json ]; then\r\n    /usr/local/bin/npm install --production\r\nfi\r\n\r\necho \"-----------------------------------------\"\r\necho \"Rust Tactical Companion Installation Done\"\r\necho \"-----------------------------------------\"",
+      "container": "node:20-bookworm-slim",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Git Repo Address",
+      "description": "GitHub repository URL to clone the Rust Tactical Companion from.",
+      "env_variable": "GIT_ADDRESS",
+      "default_value": "https://github.com/TanguyCze/rust-tactical-companion.git",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Install Branch",
+      "description": "The Git branch to install and track.",
+      "env_variable": "BRANCH",
+      "default_value": "main",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Auto Update on Startup",
+      "description": "Pull the latest changes from GitHub automatically every time the server starts (1 = enabled, 0 = disabled).",
+      "env_variable": "AUTO_UPDATE",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "Main JS File",
+      "description": "The entry file that starts the Rust Tactical Companion server.",
+      "env_variable": "MAIN_FILE",
+      "default_value": "index.js",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string",
+      "field_type": "text"
+    },
+    {
+      "name": "Squad PIN (Optional)",
+      "description": "Optional password/PIN required for squadmates to edit shared timers, map pins, or raid plans. Leave blank for open squad access.",
+      "env_variable": "SQUAD_PIN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:64",
+      "field_type": "text"
+    },
+    {
+      "name": "Discord Webhook URL (Optional)",
+      "description": "Optional Discord channel Webhook URL for sending Raid Plans and Decay/Monument Timer alerts.",
+      "env_variable": "DISCORD_WEBHOOK_URL",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "BattleMetrics API Token (Optional)",
+      "description": "Optional BattleMetrics Personal Access Token for higher API rate limits.",
+      "env_variable": "BATTLEMETRICS_TOKEN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    }
+  ]
+}
