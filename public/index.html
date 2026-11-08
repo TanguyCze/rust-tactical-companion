@@ -56,7 +56,7 @@
         💥 Raid & Sulfur Optimizer <span class="nav-badge">COMBOS</span>
       </button>
       <button class="nav-tab" data-tab="tab-map">
-        🗺️ Interactive Map & Monuments <span class="nav-badge">CARDS + SPOTS</span>
+        🛰️ Rust+ Live Map & Monuments <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">RUST+ LIVE</span>
       </button>
       <button class="nav-tab" data-tab="tab-timers">
         ⏱️ Monument Timers <span id="navTimerCount" class="nav-badge">0</span>
@@ -179,39 +179,65 @@
     </section>
 
     <!-- ==================================================================
-         TAB 2: INTERACTIVE MAP, MONUMENTS, KEYCARDS & BUILD SPOTS
+         TAB 2: RUST+ LIVE MAP, VENDING MACHINES, MONUMENTS & BUILD SPOTS
          ================================================================== -->
     <section id="tab-map" class="tab-panel">
+      <!-- Top Rust+ Live Server Telemetry Bar -->
+      <div class="panel" style="margin-bottom: 16px; padding: 12px 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <span class="keycard-tag keycard-Green" id="rustPlusStatusPill">🛰️ RUST+ LIVE TELEMETRY ACTIVE</span>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: #fff;" id="rustPlusClockDisplay">☀️ 14:35 DAYTIME</span>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: #38bdf8;" id="rustPlusCargoDisplay">🚢 Cargo: ORBITING</span>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: #f87171;" id="rustPlusHeliDisplay">🚁 Patrol Heli: ACTIVE</span>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: #4ade80;" id="rustPlusTeamDisplay">👥 Squad GPS: 3/4 Online</span>
+          </div>
+
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="toggleLiveEventsSimBtn" class="btn btn-sm" title="Toggle simulated Cargo/Heli movement when not paired to a live Rust+ port">
+              ⚡ Live Event Sim: ON
+            </button>
+            <button id="openRustPlusModalBtn" class="btn btn-sm btn-primary">
+              📱 Pair Rust+ Server / Load Map
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="grid-map-layout">
-        <!-- Left Column: Interactive Tactical Map Canvas -->
+        <!-- Left Column: Interactive Rust+ Tactical Map Canvas -->
         <div class="panel">
           <div class="panel-header">
             <div>
-              <div class="panel-title">🗺️ Interactive Tactical Map & Layer Overlay</div>
-              <div class="panel-subtitle">Click monuments to inspect puzzles/fuses, or switch to Pin Mode to mark Raid Targets & Bases for your squad</div>
+              <div class="panel-title">🛰️ Rust+ Live Map & Tactical Radar</div>
+              <div class="panel-subtitle">Live Squad GPS, Moving Cargo/Heli/CH47, Searchable Vending Machines, Keycard Puzzles & Build Spots</div>
             </div>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
               <button id="mapZoomInBtn" class="btn btn-sm">➕ Zoom</button>
               <button id="mapZoomOutBtn" class="btn btn-sm">➖ Zoom</button>
               <button id="mapResetViewBtn" class="btn btn-sm">⟲ Reset</button>
-              <button id="mapCustomUrlBtn" class="btn btn-sm">🖼️ Load Server Map URL</button>
+              <button id="mapCustomUrlBtn" class="btn btn-sm">🖼️ Map Image URL</button>
             </div>
           </div>
 
           <!-- Map Layer & Pin Mode Bar -->
           <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
             <div class="filter-pills" id="mapLayerToggles">
+              <button class="filter-pill active" data-layer="liveEvents">🚁 Cargo / Heli / Crates</button>
+              <button class="filter-pill active" data-layer="teamGps">👥 Squad GPS</button>
+              <button class="filter-pill active" data-layer="vending">🛒 Vending Shops</button>
               <button class="filter-pill active" data-layer="monuments">🏛️ Monuments</button>
-              <button class="filter-pill active" data-layer="cardFlow">💳 Card Progression</button>
-              <button class="filter-pill active" data-layer="buildSpots">🏰 Best Build Spots</button>
-              <button class="filter-pill active" data-layer="farmZones">⛏️ Node Hotspots</button>
+              <button class="filter-pill active" data-layer="cardFlow">💳 Card Flow</button>
+              <button class="filter-pill active" data-layer="buildSpots">🏰 Build Spots</button>
+              <button class="filter-pill active" data-layer="farmZones">⛏️ Nodes</button>
               <button class="filter-pill active" data-layer="squadPins">📍 Squad Pins</button>
             </div>
 
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary);">CLICK MODE:</span>
               <select id="mapClickModeSelect" class="select" style="padding: 4px 8px; font-size: 12px;">
-                <option value="inspect">🔍 Inspect Monument / Spot</option>
+                <option value="inspect">🔍 Inspect Shop / Monument</option>
+                <option value="move_gps">🏃 Move My Squad GPS Here</option>
                 <option value="pin_raid">🎯 Drop Raid Target Pin</option>
                 <option value="pin_base">🏠 Drop Squad Base Pin</option>
                 <option value="pin_farm">⛏️ Drop Farm Spot Pin</option>
@@ -225,29 +251,68 @@
             <canvas id="tacticalMapCanvas" width="900" height="900"></canvas>
 
             <div class="map-legend-bar">
-              <span class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Green Card / T1</span>
-              <span class="legend-item"><span class="legend-dot" style="background:#3b82f6;"></span> Blue Card / T2</span>
-              <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Red Card / T3 Elite</span>
-              <span class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Sulfur / Node Zone</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#4ade80;"></span> Squad / Vending</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#38bdf8;"></span> Cargo / Blue Card</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Heli / Red Card</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Locked Crate / Sulfur</span>
               <span class="legend-item"><span class="legend-dot" style="background:#a855f7;"></span> Meta Base Spot</span>
               <span id="mapCursorCoord" style="color: var(--sulfur-yellow); font-weight: 700;">GRID: M13</span>
             </div>
           </div>
         </div>
 
-        <!-- Right Column: Monument Card/Fuse Inspector + Build Spot Recommender + Squad Pins -->
+        <!-- Right Column: Rust+ Live Panel + Monument Atlas + Build Spots + Squad Pins -->
         <div style="display: flex; flex-direction: column; gap: 16px;">
           <div class="panel">
             <div class="panel-header" style="margin-bottom: 12px;">
               <div class="filter-pills" id="mapSideSubtabs">
-                <button class="filter-pill active" data-subtab="sub-monuments">🔑 Monuments & Cards (16)</button>
-                <button class="filter-pill" data-subtab="sub-buildspots">🏰 Best Build Spots</button>
-                <button class="filter-pill" data-subtab="sub-markers">📍 Squad Map Pins</button>
+                <button class="filter-pill active" data-subtab="sub-rustplus">🛰️ Rust+ Live (Shops & IoT)</button>
+                <button class="filter-pill" data-subtab="sub-monuments">🔑 Monuments (16)</button>
+                <button class="filter-pill" data-subtab="sub-buildspots">🏰 Build Spots</button>
+                <button class="filter-pill" data-subtab="sub-markers">📍 Squad Pins</button>
+              </div>
+            </div>
+
+            <!-- SUBTAB 0: RUST+ LIVE VENDING SEARCH, SMART SWITCHES & TEAM CHAT -->
+            <div id="sub-rustplus" class="map-subtab-content">
+              <!-- Vending Machine Item Search -->
+              <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <span style="font-family:var(--font-display); font-weight:700; color:#4ade80;">
+                    🛒 Rust+ Vending Machine Item Search
+                  </span>
+                  <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">Highlights on Map</span>
+                </div>
+                <input id="vendingSearchInput" type="text" class="input" placeholder="Search item in shops (e.g. Garage Door, Pure Ore Tea, Sulfur, AK, Scrap)..." style="width:100%; margin-bottom:10px;" />
+                <div id="vendingMachinesList" style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto;"></div>
+              </div>
+
+              <!-- Rust+ Smart Switches & Alarms -->
+              <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <span style="font-family:var(--font-display); font-weight:700; color:var(--sulfur-yellow);">
+                    🔌 Rust+ Smart Switches & Alarms
+                  </span>
+                  <button id="addSmartSwitchBtn" class="btn btn-sm">+ Pair Switch</button>
+                </div>
+                <div id="smartDevicesList" style="display:flex; flex-direction:column; gap:8px;"></div>
+              </div>
+
+              <!-- Live Squad GPS & Team Chat -->
+              <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px;">
+                <div style="font-family:var(--font-display); font-weight:700; color:#60a5fa; margin-bottom:8px;">
+                  💬 Rust+ In-Game & Squad Team Chat
+                </div>
+                <div id="rustPlusChatBox" style="background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:5px; padding:8px; height:125px; overflow-y:auto; margin-bottom:8px; font-size:12px; display:flex; flex-direction:column; gap:5px;"></div>
+                <div style="display:flex; gap:6px;">
+                  <input id="rustPlusChatInput" type="text" class="input" placeholder="Send message to Team Chat..." style="flex:1;" />
+                  <button id="sendRustPlusChatBtn" class="btn btn-primary btn-sm">Send</button>
+                </div>
               </div>
             </div>
 
             <!-- SUBTAB A: MONUMENTS, CARDS & FUSES -->
-            <div id="sub-monuments" class="map-subtab-content">
+            <div id="sub-monuments" class="map-subtab-content" style="display: none;">
               <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;" id="monumentFilterBar">
                 <button class="filter-pill active" data-mfilter="all">All</button>
                 <button class="filter-pill" data-mfilter="get_green">Gets Green Card</button>
@@ -653,6 +718,57 @@
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
           <button id="testDiscordWebhookBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Test Discord Ping</button>
           <button id="saveSettingsBtn" class="btn btn-primary">💾 Save & Sync with Squad</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL: RUST+ SERVER PAIRING & BATTLEMETRICS MAP AUTO-IMPORTER
+       ==================================================================== -->
+  <div id="rustPlusModal" class="modal-backdrop">
+    <div class="modal-card" style="max-width: 560px;">
+      <div class="panel-header">
+        <div class="panel-title">🛰️ Pair Rust+ Companion & Load Live Server Map</div>
+        <button id="closeRustPlusModalBtn" class="btn btn-sm">✕</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.35); border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--text-main);">
+          <strong>Method A — Direct Rust+ WebSocket Connection:</strong><br/>
+          Enter your Rust server's IP, Rust+ App Port (usually <code>28082</code> or <code>serverPort + 67</code>), your SteamID64, and your Rust+ Player Token (from <code>npx @liamcottle/rustplus.js fcm-register</code>).
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div style="flex: 2;">
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST SERVER IP</label>
+            <input id="rpServerIp" type="text" class="input" style="width: 100%;" placeholder="e.g. 145.239.205.12" />
+          </div>
+          <div style="flex: 1;">
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ APP PORT</label>
+            <input id="rpServerPort" type="text" class="input" style="width: 100%;" placeholder="28082" value="28082" />
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">STEAM ID 64</label>
+            <input id="rpPlayerId" type="text" class="input" style="width: 100%;" placeholder="76561198..." />
+          </div>
+          <div style="flex: 1;">
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ PLAYER TOKEN</label>
+            <input id="rpPlayerToken" type="password" class="input" style="width: 100%;" placeholder="Your negative/positive token" />
+          </div>
+        </div>
+        <button id="connectRustPlusBtn" class="btn btn-primary" style="width: 100%;">
+          🛰️ Connect Live Rust+ Socket & Sync Squad
+        </button>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
+          <div style="font-family: var(--font-display); font-weight: 700; color: var(--sulfur-yellow); margin-bottom: 6px;">
+            Method B — Auto-Import High-Res Map from BattleMetrics Server ID
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input id="rpBmServerIdInput" type="text" class="input" style="flex: 1;" placeholder="Enter BattleMetrics Server ID (e.g. 9565287)" />
+            <button id="rpFetchBmMapBtn" class="btn btn-sulfur">🌐 Auto-Load Map</button>
+          </div>
         </div>
       </div>
     </div>

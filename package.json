@@ -1,16 +1,21 @@
 {
   "name": "rust-tactical-companion",
-  "version": "1.0.0",
-  "description": "All-in-one Rust Companion Web App (Raiding Optimizer, Interactive Map & Monuments, Live Timers, Plant Genetics Lab & BattleMetrics Raid Intelligence) built for Pterodactyl Docker",
+  "version": "2.0.0",
+  "description": "All-in-one Rust Companion Web App with Rust+ Live Map (Vending Machines, Cargo/Heli/CH47 Telemetry, Team Radar, Smart Switches, Raidboi Optimizer, Monument Timers, 6-Gene Solver & BattleMetrics) for Pterodactyl Docker",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "optionalDependencies": {
+    "@liamcottle/rustplus.js": "^2.4.0"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "keywords": [
     "rust",
+    "rustplus",
+    "live-map",
     "raid-calculator",
     "genetics",
     "monuments",

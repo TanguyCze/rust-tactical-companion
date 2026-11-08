@@ -24,6 +24,104 @@
       size: 4250,
       customImageUrl: ''
     },
+    rustPlus: {
+      connected: false,
+      mode: 'simulated_live',
+      config: { ip: '', port: '28082', playerId: '', playerToken: '' },
+      serverTime: '14:35',
+      isDaytime: true,
+      teamMembers: [
+        { id: 'tm-1', name: 'Tang [Leader]', x: 0.52, y: 0.44, grid: 'N11', isOnline: true, isAlive: true, deathX: 0.75, deathY: 0.45, deathGrid: 'T11' },
+        { id: 'tm-2', name: 'Scout_AK', x: 0.08, y: 0.45, grid: 'B11', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' },
+        { id: 'tm-3', name: 'BerryFarmer', x: 0.53, y: 0.45, grid: 'N11', isOnline: true, isAlive: true, deathX: null, deathY: null, deathGrid: '' },
+        { id: 'tm-4', name: 'RigController', x: 0.83, y: 0.23, grid: 'V5', isOnline: false, isAlive: true, deathX: null, deathY: null, deathGrid: '' }
+      ],
+      smartDevices: [
+        { id: 'sd-1', entityId: '1048291', name: 'Compound Auto Turrets (12x)', type: 'switch', active: true, grid: 'N11' },
+        { id: 'sd-2', entityId: '1048295', name: 'Roof SAM Sites (3x)', type: 'switch', active: false, grid: 'N11' },
+        { id: 'sd-3', entityId: '1048310', name: 'Boat Base Smart Doors', type: 'switch', active: false, grid: 'V5' },
+        { id: 'sd-4', entityId: '1048400', name: 'Core Wall Seismic / Smart Alarm', type: 'alarm', active: true, triggered: false, grid: 'N11' }
+      ],
+      teamChat: [
+        { id: 'tc-1', author: 'Tang [Leader]', text: 'Small Rig crate hacked! 15m timer started.', time: '22:10', color: '#4ade80' },
+        { id: 'tc-2', author: 'Scout_AK', text: 'Q14 clan just logged off on BattleMetrics, 3 Garage Doors to core.', time: '22:14', color: '#60a5fa' },
+        { id: 'tc-3', author: 'BerryFarmer', text: '12x Pure Ore Teas ready in main fridge.', time: '22:18', color: '#eab308' }
+      ],
+      vendingMachines: [
+        {
+          id: 'vm-outpost',
+          name: 'Outpost Safe Zone',
+          type: 'npc',
+          x: 0.48,
+          y: 0.42,
+          grid: 'M10',
+          inStock: true,
+          orders: [
+            { item: 'Jackhammer', qty: 1, costItem: 'Scrap', costQty: 150, stock: 99 },
+            { item: 'Tactical Gloves', qty: 1, costItem: 'Scrap', costQty: 40, stock: 99 },
+            { item: 'Blue Keycard', qty: 1, costItem: 'Scrap', costQty: 100, stock: 99 },
+            { item: 'Low Grade Fuel', qty: 50, costItem: 'Crude Oil', costQty: 15, stock: 99 }
+          ]
+        },
+        {
+          id: 'vm-bandit',
+          name: 'Bandit Camp Market',
+          type: 'npc',
+          x: 0.38,
+          y: 0.56,
+          grid: 'J14',
+          inStock: true,
+          orders: [
+            { item: 'Scrap', qty: 3, costItem: 'Fertilizer', costQty: 2, stock: 999 },
+            { item: 'F1 Grenade', qty: 1, costItem: 'Scrap', costQty: 8, stock: 99 },
+            { item: 'LR-300 Assault Rifle', qty: 1, costItem: 'Scrap', costQty: 500, stock: 10 }
+          ]
+        },
+        {
+          id: 'vm-shop-1',
+          name: 'TEA SHOP // PURE ORE & SCRAP',
+          type: 'player',
+          x: 0.55,
+          y: 0.49,
+          grid: 'O12',
+          inStock: true,
+          orders: [
+            { item: 'Pure Ore Tea', qty: 1, costItem: 'Sulfur Ore', costQty: 600, stock: 14 },
+            { item: 'Pure Scrap Tea', qty: 1, costItem: 'Sulfur Ore', costQty: 500, stock: 9 },
+            { item: 'Pure Max Health Tea', qty: 1, costItem: 'Crude Oil', costQty: 40, stock: 6 }
+          ]
+        },
+        {
+          id: 'vm-shop-2',
+          name: 'GUNS & GARAGE DOORS FOR SULFUR',
+          type: 'player',
+          x: 0.67,
+          y: 0.38,
+          grid: 'R9',
+          inStock: true,
+          orders: [
+            { item: 'Garage Door', qty: 1, costItem: 'Sulfur Ore', costQty: 500, stock: 5 },
+            { item: 'Thompson', qty: 1, costItem: 'Sulfur Ore', costQty: 750, stock: 4 },
+            { item: 'Explosive 5.56 Ammo', qty: 1, costItem: 'Sulfur Ore', costQty: 400, stock: 8 },
+            { item: 'Auto Turret', qty: 1, costItem: 'Sulfur Ore', costQty: 1800, stock: 2 }
+          ]
+        },
+        {
+          id: 'vm-shop-3',
+          name: 'SNOW CLAN BOOM & T3 SHOP',
+          type: 'player',
+          x: 0.80,
+          y: 0.25,
+          grid: 'U6',
+          inStock: true,
+          orders: [
+            { item: 'Assault Rifle (AK)', qty: 1, costItem: 'Sulfur Ore', costQty: 2000, stock: 3 },
+            { item: 'Rocket', qty: 1, costItem: 'Scrap', costQty: 350, stock: 6 },
+            { item: 'Large Solar Panel', qty: 1, costItem: 'Sulfur Ore', costQty: 300, stock: 4 }
+          ]
+        }
+      ]
+    },
     markers: [
       {
         id: 'm-default-base',
@@ -898,7 +996,7 @@
   }
 
   // =========================================================================
-  // MODULE 2: INTERACTIVE TACTICAL MAP, MONUMENTS & BUILD SPOTS
+  // MODULE 2: RUST+ LIVE MAP, VENDING MACHINES, MONUMENTS & BUILD SPOTS
   // =========================================================================
   let mapZoom = 1.0;
   let mapOffsetX = 0;
@@ -908,8 +1006,13 @@
   let dragStartY = 0;
   let pointerMoved = false;
   let customMapImg = null;
+  let liveEventsSimEnabled = true;
+  let selectedVendingId = null;
 
   const mapLayers = {
+    liveEvents: true,
+    teamGps: true,
+    vending: true,
     monuments: true,
     cardFlow: true,
     buildSpots: true,
@@ -1224,6 +1327,216 @@
       });
     }
 
+    // 8. Layer: Rust+ Vending Machines (NPC + Player Shops with Search Highlight!)
+    if (mapLayers.vending && appState.rustPlus && Array.isArray(appState.rustPlus.vendingMachines)) {
+      const searchQ = (document.getElementById('vendingSearchInput')?.value || '').trim().toLowerCase();
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 220);
+
+      appState.rustPlus.vendingMachines.forEach((vm) => {
+        const vx = vm.x * W;
+        const vy = vm.y * H;
+        const matchesSearch =
+          searchQ.length > 0 &&
+          (vm.name.toLowerCase().includes(searchQ) ||
+            (vm.orders || []).some(
+              (o) => o.item.toLowerCase().includes(searchQ) || o.costItem.toLowerCase().includes(searchQ)
+            ));
+        const isSelectedVm = vm.id === selectedVendingId;
+
+        ctx.save();
+        if (matchesSearch || isSelectedVm) {
+          ctx.beginPath();
+          ctx.arc(vx, vy, 18 + pulse * 8, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.32)';
+          ctx.fill();
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = '#4ade80';
+          ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.arc(vx, vy, 10, 0, Math.PI * 2);
+        ctx.fillStyle = vm.type === 'npc' ? '#0d9488' : '#16a34a';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🛒', vx, vy + 3.5);
+
+        if (matchesSearch || isSelectedVm) {
+          ctx.font = '700 10px "JetBrains Mono", monospace';
+          const lbl = `🛒 ${vm.name} [${vm.grid}]`;
+          const lw = ctx.measureText(lbl).width + 10;
+          ctx.fillStyle = 'rgba(9, 11, 14, 0.92)';
+          ctx.fillRect(vx - lw / 2, vy - 26, lw, 14);
+          ctx.strokeStyle = '#4ade80';
+          ctx.strokeRect(vx - lw / 2, vy - 26, lw, 14);
+          ctx.fillStyle = '#4ade80';
+          ctx.fillText(lbl, vx, vy - 16);
+        }
+        ctx.restore();
+      });
+    }
+
+    // 9. Layer: Rust+ Live Moving Events (Cargo Ship, Patrol Helicopter, Chinook CH47 & Locked Crates)
+    if (mapLayers.liveEvents && liveEventsSimEnabled) {
+      const t = Date.now() / 1000;
+
+      // A) Cargo Ship orbiting the outer island perimeter
+      const cargoAngle = (t * 0.035) % (Math.PI * 2);
+      const cargoNx = 0.5 + Math.cos(cargoAngle) * 0.44;
+      const cargoNy = 0.5 + Math.sin(cargoAngle) * 0.44;
+      const cx = cargoNx * W;
+      const cy = cargoNy * H;
+      const cargoGrid = normalizedToGrid(cargoNx, cargoNy);
+
+      ctx.save();
+      // Wake trail
+      ctx.beginPath();
+      ctx.arc(W * 0.5, H * 0.5, W * 0.44, cargoAngle - 0.25, cargoAngle);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Ship hull
+      ctx.translate(cx, cy);
+      ctx.rotate(cargoAngle + Math.PI / 2);
+      ctx.fillStyle = '#0284c7';
+      ctx.strokeStyle = '#e0f2fe';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -16);
+      ctx.lineTo(9, 12);
+      ctx.lineTo(-9, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.font = '700 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#38bdf8';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🚢 CARGO [${cargoGrid}]`, cx, cy - 20);
+      ctx.restore();
+
+      const cargoHud = document.getElementById('rustPlusCargoDisplay');
+      if (cargoHud) cargoHud.textContent = `🚢 Cargo: ACTIVE [${cargoGrid}]`;
+
+      // B) Patrol Helicopter roaming across major monuments
+      const heliAngle = t * 0.11;
+      const heliNx = 0.5 + Math.sin(heliAngle) * 0.26;
+      const heliNy = 0.46 + Math.cos(heliAngle * 1.4) * 0.22;
+      const hx = heliNx * W;
+      const hy = heliNy * H;
+      const heliGrid = normalizedToGrid(heliNx, heliNy);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hx, hy, 26, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.16)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+
+      // Spinning Rotor Blades
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(t * 14);
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-14, 0);
+      ctx.lineTo(14, 0);
+      ctx.moveTo(0, -14);
+      ctx.lineTo(0, 14);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.font = '700 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#f87171';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🚁 PATROL HELI [${heliGrid}]`, hx, hy - 30);
+      ctx.restore();
+
+      const heliHud = document.getElementById('rustPlusHeliDisplay');
+      if (heliHud) heliHud.textContent = `🚁 Patrol Heli: ROAMING [${heliGrid}]`;
+
+      // C) Active Locked Crates on Small & Large Oil Rig
+      [
+        { nx: 0.06, ny: 0.45, name: 'LOCKED CRATE' },
+        { nx: 0.94, ny: 0.25, name: 'LOCKED CRATE' }
+      ].forEach((cr) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cr.nx * W, cr.ny * H - 16, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#eab308';
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔒', cr.nx * W, cr.ny * H - 13);
+        ctx.restore();
+      });
+    }
+
+    // 10. Layer: Rust+ Live Squad GPS & Death Markers
+    if (mapLayers.teamGps && appState.rustPlus && Array.isArray(appState.rustPlus.teamMembers)) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+
+      appState.rustPlus.teamMembers.forEach((tm) => {
+        // Draw Death Marker if present
+        if (tm.deathX && tm.deathY) {
+          const dx = tm.deathX * W;
+          const dy = tm.deathY * H;
+          ctx.save();
+          ctx.font = '700 13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('💀', dx, dy + 4);
+          ctx.font = '700 9px "JetBrains Mono", monospace';
+          ctx.fillStyle = '#f87171';
+          ctx.fillText(`${tm.name} Death [${tm.deathGrid}]`, dx, dy - 10);
+          ctx.restore();
+        }
+
+        const tx = tm.x * W;
+        const ty = tm.y * H;
+
+        ctx.save();
+        if (tm.isOnline) {
+          ctx.beginPath();
+          ctx.arc(tx, ty, 10 + pulse * 6, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(74, 222, 128, 0.55)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.arc(tx, ty, 7, 0, Math.PI * 2);
+        ctx.fillStyle = tm.isOnline ? '#22c55e' : '#64748b';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.font = '700 10px "JetBrains Mono", monospace';
+        const tag = `● ${tm.name} [${tm.grid}]`;
+        const tw = ctx.measureText(tag).width + 8;
+        ctx.fillStyle = 'rgba(9, 11, 14, 0.88)';
+        ctx.fillRect(tx - tw / 2, ty - 22, tw, 13);
+        ctx.fillStyle = tm.isOnline ? '#4ade80' : '#94a3b8';
+        ctx.textAlign = 'center';
+        ctx.fillText(tag, tx, ty - 12);
+        ctx.restore();
+      });
+    }
+
     ctx.restore();
   }
 
@@ -1404,6 +1717,122 @@
     });
   }
 
+  function renderRustPlusSidebar() {
+    if (!appState.rustPlus) return;
+
+    // 1. Vending Machine Search & List
+    const vmListEl = document.getElementById('vendingMachinesList');
+    const searchQ = (document.getElementById('vendingSearchInput')?.value || '').trim().toLowerCase();
+    if (vmListEl && Array.isArray(appState.rustPlus.vendingMachines)) {
+      const filteredVms = appState.rustPlus.vendingMachines.filter((vm) => {
+        if (!searchQ) return true;
+        return (
+          vm.name.toLowerCase().includes(searchQ) ||
+          (vm.orders || []).some(
+            (o) => o.item.toLowerCase().includes(searchQ) || o.costItem.toLowerCase().includes(searchQ)
+          )
+        );
+      });
+
+      vmListEl.innerHTML = filteredVms
+        .map((vm) => {
+          const isSel = vm.id === selectedVendingId;
+          const ordersHtml = (vm.orders || [])
+            .map(
+              (o) => `
+              <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:11px; color:var(--text-main); padding:2px 0;">
+                <span><strong style="color:#4ade80;">${o.qty}x ${o.item}</strong> (${o.stock} left)</span>
+                <span style="color:var(--sulfur-yellow);">Cost: ${o.costQty} ${o.costItem}</span>
+              </div>
+            `
+            )
+            .join('');
+
+          return `
+            <div class="monument-item vm-item-card ${isSel ? 'active' : ''}" data-vmid="${vm.id}" style="padding:9px 11px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-family:var(--font-display); font-weight:700; color:#fff; font-size:13px;">
+                  🛒 ${vm.name}
+                </span>
+                <span class="keycard-tag keycard-Green">[${vm.grid}]</span>
+              </div>
+              <div style="margin-top:5px;">${ordersHtml}</div>
+            </div>
+          `;
+        })
+        .join('');
+
+      vmListEl.querySelectorAll('.vm-item-card').forEach((card) => {
+        card.addEventListener('click', () => {
+          selectedVendingId = card.getAttribute('data-vmid');
+          renderRustPlusSidebar();
+          drawTacticalMap();
+        });
+      });
+    }
+
+    // 2. Smart Switches & Alarms
+    const sdListEl = document.getElementById('smartDevicesList');
+    if (sdListEl && Array.isArray(appState.rustPlus.smartDevices)) {
+      sdListEl.innerHTML = appState.rustPlus.smartDevices
+        .map(
+          (sd) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-input); border:1px solid ${sd.active ? 'rgba(34,197,94,0.45)' : 'var(--border-subtle)'}; border-radius:5px; padding:8px 10px;">
+            <div>
+              <div style="font-family:var(--font-display); font-weight:700; color:#fff; font-size:13px;">
+                ${sd.type === 'alarm' ? '🚨' : '⚡'} ${sd.name} <span style="font-family:var(--font-mono); font-size:11px; color:var(--sulfur-yellow);">[${sd.grid}]</span>
+              </div>
+              <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary);">
+                Entity ID: ${sd.entityId} • Status: <strong style="color:${sd.active ? '#4ade80' : '#f87171'};">${sd.active ? 'ONLINE / ON' : 'OFFLINE / OFF'}</strong>
+              </div>
+            </div>
+            <button class="btn btn-sm toggle-smart-device-btn ${sd.active ? 'btn-primary' : ''}" data-sdid="${sd.id}">
+              ${sd.active ? 'TURN OFF' : 'TURN ON'}
+            </button>
+          </div>
+        `
+        )
+        .join('');
+
+      sdListEl.querySelectorAll('.toggle-smart-device-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const sdid = btn.getAttribute('data-sdid');
+          const dev = appState.rustPlus.smartDevices.find((d) => d.id === sdid);
+          if (!dev) return;
+          dev.active = !dev.active;
+          renderRustPlusSidebar();
+          saveLocalFallback();
+          if (isServerConnected) {
+            try {
+              await fetch('/api/rustplus/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+                body: JSON.stringify({ id: dev.id, active: dev.active })
+              });
+            } catch (_) {}
+          }
+        });
+      });
+    }
+
+    // 3. Team Chat Box
+    const chatBox = document.getElementById('rustPlusChatBox');
+    if (chatBox && Array.isArray(appState.rustPlus.teamChat)) {
+      chatBox.innerHTML = appState.rustPlus.teamChat
+        .map(
+          (msg) => `
+          <div>
+            <span style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted);">[${msg.time}]</span>
+            <strong style="color:${msg.color || '#4ade80'};">[TEAM] ${msg.author}:</strong>
+            <span style="color:var(--text-main);">${msg.text}</span>
+          </div>
+        `
+        )
+        .join('');
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  }
+
   function initMapModule() {
     const canvas = document.getElementById('tacticalMapCanvas');
     if (!canvas) return;
@@ -1428,6 +1857,116 @@
           el.style.display = el.id === target ? 'block' : 'none';
         });
       });
+    });
+
+    // Vending search live filter
+    document.getElementById('vendingSearchInput')?.addEventListener('input', () => {
+      renderRustPlusSidebar();
+      drawTacticalMap();
+    });
+
+    // Add Smart Switch button
+    document.getElementById('addSmartSwitchBtn')?.addEventListener('click', () => {
+      const name = prompt('Smart Switch / Alarm Name (e.g. Shooting Floor Shutters):');
+      if (!name) return;
+      const entityId = prompt('Rust+ Entity ID (from Pairing in-game):', '1049000') || '1049000';
+      const grid = prompt('Base Grid Coordinate:', 'N11') || 'N11';
+      appState.rustPlus.smartDevices.push({
+        id: 'sd-' + Date.now(),
+        entityId,
+        name,
+        type: 'switch',
+        active: false,
+        grid: grid.toUpperCase()
+      });
+      syncStateToServer();
+      renderRustPlusSidebar();
+    });
+
+    // Send Team Chat
+    async function sendTeamChatMessage() {
+      const inp = document.getElementById('rustPlusChatInput');
+      const text = inp?.value.trim();
+      if (!text) return;
+      inp.value = '';
+      const msgObj = {
+        id: 'tc-' + Date.now(),
+        author: appState.squadName || 'Tang',
+        text,
+        time: new Date().toTimeString().slice(0, 5),
+        color: '#4ade80'
+      };
+      appState.rustPlus.teamChat.push(msgObj);
+      renderRustPlusSidebar();
+      saveLocalFallback();
+      if (isServerConnected) {
+        try {
+          await fetch('/api/rustplus/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+            body: JSON.stringify({ author: msgObj.author, text })
+          });
+        } catch (_) {}
+      }
+    }
+
+    document.getElementById('sendRustPlusChatBtn')?.addEventListener('click', sendTeamChatMessage);
+    document.getElementById('rustPlusChatInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendTeamChatMessage();
+    });
+
+    // Toggle Live Event Simulation
+    const simBtn = document.getElementById('toggleLiveEventsSimBtn');
+    simBtn?.addEventListener('click', () => {
+      liveEventsSimEnabled = !liveEventsSimEnabled;
+      simBtn.textContent = liveEventsSimEnabled ? '⚡ Live Event Sim: ON' : '⏸️ Live Event Sim: PAUSED';
+      drawTacticalMap();
+    });
+
+    // Rust+ Pairing Modal
+    const rpModal = document.getElementById('rustPlusModal');
+    document.getElementById('openRustPlusModalBtn')?.addEventListener('click', () => {
+      const cfg = appState.rustPlus?.config || {};
+      document.getElementById('rpServerIp').value = cfg.ip || '';
+      document.getElementById('rpServerPort').value = cfg.port || '28082';
+      document.getElementById('rpPlayerId').value = cfg.playerId || '';
+      document.getElementById('rpPlayerToken').value = cfg.playerToken || '';
+      rpModal?.classList.add('open');
+    });
+
+    document.getElementById('closeRustPlusModalBtn')?.addEventListener('click', () => {
+      rpModal?.classList.remove('open');
+    });
+
+    document.getElementById('connectRustPlusBtn')?.addEventListener('click', async () => {
+      const ip = document.getElementById('rpServerIp').value.trim();
+      const port = document.getElementById('rpServerPort').value.trim() || '28082';
+      const playerId = document.getElementById('rpPlayerId').value.trim();
+      const playerToken = document.getElementById('rpPlayerToken').value.trim();
+      appState.rustPlus.config = { ip, port, playerId, playerToken };
+      saveLocalFallback();
+
+      if (isServerConnected) {
+        try {
+          const res = await fetch('/api/rustplus/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+            body: JSON.stringify({ ip, port, playerId, playerToken })
+          });
+          const data = await res.json();
+          alert(data.message || 'Rust+ configuration updated!');
+        } catch (_) {}
+      } else {
+        alert('Saved Rust+ pairing config locally! Host on your Pterodactyl container for live server socket polling.');
+      }
+      rpModal?.classList.remove('open');
+    });
+
+    document.getElementById('rpFetchBmMapBtn')?.addEventListener('click', async () => {
+      const bmId = document.getElementById('rpBmServerIdInput')?.value.trim();
+      if (!bmId) return;
+      await loadBattleMetricsServerById(bmId);
+      rpModal?.classList.remove('open');
     });
 
     // Monument filters
@@ -1513,7 +2052,25 @@
 
       const mode = document.getElementById('mapClickModeSelect')?.value || 'inspect';
       if (mode === 'inspect') {
-        // Find closest monument
+        // Check closest Vending Machine first
+        let closestVm = null;
+        let minVmDist = 0.032;
+        (appState.rustPlus?.vendingMachines || []).forEach((vm) => {
+          const d = Math.hypot(vm.x - nx, vm.y - ny);
+          if (d < minVmDist) {
+            minVmDist = d;
+            closestVm = vm;
+          }
+        });
+        if (closestVm) {
+          selectedVendingId = closestVm.id;
+          document.querySelector('[data-subtab="sub-rustplus"]')?.click();
+          renderRustPlusSidebar();
+          drawTacticalMap();
+          return;
+        }
+
+        // Otherwise find closest monument
         let closest = null;
         let minDist = 0.045;
         DATA.monuments.forEach((m) => {
@@ -1525,7 +2082,17 @@
         });
         if (closest) {
           selectedMonumentId = closest.id;
+          document.querySelector('[data-subtab="sub-monuments"]')?.click();
           renderMonumentAtlas();
+          drawTacticalMap();
+        }
+      } else if (mode === 'move_gps') {
+        const grid = normalizedToGrid(nx, ny);
+        if (appState.rustPlus?.teamMembers?.[0]) {
+          appState.rustPlus.teamMembers[0].x = Number(nx.toFixed(4));
+          appState.rustPlus.teamMembers[0].y = Number(ny.toFixed(4));
+          appState.rustPlus.teamMembers[0].grid = grid;
+          syncStateToServer();
           drawTacticalMap();
         }
       } else {
@@ -1558,7 +2125,16 @@
       }
     });
 
+    // Live animation loop for Rust+ moving entities (Cargo, Patrol Heli, Squad GPS pulse)
+    setInterval(() => {
+      const mapTabActive = document.getElementById('tab-map')?.classList.contains('active');
+      if (mapTabActive && (liveEventsSimEnabled || mapLayers.teamGps || mapLayers.vending)) {
+        drawTacticalMap();
+      }
+    }, 80);
+
     loadCustomMapImageIfConfigured();
+    renderRustPlusSidebar();
   }
 
   // =========================================================================
@@ -2233,6 +2809,18 @@
 
       appState.battlemetrics.serverId = srv.id;
       appState.battlemetrics.serverName = currentServerTelemetry.name;
+
+      // Auto-extract official procedural map image from BattleMetrics if available
+      const bmMapUrl =
+        details.rust_maps?.thumbnailUrl ||
+        details.rust_maps?.url ||
+        details.map_url ||
+        '';
+      if (bmMapUrl && bmMapUrl.startsWith('http')) {
+        appState.mapConfig.customImageUrl = bmMapUrl;
+        loadCustomMapImageIfConfigured();
+      }
+
       syncStateToServer();
       renderBattleMetricsDashboard();
     } catch (_) {}
@@ -2677,6 +3265,7 @@
     renderMonumentAtlas();
     renderBuildSpotsList();
     renderSquadMarkersList();
+    renderRustPlusSidebar();
     drawTacticalMap();
     renderTimersTick();
     renderSavedClonesAndTeas();
