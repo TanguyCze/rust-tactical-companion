@@ -848,34 +848,32 @@
         <div style="background: linear-gradient(150deg, rgba(59,130,246,0.18), var(--bg-card)); border: 1px solid #3b82f6; border-radius: 8px; padding: 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
             <span style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#60a5fa;">
-              🚀 Option A: 1-Click Steam Login & Facepunch Cloud Sync (No F12 Console!)
+              🚀 Option A: Steam Login &amp; Facepunch Cloud Sync (No F12 Console!)
             </span>
             <span id="fcmListenerBadge" class="keycard-tag keycard-Fuse">READY TO PAIR</span>
           </div>
 
           <div style="font-size: 12px; color: var(--text-main); line-height: 1.5; margin-bottom: 10px;">
-            Click <strong>"🚀 1-Click Sign In with Steam (Auto-Pair Popup)"</strong> below. Once you sign in with Steam, the app automatically exchanges your 2026 Facepunch OAuth code and pulls <strong>every paired server and Smart Switch/Alarm</strong> directly from Facepunch's Cloud (<code>/api/history/read</code> over HTTPS) + polls every 6s for new in-game <em>"Pair with Server"</em> clicks!
+            <strong>1.</strong> Click <strong>"🚀 Step 1: Sign In with Steam"</strong> below and click <strong>Anmelden / Sign In</strong>.<br/>
+            <strong>2.</strong> The popup will land on a short JSON page whose address bar ends with <code>#code=...</code> — copy that URL (<code>Ctrl+L</code> then <code>Ctrl+C</code>) and click back here (it <strong>auto-connects from your clipboard automatically</strong>, or click <strong>Step 2</strong>)!
           </div>
 
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
             <button id="rpPopupSteamLoginBtn" class="btn btn-sm btn-primary" style="background:#2563eb; border-color:#60a5fa; font-weight:700;">
-              🚀 1-Click Sign In with Steam (Auto-Pair Popup)
+              🚀 Step 1: Sign In with Steam (Popup)
+            </button>
+            <button id="rpPasteClipboardBtn" class="btn btn-sm btn-primary" style="background:#16a34a; border-color:#4ade80; font-weight:700;">
+              📋 Step 2: Auto-Paste Copied URL &amp; Connect
             </button>
             <button id="rpSyncHistoryBtn" class="btn btn-sm" style="border-color:#38bdf8; color:#38bdf8;">
-              🔄 Sync Paired Servers & Switches from Facepunch Cloud
+              🔄 Re-Sync Cloud History
             </button>
-            <a href="https://companion-rust.facepunch.com/login" target="_blank" rel="noopener" class="btn btn-sm" style="text-decoration:none; color:var(--text-secondary);">
-              🔗 Open Login in New Tab
-            </a>
           </div>
 
-          <div style="font-size:11px; color:var(--text-secondary); margin-bottom:4px;">
-            <em>Fallback (if hosting remotely or popup is blocked):</em> After signing in on Facepunch, copy the <strong>entire URL from your browser address bar</strong> (containing <code>?code=...</code> or <code>#code=...</code>) or paste your <code>rustplusjs-config.json</code> below:
-          </div>
           <div style="display:flex; gap:8px;">
-            <input id="fcmTokenInput" type="text" class="input" style="flex:1; font-family:var(--font-mono); font-size:11px;" placeholder="Paste Redirect URL (?code=... / #code=...), AuthToken, or rustplusjs-config.json..." />
+            <input id="fcmTokenInput" type="text" class="input" style="flex:1; font-family:var(--font-mono); font-size:11px;" placeholder="Or press Ctrl+V here to paste Redirect URL (#code=...), AuthToken, or rustplusjs-config.json..." />
             <button id="activateFcmListenerBtn" class="btn btn-sm btn-primary" style="white-space:nowrap;">
-              ⚡ Exchange & Sync
+              ⚡ Exchange &amp; Sync
             </button>
           </div>
         </div>

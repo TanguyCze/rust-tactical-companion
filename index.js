@@ -1612,7 +1612,7 @@ async function registerFacepunchFcm(authToken, steamId = '') {
 
           const expoPushToken = expoRes?.data?.expoPushToken;
           if (expoPushToken) {
-            await postJsonHttps(
+            const regRes = await postJsonHttps(
               'https://companion-rust.facepunch.com/api/push/register',
               {
                 AuthToken: authToken,
@@ -1622,11 +1622,33 @@ async function registerFacepunchFcm(authToken, steamId = '') {
               },
               { Authorization: `Bearer ${authToken}` }
             );
+            if (regRes && typeof regRes.token === 'string' && regRes.token) {
+              authToken = regRes.token;
+              squadState.rustPlus.authToken = authToken;
+            }
           }
         }
       }
     }
   } catch (fcmErr) {
+    // Fallback to official 2026 app.playrust.com Web PushKind.Null = 2 registration
+    try {
+      const webDeviceId = 'rustplus-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now());
+      const regRes = await postJsonHttps(
+        'https://companion-rust.facepunch.com/api/push/register',
+        {
+          AuthToken: authToken,
+          DeviceId: webDeviceId,
+          PushKind: 2,
+          PushToken: 'null'
+        },
+        { Authorization: `Bearer ${authToken}` }
+      );
+      if (regRes && typeof regRes.token === 'string' && regRes.token) {
+        authToken = regRes.token;
+        squadState.rustPlus.authToken = authToken;
+      }
+    } catch (_) {}
     console.log('[Rust+ Push Registration Note] Using Facepunch Cloud History Poller:', fcmErr.message);
   }
 
@@ -1845,12 +1867,12 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 3A. 1-Click Steam Popup OAuth Redirect -> Facepunch Companion Login
+    // 3A. 1-Click Steam Popup OAuth Redirect -> Facepunch Companion Login-Direct
+    // Note: In 2026, Facepunch's IsAllowedReturnUrl whitelist ONLY allows https://app.playrust.com/... URLs.
+    // Using a static JSON asset on app.playrust.com ensures Facepunch appends #code=... without the React SPA consuming the one-time code!
     if (pathname === '/api/rustplus/login' && req.method === 'GET') {
-      const proto = req.headers['x-forwarded-proto'] || 'http';
-      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`;
-      const callbackUrl = `${proto}://${host}/api/rustplus/callback`;
-      const targetUrl = `https://companion-rust.facepunch.com/login?returnUrl=${encodeURIComponent(callbackUrl)}`;
+      const staticCallbackUrl = 'https://app.playrust.com/assets/yandex-browser-manifest.json';
+      const targetUrl = `https://companion-rust.facepunch.com/login-direct?returnUrl=${encodeURIComponent(staticCallbackUrl)}`;
       res.writeHead(302, { Location: targetUrl });
       return res.end();
     }

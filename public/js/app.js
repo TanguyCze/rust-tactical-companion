@@ -3021,21 +3021,150 @@
       rpModal?.classList.remove('open');
     });
 
-    // Option A: 1-Click Steam Popup OAuth Login & Auto-Sync
-    document.getElementById('rpPopupSteamLoginBtn')?.addEventListener('click', () => {
-      if (!isServerConnected) {
-        window.open('https://companion-rust.facepunch.com/login', '_blank', 'noopener');
-        return;
+    let awaitingSteamClipboardCode = false;
+    let lastExchangedTokenInput = '';
+
+    async function submitFacepunchAuthInput(rawInput, isSilentAuto = false) {
+      const tokenInput = String(rawInput || '').trim();
+      if (!tokenInput) {
+        if (!isSilentAuto) {
+          alert('First click "Step 1: Sign In with Steam", copy the URL ending with #code=... from the popup address bar, then click Step 2!');
+        }
+        return false;
       }
+      if (isSilentAuto && tokenInput === lastExchangedTokenInput) {
+        return false;
+      }
+      if (!isServerConnected) {
+        if (!isSilentAuto) {
+          alert('Host the app on your Pterodactyl container so the backend can exchange the code and sync with Facepunch Cloud!');
+        }
+        return false;
+      }
+
+      lastExchangedTokenInput = tokenInput;
+      awaitingSteamClipboardCode = false;
+
+      const inpEl = document.getElementById('fcmTokenInput');
+      if (inpEl) inpEl.value = tokenInput;
+
+      const btn = document.getElementById('activateFcmListenerBtn');
+      const pasteBtn = document.getElementById('rpPasteClipboardBtn');
+      const oldText = btn?.textContent || '⚡ Exchange & Sync';
+      const oldPasteText = pasteBtn?.textContent || '📋 Step 2: Auto-Paste Copied URL & Connect';
+      if (btn) btn.textContent = '⏳ Exchanging & Syncing...';
+      if (pasteBtn) pasteBtn.textContent = '⏳ Connecting to Facepunch Cloud...';
+
+      try {
+        const res = await fetch('/api/rustplus/fcm-register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
+          body: JSON.stringify({ tokenInput })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (Array.isArray(data.pairedServers)) {
+            appState.rustPlus.pairedServers = data.pairedServers;
+          }
+          if (data.activeServer && data.activeServer.ip) {
+            appState.rustPlus.config = data.activeServer;
+            connectBrowserRustPlusSocket(data.activeServer);
+          }
+          appState.rustPlus.fcmListening = true;
+          const fcmBadge = document.getElementById('fcmListenerBadge');
+          if (fcmBadge) {
+            fcmBadge.textContent = '🟢 CLOUD SYNC & LISTENER ACTIVE';
+            fcmBadge.className = 'keycard-tag keycard-Green';
+          }
+          openRustPlusPairingModal();
+          renderRustPlusSidebar();
+          drawTacticalMap();
+          alert('🎉 ' + data.message);
+          return true;
+        } else {
+          if (!isSilentAuto) {
+            alert('Error: ' + (data.error || 'Failed to register with Facepunch Cloud'));
+          }
+          return false;
+        }
+      } catch (err) {
+        if (!isSilentAuto) {
+          alert('Request failed: ' + err.message);
+        }
+        return false;
+      } finally {
+        if (btn) btn.textContent = oldText;
+        if (pasteBtn) pasteBtn.textContent = oldPasteText;
+      }
+    }
+
+    // Option A Step 1: Steam Popup OAuth Login (uses Facepunch's 2026 /login-direct whitelist)
+    document.getElementById('rpPopupSteamLoginBtn')?.addEventListener('click', () => {
+      awaitingSteamClipboardCode = true;
+      const staticCallbackUrl = 'https://app.playrust.com/assets/yandex-browser-manifest.json';
+      const loginUrl = isServerConnected
+        ? '/api/rustplus/login'
+        : `https://companion-rust.facepunch.com/login-direct?returnUrl=${encodeURIComponent(staticCallbackUrl)}`;
       const w = 560;
       const h = 720;
       const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
       const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
       window.open(
-        '/api/rustplus/login',
+        loginUrl,
         'RustPlusSteamLogin',
         `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
       );
+    });
+
+    // Option A Step 2: 1-Click Auto-Paste Copied URL from Clipboard & Connect
+    document.getElementById('rpPasteClipboardBtn')?.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const clipText = (await navigator.clipboard.readText()) || '';
+          if (clipText.trim()) {
+            const inpEl = document.getElementById('fcmTokenInput');
+            if (inpEl) inpEl.value = clipText.trim();
+            await submitFacepunchAuthInput(clipText.trim(), false);
+            return;
+          }
+        }
+      } catch (_) {}
+      const fallbackVal = document.getElementById('fcmTokenInput')?.value.trim() || '';
+      if (fallbackVal) {
+        await submitFacepunchAuthInput(fallbackVal, false);
+      } else {
+        const manual = prompt('Press Ctrl+V here to paste the URL (ending with #code=...) from the Steam login popup:');
+        if (manual && manual.trim()) {
+          await submitFacepunchAuthInput(manual.trim(), false);
+        }
+      }
+    });
+
+    // Auto-detect #code=... on clipboard as soon as user switches back from the Steam popup!
+    window.addEventListener('focus', async () => {
+      if (!awaitingSteamClipboardCode && !rpModal?.classList.contains('open')) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const clipText = ((await navigator.clipboard.readText()) || '').trim();
+          if (
+            clipText &&
+            clipText !== lastExchangedTokenInput &&
+            (clipText.includes('#code=') || clipText.includes('?code=') || clipText.includes('rustplus_auth_token'))
+          ) {
+            await submitFacepunchAuthInput(clipText, true);
+          }
+        }
+      } catch (_) {}
+    });
+
+    // Also auto-submit immediately when user presses Ctrl+V inside #fcmTokenInput
+    document.getElementById('fcmTokenInput')?.addEventListener('paste', (evt) => {
+      setTimeout(() => {
+        const val = document.getElementById('fcmTokenInput')?.value.trim() || '';
+        if (val && (val.includes('code=') || val.includes('token') || val.length > 20)) {
+          submitFacepunchAuthInput(val, false);
+        }
+      }, 60);
     });
 
     // Listen for postMessage from the /api/rustplus/callback popup trampoline
@@ -3081,6 +3210,7 @@
           }
           if (data.activeConfig && data.activeConfig.ip) {
             appState.rustPlus.config = data.activeConfig;
+            connectBrowserRustPlusSocket(data.activeConfig);
             openRustPlusPairingModal();
           } else {
             renderPairedServersInModal();
@@ -3112,46 +3242,7 @@
     // Exchange OAuth Code / AuthToken & Sync Cloud Pairings
     document.getElementById('activateFcmListenerBtn')?.addEventListener('click', async () => {
       const tokenInput = document.getElementById('fcmTokenInput')?.value.trim();
-      if (!tokenInput) {
-        alert('Paste the Redirect URL (?code=... / #code=...) from your Facepunch login tab, or upload rustplusjs-config.json / profiles.json!');
-        return;
-      }
-      if (!isServerConnected) {
-        alert('Host the app on your Pterodactyl container so the backend can exchange the code and sync with Facepunch Cloud!');
-        return;
-      }
-      const btn = document.getElementById('activateFcmListenerBtn');
-      const oldText = btn.textContent;
-      btn.textContent = '⏳ Exchanging & Syncing...';
-      try {
-        const res = await fetch('/api/rustplus/fcm-register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Squad-Pin': getSquadPin() },
-          body: JSON.stringify({ tokenInput })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (Array.isArray(data.pairedServers)) {
-            appState.rustPlus.pairedServers = data.pairedServers;
-          }
-          appState.rustPlus.fcmListening = true;
-          const fcmBadge = document.getElementById('fcmListenerBadge');
-          if (fcmBadge) {
-            fcmBadge.textContent = '🟢 CLOUD SYNC & LISTENER ACTIVE';
-            fcmBadge.className = 'keycard-tag keycard-Green';
-          }
-          renderPairedServersInModal();
-          renderRustPlusSidebar();
-          drawTacticalMap();
-          alert('🎉 ' + data.message);
-        } else {
-          alert('Error: ' + (data.error || 'Failed to register with Facepunch Cloud'));
-        }
-      } catch (err) {
-        alert('Request failed: ' + err.message);
-      } finally {
-        btn.textContent = oldText;
-      }
+      await submitFacepunchAuthInput(tokenInput, false);
     });
 
     // 1-Click Upload from RustPlusDesk (profiles.json, rustplusjs-config.json, or notifications_history.json)
