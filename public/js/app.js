@@ -1535,7 +1535,7 @@
 
     if (fBY >= 0.20 && fMY >= 0.48) return 'sulfur';
     if (fWm >= 0.45 && fVDk50 < 0.18 && fBY < 0.05 && stdLuma >= 19) return 'satchel';
-    if (fWG >= 0.22 && fWm < 0.20 && fBY < 0.05 && fDk < 0.45 && stdLuma >= 26) return 'explosives';
+    if (fWG >= 0.22 && fWm < 0.20 && fBY < 0.05 && fDk < 0.62 && stdLuma >= 26) return 'explosives';
 
     if (diagRatio >= 2.0 && diagAvg >= 20.0 && stdLuma >= 20 && fVDk50 < 0.40 && pBri125 >= 0.025 && pBri145 >= 0.005) {
       return 'explo_ammo';
@@ -1569,74 +1569,209 @@
     return val > 0 && val <= 100000 ? val : null;
   }
 
-  function buildAdaptiveDigitTile(srcCanvas, sx, sy, rw, rh, scale, threshFrac = 0.48) {
+  /**
+   * Finds right-aligned cap-height digit components and suppresses leading
+   * short lowercase `'x'` prefix + unrelated icon glare before OCR.
+   */
+  function extractRightDigitsFromGray(gray, upW, upH) {
+    const compId = new Int32Array(upW * upH);
+    const comps = [];
+    const q = new Int32Array(upW * upH);
+    for (let y = 0; y < upH; y++) {
+      for (let x = 0; x < upW; x++) {
+        const idx = y * upW + x;
+        if (gray[idx] >= 140 || compId[idx]) continue;
+        const id = comps.length + 1;
+        let head = 0, tail = 0;
+        q[tail++] = idx;
+        compId[idx] = id;
+        let minX = x, maxX = x, minY = y, maxY = y, area = 0;
+        while (head < tail) {
+          const cur = q[head++];
+          const cx = cur % upW, cy = (cur / upW) | 0;
+          area++;
+          if (cx < minX) minX = cx;
+          if (cx > maxX) maxX = cx;
+          if (cy < minY) minY = cy;
+          if (cy > maxY) maxY = cy;
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = cy + dy;
+            if (ny < 0 || ny >= upH) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = cx + dx;
+              if (nx < 0 || nx >= upW) continue;
+              const nIdx = ny * upW + nx;
+              if (gray[nIdx] < 140 && !compId[nIdx]) {
+                compId[nIdx] = id;
+                q[tail++] = nIdx;
+              }
+            }
+          }
+        }
+        comps.push({ id, minX, maxX, minY, maxY, w: maxX - minX + 1, h: maxY - minY + 1, area });
+      }
+    }
+
+    const validComps = comps.filter((c) => c.area >= Math.max(6, upH * 0.30) && c.h >= upH * 0.25);
+    if (!validComps.length) return { minX: 0, maxX: upW - 1, minY: 0, maxY: upH - 1 };
+
+    const rightComps = validComps.filter((c) => c.maxX >= upW * 0.55);
+    const refPool = rightComps.length ? rightComps : validComps;
+    let maxH = 0;
+    for (const c of refPool) if (c.h > maxH) maxH = c.h;
+
+    const refTall = refPool.filter((c) => c.h >= maxH * 0.76);
+    if (!refTall.length) return { minX: 0, maxX: upW - 1, minY: 0, maxY: upH - 1 };
+
+    let capTop = upH, capBot = 0;
+    for (const c of refTall) {
+      if (c.minY < capTop) capTop = c.minY;
+      if (c.maxY > capBot) capBot = c.maxY;
+    }
+
+    const allDigits = validComps.filter((c) =>
+      c.h >= maxH * 0.72 &&
+      c.minY <= capTop + maxH * 0.22 &&
+      c.maxY >= capBot - maxH * 0.25 &&
+      c.maxY <= capBot + maxH * 0.25
+    );
+    let leftDigitX = upW;
+    for (const c of (allDigits.length ? allDigits : refTall)) {
+      if (c.minX < leftDigitX) leftDigitX = c.minX;
+    }
+
+    const kept = new Uint8Array(comps.length + 1);
+    let found = false;
+    let bMinX = upW, bMaxX = 0, bMinY = upH, bMaxY = 0;
+    for (const c of comps) {
+      const overlapsY = c.maxY >= capTop - 2 && c.minY <= capBot + 2;
+      const isComma = c.minX > leftDigitX && c.h >= upH * 0.08 && c.minY >= capTop + maxH * 0.45 && c.maxY <= capBot + Math.max(8, maxH * 0.35);
+      if (c.minX >= leftDigitX - 2 && (c.h >= maxH * 0.65 || isComma) && overlapsY) {
+        kept[c.id] = 1;
+        found = true;
+        if (c.minX < bMinX) bMinX = c.minX;
+        if (c.maxX > bMaxX) bMaxX = c.maxX;
+        if (c.minY < bMinY) bMinY = c.minY;
+        if (c.maxY > bMaxY) bMaxY = c.maxY;
+      }
+    }
+    if (!found) return { minX: 0, maxX: upW - 1, minY: 0, maxY: upH - 1 };
+
+    for (let i = 0; i < upW * upH; i++) {
+      if (compId[i] && !kept[compId[i]]) gray[i] = 255;
+    }
+    return {
+      minX: Math.max(0, bMinX - 2),
+      maxX: Math.min(upW - 1, bMaxX + 2),
+      minY: Math.max(0, bMinY - 2),
+      maxY: Math.min(upH - 1, bMaxY + 2)
+    };
+  }
+
+  /**
+   * Builds a high-contrast dark-on-white digit crop tuned for Rust stack labels.
+   */
+  function buildAdaptiveDigitTile(srcCanvas, sx, sy, rw, rh, scale, threshFrac = 0.52, options = {}) {
+    const stripShortLeft = options.stripShortLeft !== false;
+    const unsharp = options.unsharp ?? 0.35;
+    const chromaPen = options.chromaPen ?? 0.50;
+    const sctx = srcCanvas.getContext('2d', { willReadFrequently: true });
+    const raw = sctx.getImageData(sx, sy, rw, rh).data;
+    const nPx = rw * rh;
+    const scores = new Float32Array(nPx);
+    for (let i = 0; i < nPx; i++) {
+      const p = i * 4;
+      const r = raw[p], g = raw[p + 1], b = raw[p + 2];
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      scores[i] = luma - spread * chromaPen;
+    }
+
+    const sharp = new Float32Array(nPx);
+    for (let y = 0; y < rh; y++) {
+      for (let x = 0; x < rw; x++) {
+        const c = scores[y * rw + x];
+        if (unsharp <= 0) {
+          sharp[y * rw + x] = c;
+          continue;
+        }
+        let sum = 0, cnt = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = Math.max(0, Math.min(rh - 1, y + dy));
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = Math.max(0, Math.min(rw - 1, x + dx));
+            sum += scores[yy * rw + xx];
+            cnt++;
+          }
+        }
+        sharp[y * rw + x] = Math.max(0, Math.min(255, c + unsharp * (c - sum / cnt)));
+      }
+    }
+
+    const sorted = Float32Array.from(sharp).sort();
+    const bg = sorted[Math.floor(sorted.length * 0.45)] || 40;
+    const hi = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.985))] || 220;
+    const diff = hi - bg;
+    const thresh = Math.max(82, Math.min(184, Math.round(bg + diff * threshFrac)));
+
     const rawC = document.createElement('canvas');
     rawC.width = rw;
     rawC.height = rh;
     const rctx = rawC.getContext('2d', { willReadFrequently: true });
-    rctx.drawImage(srcCanvas, sx, sy, rw, rh, 0, 0, rw, rh);
-    const rData = rctx.getImageData(0, 0, rw, rh).data;
-    const scores = [];
-    for (let i = 0; i < rData.length; i += 4) {
-      const r = rData[i];
-      const g = rData[i + 1];
-      const b = rData[i + 2];
-      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-      const spread = Math.max(r, g, b) - Math.min(r, g, b);
-      scores.push(luma - spread * 0.40);
+    const rImg = rctx.createImageData(rw, rh);
+    for (let i = 0; i < nPx; i++) {
+      const v = Math.max(0, Math.min(255, Math.round(sharp[i])));
+      const p = i * 4;
+      rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = v;
+      rImg.data[p + 3] = 255;
     }
-    const sorted = [...scores].sort((a, b) => a - b);
-    const bg = sorted[Math.floor(sorted.length * 0.45)] || 55;
-    const hi = sorted[Math.floor(sorted.length * 0.985)] || 145;
-    const diff = hi - bg;
-    const thresh = Math.max(82, Math.min(162, Math.round(bg + diff * threshFrac)));
+    rctx.putImageData(rImg, 0, 0);
 
-    let minInkCol = rw;
-    let maxInkCol = -1;
-    for (let py = 0; py < rh; py++) {
-      for (let px = 0; px < rw; px++) {
-        if (scores[py * rw + px] >= thresh) {
-          if (px < minInkCol) minInkCol = px;
-          if (px > maxInkCol) maxInkCol = px;
-        }
-      }
-    }
-    const inkSpanFrac = maxInkCol >= minInkCol ? (maxInkCol - minInkCol + 1) / rw : 0;
-
-    const padPx = 14;
-    const upW = Math.round(rw * scale);
-    const upH = Math.round(rh * scale);
-    const out = document.createElement('canvas');
-    out.width = upW + padPx * 2;
-    out.height = upH + padPx * 2;
-    const octx = out.getContext('2d');
-    octx.fillStyle = '#ffffff';
-    octx.fillRect(0, 0, out.width, out.height);
-
+    const upW = Math.max(12, Math.round(rw * scale));
+    const upH = Math.max(12, Math.round(rh * scale));
     const tmp = document.createElement('canvas');
     tmp.width = upW;
     tmp.height = upH;
     const tctx = tmp.getContext('2d', { willReadFrequently: true });
+    tctx.fillStyle = '#000000';
+    tctx.fillRect(0, 0, upW, upH);
     tctx.imageSmoothingEnabled = true;
     tctx.imageSmoothingQuality = 'high';
     tctx.drawImage(rawC, 0, 0, rw, rh, 0, 0, upW, upH);
+
     const td = tctx.getImageData(0, 0, upW, upH).data;
-    const mId = octx.getImageData(padPx, padPx, upW, upH);
-    for (let i = 0; i < td.length; i += 4) {
-      const r = td[i];
-      const g = td[i + 1];
-      const b = td[i + 2];
-      const sc = 0.299 * r + 0.587 * g + 0.114 * b - (Math.max(r, g, b) - Math.min(r, g, b)) * 0.40;
-      const norm = Math.max(0, Math.min(1, (sc - (thresh - 14)) / 28));
-      const v = Math.round((1 - norm) * 255);
-      mId.data[i] = v;
-      mId.data[i + 1] = v;
-      mId.data[i + 2] = v;
-      mId.data[i + 3] = 255;
+    const gray = new Uint8Array(upW * upH);
+    for (let i = 0; i < upW * upH; i++) {
+      const norm = Math.max(0, Math.min(1, (td[i * 4] - (thresh - 10)) / 20));
+      gray[i] = Math.round((1 - norm) * 255);
     }
-    octx.putImageData(mId, padPx, padPx);
+
+    const box = stripShortLeft
+      ? extractRightDigitsFromGray(gray, upW, upH)
+      : { minX: 0, maxX: upW - 1, minY: 0, maxY: upH - 1 };
+
+    const cropW = Math.max(1, box.maxX - box.minX + 1);
+    const cropH = Math.max(1, box.maxY - box.minY + 1);
+    const padY = 18;
+    const padX = Math.max(padY, Math.round(cropH * 1.1));
+    const out = document.createElement('canvas');
+    out.width = cropW + padX * 2;
+    out.height = cropH + padY * 2;
+    const octx = out.getContext('2d', { willReadFrequently: true });
+    const oImg = octx.createImageData(out.width, out.height);
+    const od = oImg.data;
+    od.fill(255);
+    for (let y = 0; y < cropH; y++) {
+      for (let x = 0; x < cropW; x++) {
+        const v = gray[(box.minY + y) * upW + (box.minX + x)];
+        const p = ((y + padY) * out.width + (x + padX)) * 4;
+        od[p] = od[p + 1] = od[p + 2] = v;
+        od[p + 3] = 255;
+      }
+    }
+    octx.putImageData(oImg, 0, 0);
     out._digDiff = diff;
-    out._inkSpanFrac = inkSpanFrac;
+    out._inkSpanFrac = cropW / Math.max(1, upW);
     return out;
   }
 
@@ -1759,16 +1894,16 @@
         return;
       }
 
-      await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
-      const scale = Math.max(3.5, Math.min(6.0, Math.round(190 / Math.max(22, cw))));
-      const subH = Math.max(7, Math.round(ch * 0.27));
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '7' });
+      const subH = Math.max(7, Math.round(ch * 0.25));
+      const scale = Math.max(1.8, Math.min(4.8, 34 / subH));
 
-      const cropDigitTile = (r, col, xStartFrac, threshFrac = 0.48) => {
+      const cropDigitTile = (r, col, xStartFrac, threshFrac = 0.52, options = {}) => {
         const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * xStartFrac));
-        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.72));
-        const rw = Math.max(4, Math.min(dims.w - sx, Math.round(cw * (0.98 - xStartFrac))));
+        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.73));
+        const rw = Math.max(4, Math.min(dims.w - sx, Math.round(cw * (0.99 - xStartFrac))));
         const rh = Math.max(4, Math.min(dims.h - sy, subH));
-        return buildAdaptiveDigitTile(fullCanvas, sx, sy, rw, rh, scale, threshFrac);
+        return buildAdaptiveDigitTile(fullCanvas, sx, sy, rw, rh, scale, threshFrac, options);
       };
 
       const maxReasonableByKey = {
@@ -1788,8 +1923,8 @@
         if (i === 0 || (i + 1) % 4 === 0 || i === slots.length - 1) {
           setStatus(`🔍 Reading stack numbers ${i + 1}/${slots.length}...`);
         }
-        const tile = cropDigitTile(s.row, s.col, 0.32, 0.48);
-        if ((tile._digDiff || 0) < 30) {
+        const tile = cropDigitTile(s.row, s.col, 0.36, 0.52);
+        if ((tile._digDiff || 0) < 28) {
           s.qty = 1;
           continue;
         }
@@ -1798,27 +1933,40 @@
         let parsed = parseStackDigitsText(res?.data?.text);
         const cap = maxReasonableByKey[s.key];
 
-        // Retry tighter right-aligned softer threshold crop if sprite bled into x10/x128 or digit was dim
-        if (parsed === null || (cap && parsed > cap)) {
-          const tightTile = cropDigitTile(s.row, s.col, 0.44, 0.40);
-          const tightRes = await worker.recognize(tightTile);
-          let tightParsed = parseStackDigitsText(tightRes?.data?.text);
-          if (tightParsed === null || (cap && tightParsed > cap)) {
-            await worker.setParameters({ tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '8' });
-            const wordRes = await worker.recognize(tightTile);
-            await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
-            tightParsed = parseStackDigitsText(wordRes?.data?.text);
+        // Retry sharper and softer thresholds, then raw x-included right crop if missing or out-of-range
+        if (parsed === null || parsed === 1 || (cap && parsed > cap)) {
+          const retryPasses = [
+            { xStart: 0.36, tf: 0.57, opts: {} },
+            { xStart: 0.36, tf: 0.46, opts: {} },
+          ];
+          for (const pass of retryPasses) {
+            const altTile = cropDigitTile(s.row, s.col, pass.xStart, pass.tf, pass.opts);
+            const altRes = await worker.recognize(altTile);
+            const altParsed = parseStackDigitsText(altRes?.data?.text);
+            if (altParsed !== null && (!cap || altParsed <= cap)) {
+              if (altParsed !== 1 || parsed === null || (cap && parsed > cap)) {
+                parsed = altParsed;
+              }
+              if (parsed > 1) break;
+            }
           }
-          if (tightParsed !== null && (!cap || tightParsed <= cap)) {
-            parsed = tightParsed;
-          } else if (cap && parsed > cap) {
-            parsed = null;
+          if (parsed === null || (cap && parsed > cap)) {
+            await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
+            const rawTile = cropDigitTile(s.row, s.col, 0.46, 0.52, { stripShortLeft: false });
+            const rawRes = await worker.recognize(rawTile);
+            await worker.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '7' });
+            const rawParsed = parseStackDigitsText(rawRes?.data?.text);
+            if (rawParsed !== null && (!cap || rawParsed <= cap)) {
+              parsed = rawParsed;
+            } else if (cap && parsed > cap) {
+              parsed = null;
+            }
           }
         }
 
         if (parsed !== null) {
           s.qty = parsed;
-        } else if (bulkStackKeys.has(s.key) && (tile._digDiff || 0) >= 36 && (tile._inkSpanFrac || 0) >= 0.70) {
+        } else if (bulkStackKeys.has(s.key) && (tile._digDiff || 0) >= 36 && (tile._inkSpanFrac || 0) >= 0.65) {
           s.qty = 1000;
         } else {
           s.qty = 1;
