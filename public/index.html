@@ -56,7 +56,7 @@
         💥 Raid & Sulfur Optimizer <span class="nav-badge">COMBOS</span>
       </button>
       <button class="nav-tab" data-tab="tab-map">
-        🛰️ Rust+ Live Map & Monuments <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">RUST+ LIVE</span>
+        🏛️ Monuments <span class="nav-badge">KEYCARDS</span>
       </button>
       <button class="nav-tab" data-tab="tab-timers">
         ⏱️ Monument Timers <span id="navTimerCount" class="nav-badge">0</span>
@@ -179,304 +179,26 @@
     </section>
 
     <!-- ==================================================================
-         TAB 2: RUST+ DESKTOP STYLE LIVE MAP, MONUMENTS, SHOPS & IOT
+         TAB 2: MONUMENT GUIDE (KEYCARDS, FUSES, CRATES & RESPAWN TIMERS)
          ================================================================== -->
     <section id="tab-map" class="tab-panel">
-      <div class="rpd-shell">
-
-        <!-- ==============================================================
-             LEFT SIDEBAR (Rust+ Desktop Server, Pairing Listener & Team)
-             ============================================================== -->
-        <aside class="rpd-sidebar">
-          <!-- 1. Active Server Card -->
-          <div class="rpd-card">
-            <div class="rpd-server-header">
-              <div class="rpd-server-title" id="rpdServerNameTitle" title="[EU] Willjum's Casual Solo/Duo Monthly">
-                [EU] Willjum's Casual Solo/Duo Monthly
-              </div>
-              <div style="display:flex; gap:4px; align-items:center;">
-                <button class="rpd-icon-btn" id="rpdServerDropdownBtn" title="Switch or Load Server">⌄</button>
-                <button class="rpd-icon-btn" id="openRustPlusModalBtn" title="Manage servers / Pair Rust+">⋯</button>
-              </div>
-            </div>
-            <div class="rpd-status-row">
-              <span class="rpd-status-dot" id="rpdConnDot"></span>
-              <span id="rustPlusStatusPill">Fully connected</span>
-            </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">🏛️ Monument Guide</div>
+            <div class="panel-subtitle">Keycards, fuses, crates &amp; puzzle steps for every monument (up to date with rusthelp.com) — click "Completed!" to start a squad respawn timer</div>
           </div>
-
-          <!-- 2. Pairing Listener Status Card -->
-          <div class="rpd-card" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px;">
-            <div style="display:flex; align-items:center; gap:8px; font-size:11.5px; color:#cbd5e1;">
-              <span>Pairing Listener</span>
-              <span style="display:inline-flex; align-items:center; gap:5px; color:#4ade80; font-weight:600;">
-                <span class="rpd-status-dot"></span>
-                <span id="rpdPairingStatusText">Running</span>
-              </span>
-            </div>
-            <button class="rpd-icon-btn" id="rpdPairingMenuBtn" title="Configure Pairing Listener">⋯</button>
-          </div>
-
-          <!-- 3. Squad / Team Players 2-Column Grid (Smiguel, Kanki, etc.) -->
-          <div id="rpdPlayersGrid" class="rpd-players-grid"></div>
-
-          <!-- 4. Optional Collapsible Tactical Tools in Left Sidebar -->
-          <div style="margin-top: 6px; border-top: 1px solid #232834; padding-top: 8px; display:flex; flex-direction:column; gap:6px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-size:10.5px; font-family:var(--font-mono); color:#64748b; text-transform:uppercase;">
-                Tactical Overlays & IoT
-              </span>
-              <button id="toggleInspectorDrawerBtn" class="rpd-icon-btn" style="width:auto; padding:0 8px; font-size:10.5px;" title="Open Monuments / Shops / Switches Drawer">
-                📂 Inspector
-              </button>
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-              <button class="rpd-pill" data-open-subtab="sub-monuments" style="justify-content:center; font-size:11px;">
-                🔑 Puzzles (21)
-              </button>
-              <button class="rpd-pill" data-open-subtab="sub-rustplus" style="justify-content:center; font-size:11px;">
-                🛒 Shops & IoT
-              </button>
-              <button class="rpd-pill" data-open-subtab="sub-buildspots" style="justify-content:center; font-size:11px;">
-                🏰 Build Spots
-              </button>
-              <button class="rpd-pill" data-open-subtab="sub-markers" style="justify-content:center; font-size:11px;">
-                📍 Squad Pins
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        <!-- ==============================================================
-             RIGHT MAIN MAP WORKSPACE (Top Toolbar + Full-Bleed Ocean Map)
-             ============================================================== -->
-        <div class="rpd-main" id="rpdMainWorkspace">
-
-          <!-- Top Map Layer Bar (Exact Rust+ Desktop Pill Bar) -->
-          <div class="rpd-toolbar">
-            <div class="rpd-toolbar-group" id="mapLayerToggles">
-              <button class="rpd-pill" data-layer="grid">
-                <span>⊞</span> Grid
-              </button>
-              <button class="rpd-pill active" data-layer="teamGps">
-                <span>👥</span> Players
-              </button>
-              <button class="rpd-pill active" data-layer="monuments">
-                <span>🗺️</span> Monuments
-              </button>
-              <button class="rpd-pill active" data-layer="deaths">
-                <span>💀</span> Deaths
-              </button>
-              <button class="rpd-pill" data-layer="noBuild">
-                <span>🚫</span> No Build
-              </button>
-              <button class="rpd-pill" id="rpdLayersPopoverBtn">
-                <span>☰</span> Layers (<span id="rpdActiveLayerCount">7</span>) ⌄
-              </button>
-              <button class="rpd-icon-btn" id="toggleLiveEventsSimBtn" title="Toggle Live Cargo / Patrol Heli Movement" style="width:28px; height:28px;">
-                🔔
-              </button>
-              <button class="rpd-icon-btn" id="mapCustomUrlBtn" title="Custom Map Image URL / Settings" style="width:36px; height:28px;">
-                ⚙️ ⌄
-              </button>
-            </div>
-
-            <div class="rpd-toolbar-group">
-              <select id="mapClickModeSelect" class="select" style="padding: 3px 8px; font-size: 11px; background:#1d212a; border-color:#2c3342; height:28px;">
-                <option value="inspect">🔍 Click: Inspect Monument / Shop</option>
-                <option value="move_gps">🏃 Click: Move Player GPS</option>
-                <option value="pin_raid">🎯 Click: Drop Raid Target Pin</option>
-                <option value="pin_base">🏠 Click: Drop Squad Base Pin</option>
-                <option value="pin_farm">⛏️ Click: Drop Farm Node Pin</option>
-                <option value="pin_danger">⚠️ Click: Drop Danger Pin</option>
-              </select>
-
-              <div class="rpd-view-segmented" id="rpdViewModeGroup">
-                <button class="rpd-view-btn active" data-viewmode="2d">2D</button>
-                <button class="rpd-view-btn" data-viewmode="3d">3D</button>
-                <button class="rpd-view-btn" data-viewmode="mini">Mini</button>
-              </div>
-
-              <button class="rpd-icon-btn" id="mapResetViewBtn" title="Reset Map Zoom & Center" style="width:28px; height:28px;">⟲</button>
-              <button class="rpd-icon-btn" id="rpdFullscreenBtn" title="Toggle Fullscreen Map" style="width:28px; height:28px;">⛶</button>
-            </div>
-          </div>
-
-          <!-- Layers (7) Dropdown Popover -->
-          <div id="rpdLayersPopover" class="rpd-layers-popover">
-            <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:4px; display:flex; justify-content:space-between;">
-              <span>MAP LAYERS & FILTERS</span>
-              <span id="mapCursorCoord" style="color:var(--sulfur-yellow); font-family:var(--font-mono);">GRID: M13</span>
-            </div>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="godRocks" checked /> 🪨 God Rocks & Anvil Rocks (S/M/L)
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="tunnels" checked /> 🚇 Underground Train Tunnels
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="cargoPath" checked /> 🚢 Coastal Cargo Path & Rigs
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="icebergsWells" checked /> 🧊 Icebergs, Oases & Water Wells
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="vending" checked /> 🛒 Vending Shops & Safezones
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="liveEvents" /> 🚁 Simulated Cargo / Patrol Heli
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="cardFlow" /> 💳 Keycard Progression Lines
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="buildSpots" /> 🏰 Meta Base Spots & Sulfur Nodes
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
-              <input type="checkbox" class="rpd-sublayer-cb" data-sublayer="monumentNames" /> 🏷️ Always Show Monument Text Labels
-            </label>
-          </div>
-
-          <!-- Map Canvas Viewport -->
-          <div class="map-viewport" id="mapViewport">
-            <canvas id="tacticalMapCanvas" width="1400" height="1000"></canvas>
-
-            <!-- Top-Left Floating HUD Pills (Clock, Pop, Player Jump, Follow GPS, Monuments) -->
-            <div class="rpd-floating-hud-top">
-              <div class="rpd-hud-box">
-                <span id="rustPlusClockDisplay">☀️ 14:39</span>
-                <span style="color:#475569;">|</span>
-                <span id="rustPlusTeamDisplay" style="cursor:pointer;" title="Server Population">👥 97/175 &nbsp;›</span>
-              </div>
-
-              <button class="rpd-hud-btn" id="rpdCenterPlayerBtn" title="Center on Squad Leader (Smiguel)">
-                👤 ⌄
-              </button>
-
-              <button class="rpd-hud-btn" id="rpdFollowPlayerBtn" title="Lock camera onto your character as you move in real time">
-                🎯 Follow Me
-              </button>
-
-              <button class="rpd-hud-btn" id="rpdSimWalkBtn" title="Preview real-time 60 FPS GPS character movement on the map">
-                🏃 Test Live Move
-              </button>
-
-              <button class="rpd-hud-btn" id="rpdFloatingMonumentsBtn" title="Open Monument Keycard & Puzzle Atlas">
-                🗺️ Monuments
-              </button>
-
-              <!-- Hidden telemetry spans kept for compatibility -->
-              <span id="rustPlusCargoDisplay" style="display:none;"></span>
-              <span id="rustPlusHeliDisplay" style="display:none;"></span>
-            </div>
-
-            <!-- Bottom-Left Floating Team Chat Button & Drawer -->
-            <div class="rpd-floating-bottom-left">
-              <div id="rpdTeamChatDrawer" class="rpd-chat-drawer">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <span style="font-family:var(--font-display); font-weight:700; color:#60a5fa; font-size:13px;">
-                    💬 Rust+ In-Game & Squad Team Chat
-                  </span>
-                  <button id="rpdCloseChatDrawerBtn" class="rpd-icon-btn">✕</button>
-                </div>
-                <div id="rustPlusChatBox" style="background:#0f1319; border:1px solid #262c3a; border-radius:5px; padding:8px; height:140px; overflow-y:auto; margin-bottom:8px; font-size:12px; display:flex; flex-direction:column; gap:5px;"></div>
-                <div style="display:flex; gap:6px;">
-                  <input id="rustPlusChatInput" type="text" class="input" placeholder="Send message to Team Chat..." style="flex:1; padding:6px 10px; font-size:12px;" />
-                  <button id="sendRustPlusChatBtn" class="btn btn-primary btn-sm">Send</button>
-                </div>
-              </div>
-
-              <button id="rpdTeamChatToggleBtn" class="rpd-team-chat-btn">
-                💬 Team
-              </button>
-            </div>
-
-            <!-- Floating Right Inspector Drawer (Monuments, Keycards, Vending Search, Smart Switches, Build Spots) -->
-            <div id="rpdFloatingInspector" class="rpd-floating-inspector">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #282e3b;">
-                <div class="filter-pills" id="mapSideSubtabs" style="gap:4px;">
-                  <button class="filter-pill active" data-subtab="sub-monuments" style="padding:4px 8px; font-size:11px;">🔑 Monuments (21)</button>
-                  <button class="filter-pill" data-subtab="sub-rustplus" style="padding:4px 8px; font-size:11px;">🛒 Shops & IoT</button>
-                  <button class="filter-pill" data-subtab="sub-buildspots" style="padding:4px 8px; font-size:11px;">🏰 Spots</button>
-                  <button class="filter-pill" data-subtab="sub-markers" style="padding:4px 8px; font-size:11px;">📍 Pins</button>
-                </div>
-                <button id="rpdCloseInspectorBtn" class="rpd-icon-btn" title="Close Inspector">✕</button>
-              </div>
-
-              <!-- SUBTAB A: MONUMENTS, CARDS & FUSES -->
-              <div id="sub-monuments" class="map-subtab-content">
-                <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px;" id="monumentFilterBar">
-                  <button class="filter-pill active" data-mfilter="all">All</button>
-                  <button class="filter-pill" data-mfilter="get_green">Green Card</button>
-                  <button class="filter-pill" data-mfilter="get_blue">Blue Card</button>
-                  <button class="filter-pill" data-mfilter="get_red">Red Card</button>
-                  <button class="filter-pill" data-mfilter="tier3">Tier 3 / Elite</button>
-                </div>
-                <div id="selectedMonumentDetail" style="margin-bottom: 12px;"></div>
-                <div id="monumentAtlasList" class="monument-list" style="max-height: 360px;"></div>
-              </div>
-
-              <!-- SUBTAB 0: RUST+ LIVE VENDING SEARCH & SMART SWITCHES -->
-              <div id="sub-rustplus" class="map-subtab-content" style="display: none;">
-                <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px; margin-bottom: 12px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <span style="font-family:var(--font-display); font-weight:700; color:#4ade80; font-size:13px;">
-                      🛒 Vending Machine Item Search
-                    </span>
-                  </div>
-                  <input id="vendingSearchInput" type="text" class="input" placeholder="Search item (Garage Door, Ore Tea, Sulfur, AK)..." style="width:100%; margin-bottom:8px; font-size:12px;" />
-                  <div id="vendingMachinesList" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;"></div>
-                </div>
-
-                <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-family:var(--font-display); font-weight:700; color:var(--sulfur-yellow); font-size:13px;">
-                      🔌 Smart Switches & Alarms
-                    </span>
-                    <button id="addSmartSwitchBtn" class="btn btn-sm">+ Pair Switch</button>
-                  </div>
-                  <div id="smartDevicesList" style="display:flex; flex-direction:column; gap:8px;"></div>
-                </div>
-              </div>
-
-              <!-- SUBTAB B: BEST BUILDING SPOTS RECOMMENDER -->
-              <div id="sub-buildspots" class="map-subtab-content" style="display: none;">
-                <div style="background: var(--bg-card); padding: 10px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 10px;">
-                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <div style="flex: 1;">
-                      <label style="font-size: 10px; color: var(--text-secondary);">SQUAD SIZE</label>
-                      <select id="spotSquadFilter" class="select" style="width: 100%; font-size:12px; padding:5px;">
-                        <option value="all">All Squad Sizes</option>
-                        <option value="solo">Solo / Duo</option>
-                        <option value="trio">Trio / Quad</option>
-                        <option value="zerg">Clan / Zerg (5+)</option>
-                      </select>
-                    </div>
-                    <div style="flex: 1;">
-                      <label style="font-size: 10px; color: var(--text-secondary);">WIPE FOCUS</label>
-                      <select id="spotStyleFilter" class="select" style="width: 100%; font-size:12px; padding:5px;">
-                        <option value="all">All Playstyles</option>
-                        <option value="raid">Max Sulfur & Raiding</option>
-                        <option value="rig">Oil Rig / Cargo Control</option>
-                        <option value="scrap">Fast Scrap & WB Rush</option>
-                        <option value="stealth">Stealth / Anti-Offline</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div id="buildSpotsList" class="monument-list" style="max-height: 400px;"></div>
-              </div>
-
-              <!-- SUBTAB C: SHARED SQUAD MAP PINS -->
-              <div id="sub-markers" class="map-subtab-content" style="display: none;">
-                <div style="margin-bottom: 8px; font-size: 11.5px; color: var(--text-secondary);">
-                  Select a Click Mode in the top bar and click anywhere on the island to drop a live-synced marker.
-                </div>
-                <div id="squadMarkersList" class="monument-list" style="max-height: 420px;"></div>
-              </div>
-            </div>
-
-          </div>
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;" id="monumentFilterBar">
+          <button class="filter-pill active" data-mfilter="all">All</button>
+          <button class="filter-pill" data-mfilter="get_green">Gives Green Card</button>
+          <button class="filter-pill" data-mfilter="get_blue">Gives Blue Card</button>
+          <button class="filter-pill" data-mfilter="get_red">Gives Red Card</button>
+          <button class="filter-pill" data-mfilter="tier3">Tier 3 / Elite</button>
+        </div>
+        <div class="grid-2" style="align-items: start;">
+          <div id="monumentAtlasList" class="monument-list" style="max-height: 75vh; overflow-y: auto;"></div>
+          <div id="selectedMonumentDetail" style="position: sticky; top: 12px;"></div>
         </div>
       </div>
     </section>
@@ -786,12 +508,12 @@
   </main>
 
   <!-- ====================================================================
-       MODAL: SQUAD SETTINGS, PIN & CUSTOM MAP URL
+       MODAL: SQUAD SETTINGS & PIN
        ==================================================================== -->
   <div id="settingsModal" class="modal-backdrop">
     <div class="modal-card">
       <div class="panel-header">
-        <div class="panel-title">⚙️ Squad Sync, PIN & Map Settings</div>
+        <div class="panel-title">⚙️ Squad Sync &amp; PIN Settings</div>
         <button id="closeSettingsModalBtn" class="btn btn-sm">✕</button>
       </div>
       <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -802,20 +524,6 @@
         <div>
           <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SQUAD PIN (If SQUAD_PIN is set in Pterodactyl env)</label>
           <input id="settingSquadPin" type="password" class="input" style="width: 100%;" placeholder="Leave blank if no PIN configured on server" />
-        </div>
-        <div>
-          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">CUSTOM SERVER MAP IMAGE URL (Optional — RustMaps / BattleMetrics Map Image)</label>
-          <input id="settingMapImageUrl" type="text" class="input" style="width: 100%;" placeholder="https://... (Leave blank to use Tactical Procedural Island Map)" />
-        </div>
-        <div style="display: flex; gap: 10px;">
-          <div style="flex: 1;">
-            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">MAP SEED</label>
-            <input id="settingMapSeed" type="text" class="input" style="width: 100%;" placeholder="1337420" />
-          </div>
-          <div style="flex: 1;">
-            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">MAP SIZE</label>
-            <input id="settingMapSize" type="number" class="input" style="width: 100%;" value="4250" />
-          </div>
         </div>
         <div>
           <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATTLEMETRICS API TOKEN (Optional for higher rate limits)</label>
@@ -833,137 +541,6 @@
     </div>
   </div>
 
-  <!-- ====================================================================
-       MODAL: RUST+ CLOUD AUTO-PAIRING & SERVER MANAGER (v3.0 OVERHAUL)
-       ==================================================================== -->
-  <div id="rustPlusModal" class="modal-backdrop">
-    <div class="modal-card" style="max-width: 700px; max-height: 92vh; overflow-y: auto;">
-      <div class="panel-header">
-        <div class="panel-title">🛰️ Rust+ Cloud Pairing & Server Manager (v3.0)</div>
-        <button id="closeRustPlusModalBtn" class="btn btn-sm">✕</button>
-      </div>
-
-      <div style="display: flex; flex-direction: column; gap: 14px;">
-        <!-- SECTION 1: 1-CLICK STEAM POPUP & FACEPUNCH CLOUD HISTORY SYNC -->
-        <div style="background: linear-gradient(150deg, rgba(59,130,246,0.18), var(--bg-card)); border: 1px solid #3b82f6; border-radius: 8px; padding: 14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-            <span style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#60a5fa;">
-              🚀 Option A: Steam Login &amp; Facepunch Cloud Sync (No F12 Console!)
-            </span>
-            <span id="fcmListenerBadge" class="keycard-tag keycard-Fuse">READY TO PAIR</span>
-          </div>
-
-          <div style="font-size: 12px; color: var(--text-main); line-height: 1.5; margin-bottom: 10px;">
-            <strong>1.</strong> Click <strong>"🚀 Step 1: Sign In with Steam"</strong> below and click <strong>Anmelden / Sign In</strong>.<br/>
-            <strong>2.</strong> The popup will land on a short JSON page whose address bar ends with <code>#code=...</code> — copy that URL (<code>Ctrl+L</code> then <code>Ctrl+C</code>) and click back here (it <strong>auto-connects from your clipboard automatically</strong>, or click <strong>Step 2</strong>)!
-          </div>
-
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-            <button id="rpPopupSteamLoginBtn" class="btn btn-sm btn-primary" style="background:#2563eb; border-color:#60a5fa; font-weight:700;">
-              🚀 Step 1: Sign In with Steam (Popup)
-            </button>
-            <button id="rpPasteClipboardBtn" class="btn btn-sm btn-primary" style="background:#16a34a; border-color:#4ade80; font-weight:700;">
-              📋 Step 2: Auto-Paste Copied URL &amp; Connect
-            </button>
-            <button id="rpSyncHistoryBtn" class="btn btn-sm" style="border-color:#38bdf8; color:#38bdf8;">
-              🔄 Re-Sync Cloud History
-            </button>
-          </div>
-
-          <div style="display:flex; gap:8px;">
-            <input id="fcmTokenInput" type="text" class="input" style="flex:1; font-family:var(--font-mono); font-size:11px;" placeholder="Or press Ctrl+V here to paste Redirect URL (#code=...), AuthToken, or rustplusjs-config.json..." />
-            <button id="activateFcmListenerBtn" class="btn btn-sm btn-primary" style="white-space:nowrap;">
-              ⚡ Exchange &amp; Sync
-            </button>
-          </div>
-        </div>
-
-        <!-- SECTION 2: 1-CLICK IMPORT FROM RUST+ DESKTOP (RustPlusDesk) -->
-        <div style="background: linear-gradient(150deg, rgba(34,197,94,0.14), var(--bg-card)); border: 1px solid #4ade80; border-radius: 8px; padding: 14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
-            <span style="font-family:var(--font-display); font-size:14px; font-weight:700; color:#4ade80;">
-              📁 Option B: 1-Click Import from Rust+ Desktop (%APPDATA%\RustPlusDesk)
-            </span>
-          </div>
-
-          <div style="font-size: 12px; color: var(--text-main); line-height: 1.45; margin-bottom: 10px;">
-            Have <strong>Rust+ Desktop</strong> installed on your PC? Copy the folder path below and select <strong><code>profiles.json</code></strong>, <strong><code>rustplusjs-config.json</code></strong>, or <strong><code>notifications_history.json</code></strong> (you can select all 3 at once!):
-          </div>
-
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button id="copyRustPlusDeskPathBtn" class="btn btn-sm" style="border-color:#4ade80; color:#4ade80;">
-              📋 1. Copy %APPDATA%\RustPlusDesk Path
-            </button>
-            <label class="btn btn-sm btn-primary" style="cursor:pointer; background:#16a34a; border-color:#4ade80;">
-              📁 2. Select profiles.json / rustplusjs-config.json
-              <input id="rpJsonFileInput" type="file" accept=".json" multiple style="display:none;" />
-            </label>
-          </div>
-          <div id="rpImportStatusBox" style="margin-top:8px; font-family:var(--font-mono); font-size:11px; color:#4ade80; display:none;"></div>
-        </div>
-
-        <!-- SECTION 3: DISCOVERED PAIRED SERVERS & MANUAL SERVER CONNECTION -->
-        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-            <span style="font-family:var(--font-display); font-weight:700; color:#fff;">
-              🛰️ Paired Rust+ Servers & Active Connection
-            </span>
-            <span style="font-size:11px; color:var(--text-secondary);">Auto-falls back to Facepunch Proxy if game port is blocked</span>
-          </div>
-
-          <!-- Discovered Paired Servers List -->
-          <div id="rpPairedServersList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px;"></div>
-
-          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
-            <div style="flex: 2;">
-              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SERVER NAME (OPTIONAL)</label>
-              <input id="rpServerName" type="text" class="input" style="width: 100%;" placeholder="e.g. [EU] Willjum's Casual Solo/Duo" />
-            </div>
-            <div style="flex: 2;">
-              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST SERVER IP</label>
-              <input id="rpServerIp" type="text" class="input" style="width: 100%;" placeholder="e.g. 193.221.192.220" />
-            </div>
-            <div style="flex: 1;">
-              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ APP PORT</label>
-              <input id="rpServerPort" type="text" class="input" style="width: 100%;" placeholder="28082" value="28082" />
-            </div>
-          </div>
-          <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-            <div style="flex: 1;">
-              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">STEAM ID 64</label>
-              <input id="rpPlayerId" type="text" class="input" style="width: 100%;" placeholder="76561198..." />
-            </div>
-            <div style="flex: 1;">
-              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">RUST+ PLAYER TOKEN</label>
-              <input id="rpPlayerToken" type="text" class="input" style="width: 100%;" placeholder="e.g. -654239633" />
-            </div>
-          </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-            <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-main); cursor:pointer;">
-              <input id="rpUseProxyCheckbox" type="checkbox" />
-              <span>Route via Facepunch Official Proxy (<code>companion-rust.facepunch.com</code> — bypasses firewall blocks)</span>
-            </label>
-          </div>
-          <button id="connectRustPlusBtn" class="btn btn-primary" style="width: 100%;">
-            🛰️ Connect & Sync Active Rust+ Server
-          </button>
-        </div>
-
-        <!-- SECTION 4: 1-CLICK BATTLEMETRICS MAP LOADER -->
-        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
-          <div style="font-family: var(--font-display); font-weight: 700; color: var(--sulfur-yellow); margin-bottom: 6px;">
-            🌐 1-Click BattleMetrics Map Loader (No Steam Login Needed)
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <input id="rpBmServerIdInput" type="text" class="input" style="flex: 1;" placeholder="Enter BattleMetrics Server ID (e.g. 9565287)" />
-            <button id="rpFetchBmMapBtn" class="btn btn-sulfur">🌐 Auto-Load Map</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="js/map-world-data.js"></script>
   <script src="js/data.js"></script>
   <script src="js/app.js"></script>
 </body>
