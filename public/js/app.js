@@ -2174,6 +2174,16 @@
   let bfPanY = 0;
   let bfRenderedPins = [];
   let bfNoBuildColliders = { spheres: [], boxes: [], fallback: [] };
+  let bfCustomTargetMonument = null;
+
+  function bfSwitchSubtab(target) {
+    document.querySelectorAll('.bf-subtab-btn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-bf-sub') === target);
+    });
+    const map = { spots: 'bfSubSpots', farming: 'bfSubFarming', route: 'bfSubRoute' };
+    document.querySelectorAll('.bf-subpanel').forEach((p) => p.classList.remove('active'));
+    document.getElementById(map[target])?.classList.add('active');
+  }
 
   function bfComputeFitZoom() {
     if (!bfMapData || !bfMapData.size) return 1;
@@ -2741,8 +2751,12 @@
     const oreGrid = bfHeatmapGrids.Nodes || null;
     const spawnGrid = bfHeatmapGrids.PlayerSpawns || null;
 
-    const targetMons = mons.filter((m) => bfMatchesTarget(m.type, targetKey));
-    const trafficMons = mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
+    const targetMons = bfCustomTargetMonument
+      ? [bfCustomTargetMonument]
+      : mons.filter((m) => bfMatchesTarget(m.type, targetKey));
+    const trafficMons = bfCustomTargetMonument
+      ? mons.filter((m) => bfIsHighTraffic(m.type) && Math.hypot(m.x - bfCustomTargetMonument.x, m.y - bfCustomTargetMonument.y) > 20)
+      : mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
     const allTrafficMons = mons.filter((m) => bfIsHighTraffic(m.type));
     const t2Mons = mons
       .map((m) => ({ ...m, progW: bfTier2ProgWeight(m.type) }))
@@ -3256,21 +3270,47 @@
               : '⚠️ Red Keycard depends on lab layout'
         );
       }
+      const isFocusedTarget = Boolean(
+        bfCustomTargetMonument && Math.hypot(m.x - bfCustomTargetMonument.x, m.y - bfCustomTargetMonument.y) < 5
+      );
+      if (isFocusedTarget) {
+        lines.push('🎯 Focused Target (click Reset in Build Spots to clear)');
+      } else {
+        lines.push('🎯 Click pin → Find best build spots around this monument');
+      }
       bfRenderedPins.push({
         px,
         py,
-        r: vis.r,
+        r: isFocusedTarget ? Math.max(vis.r + 3, 9) : vis.r,
         wx: m.x,
         wy: m.y,
         title: `${vis.short || m.type} [${grid}]`,
-        color: vis.color,
-        lines
+        color: isFocusedTarget ? '#38bdf8' : vis.color,
+        lines,
+        selectAction: { type: 'monument', monument: { type: m.type, x: m.x, y: m.y, grid } }
       });
 
       ctx.save();
+      if (isFocusedTarget) {
+        ctx.beginPath();
+        ctx.arc(px, py, 480 * scale, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.arc(px, py, vis.r + 7, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.arc(px, py, vis.r, 0, Math.PI * 2);
-      ctx.fillStyle = vis.color;
+      ctx.fillStyle = isFocusedTarget ? '#38bdf8' : vis.color;
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#090b0e';
@@ -3528,6 +3568,24 @@
       }
     }
 
+    const focusBar = document.getElementById('bfFocusedMonumentBar');
+    if (focusBar) {
+      if (bfCustomTargetMonument) {
+        focusBar.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:rgba(56, 189, 248, 0.14); border:1px solid rgba(56, 189, 248, 0.45); font-size:12px;">
+            <span>🎯 Targeted Monument: <strong style="color:#fff;">${bfCustomTargetMonument.type} [${bfCustomTargetMonument.grid}]</strong></span>
+            <button id="bfClearFocusMonBtn" class="btn btn-secondary" style="padding:3px 8px; font-size:11px;">✕ Reset</button>
+          </div>
+        `;
+        focusBar.querySelector('#bfClearFocusMonBtn')?.addEventListener('click', () => {
+          bfCustomTargetMonument = null;
+          rerunBaseFinderScoring();
+        });
+      } else {
+        focusBar.innerHTML = '';
+      }
+    }
+
     if (!listEl) return;
     if (!bfTopSpots || bfTopSpots.length === 0) {
       listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted);">No valid build spots found for these filters.</div>`;
@@ -3537,7 +3595,9 @@
           const isSel = idx === bfSelectedIdx;
           const riskLabel = s.lowTrafficScore >= 82 ? 'VERY LOW' : s.lowTrafficScore >= 62 ? 'LOW' : 'MEDIUM';
           const riskColor = s.lowTrafficScore >= 82 ? '#4ade80' : s.lowTrafficScore >= 62 ? '#facc15' : '#f87171';
-          const rankBadge = idx === 0 ? '🥇 #1 BEST FOR YOUR FILTERS' : `#${idx + 1} OPTION`;
+          const rankBadge = idx === 0
+            ? (bfCustomTargetMonument ? `🥇 #1 NEAR ${bfCustomTargetMonument.type.toUpperCase()}` : '🥇 #1 BEST FOR YOUR FILTERS')
+            : `#${idx + 1} OPTION`;
           return `
             <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -3911,6 +3971,7 @@
         }
 
         bfMapData = data;
+        bfCustomTargetMonument = null;
         bfPrepareNoBuildData(data);
         bfZoom = bfComputeFitZoom();
         bfPanX = 0;
@@ -3981,7 +4042,11 @@
       if (e.key === 'Enter') runAnalyze();
     });
 
-    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb'].forEach((id) => {
+    document.getElementById('bfTargetMonumentSelect')?.addEventListener('change', () => {
+      bfCustomTargetMonument = null;
+      rerunBaseFinderScoring();
+    });
+    ['bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
@@ -4068,6 +4133,14 @@
           bfSelectedFarmIdx = nearestActionPin.selectAction.idx;
           renderBaseFinderFarming();
           renderBaseFinderMap();
+        } else if (nearestActionPin.selectAction.type === 'monument') {
+          const mon = nearestActionPin.selectAction.monument;
+          bfCustomTargetMonument = mon;
+          rerunBaseFinderScoring();
+          bfSwitchSubtab('spots');
+          if (statusEl) {
+            statusEl.textContent = `🎯 Ranked top build spots around ${mon.type} [${mon.grid}] — Best: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
+          }
         }
       });
       const tooltipEl = document.getElementById('bfMapTooltip');
@@ -4153,12 +4226,7 @@
 
     document.querySelectorAll('.bf-subtab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const target = btn.getAttribute('data-bf-sub');
-        document.querySelectorAll('.bf-subtab-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        document.querySelectorAll('.bf-subpanel').forEach((p) => p.classList.remove('active'));
-        const map = { spots: 'bfSubSpots', farming: 'bfSubFarming', route: 'bfSubRoute' };
-        document.getElementById(map[target])?.classList.add('active');
+        bfSwitchSubtab(btn.getAttribute('data-bf-sub'));
       });
     });
 
