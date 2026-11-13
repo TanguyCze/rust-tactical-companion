@@ -70,6 +70,9 @@
       <button class="nav-tab" data-tab="tab-battlemetrics">
         📡 BattleMetrics Raid Intel <span class="nav-badge">LIVE POP</span>
       </button>
+      <button class="nav-tab" data-tab="tab-basefinder">
+        📍 Base Finder <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">RUSTMAPS</span>
+      </button>
     </div>
   </nav>
 
@@ -500,6 +503,99 @@
             </div>
 
             <div id="bmWatchlistContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         TAB 7: RUSTMAPS BASE SPOT ANALYZER (POWERPLANT + DEEP SEA + LOW TRAFFIC)
+         ================================================================== -->
+    <section id="tab-basefinder" class="tab-panel">
+      <div class="panel" style="margin-bottom: 16px;">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">📍 Smart Base Finder (RustMaps URL Analyzer)</div>
+            <div class="panel-subtitle">Paste any RustMaps.com link, BattleMetrics server link, or <code>size_seed</code> — scores every buildable grid for your playstyle</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+          <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: 280px;" placeholder="https://rustmaps.com/map/4250_1337420  or  BattleMetrics server URL  or  4250_1337420" />
+          <button id="bfAnalyzeBtn" class="btn btn-primary" style="font-weight: 700;">🔍 Analyze Map &amp; Find Best Spots</button>
+        </div>
+
+        <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px 14px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">MAIN MONUMENT:</label>
+            <select id="bfTargetMonumentSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
+              <option value="powerplant" selected>⚡ Power Plant (Recommended)</option>
+              <option value="water_treatment">💧 Water Treatment</option>
+              <option value="train_yard">🚂 Train Yard</option>
+              <option value="airfield">✈️ Airfield</option>
+              <option value="launch_site">🚀 Launch Site</option>
+              <option value="missile_silo">☢️ Missile Silo</option>
+              <option value="military_tunnels">🪖 Military Tunnels</option>
+              <option value="sewer_branch">🟢 Sewer Branch</option>
+            </select>
+          </div>
+
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
+            <input id="bfDeepSeaCb" type="checkbox" checked />
+            <span>🌊 <strong>Deep Sea / Coast Access</strong> (Ocean + Fishing Village)</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
+            <input id="bfLowTrafficCb" type="checkbox" checked />
+            <span>🛡️ <strong>Low Traffic / Anti-Day-1 Raid</strong> (Avoid Outpost, Launch, Silo, Center)</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
+            <input id="bfStealthRockCb" type="checkbox" checked />
+            <span>🪨 <strong>Bonus for Caves &amp; God Rocks</strong></span>
+          </label>
+        </div>
+
+        <div id="bfStatusBar" style="margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);"></div>
+      </div>
+
+      <div class="grid-2" style="align-items: start;">
+        <!-- Left: Visual Annotated RustMaps Canvas -->
+        <div class="panel">
+          <div class="panel-header" style="margin-bottom: 10px;">
+            <div>
+              <div class="panel-title">🗺️ Map Overlay &amp; Recommended Build Zones</div>
+              <div class="panel-subtitle" id="bfMapMetaLabel">Paste a RustMaps URL above to render the procedural map + grid</div>
+            </div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+              <input id="bfShowHeatmapCb" type="checkbox" checked />
+              <span>Show Traffic / Safe Zones</span>
+            </label>
+          </div>
+          <div style="background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
+            <canvas id="bfMapCanvas" width="760" height="760" style="width: 100%; height: auto; display: block;"></canvas>
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--text-secondary);">
+            <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build Grids</span>
+            <span><strong style="color:#38bdf8;">⚡</strong> Target Monument</span>
+            <span><strong style="color:#2dd4bf;">⚓</strong> Boat / Deep Sea Launch</span>
+            <span><strong style="color:#ef4444;">🔴</strong> High-Traffic / Zerg Hub</span>
+            <span><strong style="color:#c084fc;">🪨</strong> Cave / God Rock</span>
+          </div>
+        </div>
+
+        <!-- Right: Top 5 Ranked Build Spots -->
+        <div class="panel">
+          <div class="panel-header" style="margin-bottom: 10px;">
+            <div>
+              <div class="panel-title">🏆 Top 5 Recommended Build Grids</div>
+              <div class="panel-subtitle">Click any spot to highlight it on the map &amp; inspect exact distances</div>
+            </div>
+          </div>
+          <div id="bfResultsList" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px;">
+              Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get your Top 5 low-traffic Power Plant + Deep Sea build spots.
+            </div>
           </div>
         </div>
       </div>

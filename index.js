@@ -245,6 +245,60 @@ function sendDiscordWebhook(webhookUrl, title, description, color = 0xcd412b) {
   });
 }
 
+function fetchTextHttps(urlStr, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirectCount > 5) return reject(new Error('Too many redirects'));
+    const parsed = new URL(urlStr);
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8'
+        },
+        timeout: 12000
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const nextUrl = new URL(res.headers.location, urlStr).toString();
+          res.resume();
+          return fetchTextHttps(nextUrl, redirectCount + 1).then(resolve, reject);
+        }
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(body);
+          else reject(new Error(`HTTP ${res.statusCode} fetching ${parsed.hostname}`));
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('Request timeout'));
+    });
+    req.end();
+  });
+}
+
+function parseRustMapsFromHtml(html) {
+  const scriptRe = /<script[^>]*>(\{"status":200[^<]*?)<\/script>/g;
+  let match;
+  while ((match = scriptRe.exec(html)) !== null) {
+    try {
+      const outer = JSON.parse(match[1]);
+      if (typeof outer?.body === 'string' && outer.body.includes('"monuments"')) {
+        const inner = JSON.parse(outer.body);
+        if (inner?.data?.monuments && inner?.data?.size) {
+          return inner.data;
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -352,6 +406,103 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { server: detail, history: history.data || [] });
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    // 6B. RustMaps URL Analyzer (extracts seed, size, map image & all monument coordinates)
+    if (pathname === '/api/rustmaps/analyze' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const rawInput = String(body.url || '').trim();
+      if (!rawInput) {
+        return sendJson(res, 400, { error: 'Please paste a RustMaps.com URL, BattleMetrics server URL, or size_seed (e.g. 4250_1337420).' });
+      }
+
+      try {
+        let rustmapsUrl = '';
+        const rmMatch = rawInput.match(/https?:\/\/(?:www\.)?rustmaps\.com\/map\/([a-zA-Z0-9_-]+)/i);
+        const bmMatch = rawInput.match(/battlemetrics\.com\/servers\/rust\/(\d+)/i);
+        const seedSizeMatch = rawInput.match(/^(\d{4})[_\s/:]+(-?\d+)$/);
+
+        if (rmMatch) {
+          rustmapsUrl = `https://rustmaps.com/map/${rmMatch[1]}`;
+        } else if (seedSizeMatch) {
+          rustmapsUrl = `https://rustmaps.com/map/${seedSizeMatch[1]}_${seedSizeMatch[2]}`;
+        } else if (bmMatch || /^\d{5,}$/.test(rawInput)) {
+          const bmId = bmMatch ? bmMatch[1] : rawInput;
+          const token = req.headers['authorization']?.replace('Bearer ', '') || '';
+          const bmData = await fetchJsonHttps(`https://api.battlemetrics.com/servers/${bmId}`, token);
+          const details = bmData?.data?.attributes?.details || {};
+          const rmDirect = details.rust_maps?.url;
+          if (rmDirect && rmDirect.includes('rustmaps.com/map/')) {
+            rustmapsUrl = rmDirect;
+          } else if (details.rust_world_size && details.rust_world_seed !== undefined) {
+            rustmapsUrl = `https://rustmaps.com/map/${details.rust_world_size}_${details.rust_world_seed}`;
+          } else {
+            return sendJson(res, 404, { error: 'This BattleMetrics server does not publish its RustMaps seed/size.' });
+          }
+        } else {
+          return sendJson(res, 400, {
+            error: 'Unrecognized URL. Paste a RustMaps link like https://rustmaps.com/map/4250_1337420 or a BattleMetrics server link.'
+          });
+        }
+
+        const html = await fetchTextHttps(rustmapsUrl);
+        const mapData = parseRustMapsFromHtml(html);
+        if (!mapData) {
+          return sendJson(res, 502, {
+            error: 'Could not extract monument data from RustMaps. Make sure the map exists on rustmaps.com and is finished generating.'
+          });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          rustmapsUrl,
+          id: mapData.id,
+          seed: mapData.seed,
+          size: mapData.size,
+          imageUrl: mapData.imageUrl || '',
+          imageIconUrl: mapData.imageIconUrl || '',
+          biomePercentages: mapData.biomePercentages || {},
+          monuments: (mapData.monuments || []).map((m) => ({
+            type: m.type || '',
+            x: Number(m.coordinates?.x || 0),
+            y: Number(m.coordinates?.y || 0)
+          }))
+        });
+      } catch (err) {
+        return sendJson(res, 502, { error: `Failed to analyze RustMaps URL: ${err.message}` });
+      }
+    }
+
+    // 6C. Safe Image Proxy for RustMaps CDN (prevents CORS taint on canvas)
+    if (pathname === '/api/rustmaps/image' && req.method === 'GET') {
+      const target = parsedUrl.searchParams.get('url') || '';
+      try {
+        const u = new URL(target);
+        if (u.protocol !== 'https:' || !u.hostname.endsWith('rustmaps.com')) {
+          return sendJson(res, 403, { error: 'Only rustmaps.com image URLs are allowed' });
+        }
+        const imgReq = https.request(
+          {
+            hostname: u.hostname,
+            path: u.pathname + u.search,
+            method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: 12000
+          },
+          (imgRes) => {
+            res.writeHead(imgRes.statusCode || 200, {
+              'Content-Type': imgRes.headers['content-type'] || 'image/png',
+              'Cache-Control': 'public, max-age=3600'
+            });
+            imgRes.pipe(res);
+          }
+        );
+        imgReq.on('error', (err) => sendJson(res, 502, { error: err.message }));
+        imgReq.end();
+        return;
+      } catch (_) {
+        return sendJson(res, 400, { error: 'Invalid image URL' });
       }
     }
 

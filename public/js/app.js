@@ -2085,6 +2085,629 @@
   }
 
   // =========================================================================
+  // MODULE 7: SMART BASE FINDER (RUSTMAPS URL ANALYZER)
+  // =========================================================================
+  let bfMapData = null;
+  let bfLoadedImage = null;
+  let bfTopSpots = [];
+  let bfSelectedIdx = 0;
+
+  function bfColLabel(idx) {
+    let s = '';
+    let n = idx + 1;
+    while (n > 0) {
+      n--;
+      s = String.fromCharCode(65 + (n % 26)) + s;
+      n = Math.floor(n / 26);
+    }
+    return s;
+  }
+
+  function bfWorldToGrid(wx, wy, mapSize) {
+    const count = Math.max(1, Math.ceil(mapSize / 150));
+    const cellSize = mapSize / count;
+    const col = Math.min(count - 1, Math.max(0, Math.floor((wx + mapSize / 2) / cellSize)));
+    const row = Math.min(count - 1, Math.max(0, Math.floor((mapSize / 2 - wy) / cellSize)));
+    return `${bfColLabel(col)}${row}`;
+  }
+
+  function bfMatchesTarget(typeStr, targetKey) {
+    const t = String(typeStr || '').toLowerCase();
+    if (targetKey === 'powerplant') return t.includes('powerplant') || t.includes('power plant');
+    if (targetKey === 'water_treatment') return t.includes('water treatment');
+    if (targetKey === 'train_yard') return t.includes('train yard') || t.includes('trainyard');
+    if (targetKey === 'airfield') return t.includes('airfield');
+    if (targetKey === 'launch_site') return t.includes('launch site');
+    if (targetKey === 'missile_silo') return t.includes('missile silo');
+    if (targetKey === 'military_tunnels') return t.includes('military tunnel');
+    if (targetKey === 'sewer_branch') return t.includes('sewer branch');
+    return false;
+  }
+
+  function bfIsHighTraffic(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return (
+      t.includes('outpost') ||
+      t.includes('bandit') ||
+      t.includes('launch site') ||
+      t.includes('missile silo') ||
+      t.includes('military tunnel') ||
+      t.includes('excavator') ||
+      t.includes('airfield') ||
+      t.includes('train yard') ||
+      t.includes('arctic research')
+    );
+  }
+
+  function bfIsBoatHub(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return t.includes('fishing village') || t.includes('harbor') || t.includes('ferry terminal');
+  }
+
+  function bfIsStealthCover(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return t.includes('god rock') || t.includes('anvil rock') || t.includes('3 wall rock') || t.includes('cave');
+  }
+
+  function bfIsNoBuildSource(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    if (bfIsStealthCover(t) || t.includes('iceberg') || t.includes('powerline')) return 0;
+    if (t.includes('launch site')) return 240;
+    if (
+      t.includes('powerplant') ||
+      t.includes('airfield') ||
+      t.includes('water treatment') ||
+      t.includes('train yard') ||
+      t.includes('outpost') ||
+      t.includes('bandit') ||
+      t.includes('missile silo') ||
+      t.includes('military') ||
+      t.includes('excavator') ||
+      t.includes('harbor') ||
+      t.includes('ferry') ||
+      t.includes('fishing village') ||
+      t.includes('sphere tank') ||
+      t.includes('satellite') ||
+      t.includes('sewer') ||
+      t.includes('junkyard') ||
+      t.includes('radtown')
+    ) {
+      return 175;
+    }
+    if (t.includes('substation') || t.includes('water well') || t.includes('warehouse') || t.includes('lighthouse') || t.includes('supermarket') || t.includes('gas station')) {
+      return 95;
+    }
+    return 0;
+  }
+
+  function bfBuildLandMask(img, mapSize) {
+    const N = 160;
+    const off = document.createElement('canvas');
+    off.width = N;
+    off.height = N;
+    const ctx = off.getContext('2d');
+    ctx.drawImage(img, 0, 0, N, N);
+    const pixels = ctx.getImageData(0, 0, N, N).data;
+    const isWater = new Uint8Array(N * N);
+
+    for (let i = 0; i < N * N; i++) {
+      const r = pixels[i * 4];
+      const g = pixels[i * 4 + 1];
+      const b = pixels[i * 4 + 2];
+      // RustMaps ocean is deep teal/blue where Blue clearly exceeds Red
+      if (b > r + 14 && r < 95 && b > 70) {
+        isWater[i] = 1;
+      }
+    }
+
+    const oceanPts = [];
+    for (let gy = 0; gy < N; gy++) {
+      for (let gx = 0; gx < N; gx++) {
+        if (!isWater[gy * N + gx]) continue;
+        // Edge of ocean (adjacent to land) speeds up distance checks dramatically
+        const hasLandNeighbor =
+          (gx > 0 && !isWater[gy * N + (gx - 1)]) ||
+          (gx < N - 1 && !isWater[gy * N + (gx + 1)]) ||
+          (gy > 0 && !isWater[(gy - 1) * N + gx]) ||
+          (gy < N - 1 && !isWater[(gy + 1) * N + gx]);
+        if (hasLandNeighbor) {
+          const wx = ((gx + 0.5) / N - 0.5) * mapSize;
+          const wy = (0.5 - (gy + 0.5) / N) * mapSize;
+          oceanPts.push({ wx, wy });
+        }
+      }
+    }
+    return { N, isWater, oceanPts };
+  }
+
+  function computeRecommendedBuildSpots() {
+    if (!bfMapData || !bfMapData.size) return [];
+    const mapSize = bfMapData.size;
+    const half = mapSize / 2;
+    const mons = bfMapData.monuments || [];
+
+    const targetKey = document.getElementById('bfTargetMonumentSelect')?.value || 'powerplant';
+    const wantDeepSea = Boolean(document.getElementById('bfDeepSeaCb')?.checked);
+    const wantLowTraffic = Boolean(document.getElementById('bfLowTrafficCb')?.checked);
+    const wantStealthRock = Boolean(document.getElementById('bfStealthRockCb')?.checked);
+
+    const targetMons = mons.filter((m) => bfMatchesTarget(m.type, targetKey));
+    const trafficMons = mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
+    const boatHubs = mons.filter((m) => bfIsBoatHub(m.type));
+    const stealthCovers = mons.filter((m) => bfIsStealthCover(m.type));
+    const noBuildList = mons
+      .map((m) => ({ ...m, blockR: bfIsNoBuildSource(m.type) }))
+      .filter((m) => m.blockR > 0);
+
+    const mask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, mapSize) : null;
+    const STEP_G = 72;
+    const candidates = [];
+
+    for (let gy = 2; gy < STEP_G - 2; gy++) {
+      for (let gx = 2; gx < STEP_G - 2; gx++) {
+        const nx = (gx + 0.5) / STEP_G;
+        const ny = (gy + 0.5) / STEP_G;
+        const wx = (nx - 0.5) * mapSize;
+        const wy = (0.5 - ny) * mapSize;
+
+        // 1. Land & coast check via image mask (or fallback radial check)
+        let coastDist = Math.max(0, half * 0.85 - Math.hypot(wx, wy));
+        if (mask) {
+          const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
+          const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
+          if (mask.isWater[my * mask.N + mx]) continue;
+          // Require surrounding pixels to also be land so we don't pick tiny ocean rocks
+          let landNeighbors = 0;
+          for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            const nmx = Math.min(mask.N - 1, Math.max(0, mx + dx));
+            const nmy = Math.min(mask.N - 1, Math.max(0, my + dy));
+            if (!mask.isWater[nmy * mask.N + nmx]) landNeighbors++;
+          }
+          if (landNeighbors < 3) continue;
+
+          if (mask.oceanPts.length > 0) {
+            let minCoast = Infinity;
+            for (const op of mask.oceanPts) {
+              const d = Math.hypot(wx - op.wx, wy - op.wy);
+              if (d < minCoast) minCoast = d;
+            }
+            coastDist = minCoast;
+          }
+        } else {
+          if (Math.hypot(wx, wy) > half * 0.86) continue;
+        }
+
+        // 2. Skip building-blocked monument zones
+        let blocked = false;
+        for (const nb of noBuildList) {
+          if (Math.hypot(wx - nb.x, wy - nb.y) < nb.blockR) {
+            blocked = true;
+            break;
+          }
+        }
+        if (blocked) continue;
+
+        // 3. Target Monument Score (Power Plant sweet spot: 240m - 580m)
+        let targetDist = Infinity;
+        let nearestTarget = null;
+        for (const tm of targetMons) {
+          const d = Math.hypot(wx - tm.x, wy - tm.y);
+          if (d < targetDist) {
+            targetDist = d;
+            nearestTarget = tm;
+          }
+        }
+        let targetScore = 0;
+        if (nearestTarget) {
+          if (targetDist >= 220 && targetDist <= 480) targetScore = 100;
+          else if (targetDist < 220) targetScore = 60;
+          else targetScore = Math.max(0, 100 - ((targetDist - 480) / (mapSize * 0.35)) * 100);
+        } else {
+          targetScore = 50; // Map has no instance of selected monument
+        }
+
+        // 4. Deep Sea / Coast + Boat Access Score
+        let nearestBoat = null;
+        let boatDist = Infinity;
+        for (const bh of boatHubs) {
+          const d = Math.hypot(wx - bh.x, wy - bh.y);
+          if (d < boatDist) {
+            boatDist = d;
+            nearestBoat = bh;
+          }
+        }
+        let deepSeaScore = 50;
+        if (wantDeepSea) {
+          // Best coast distance is 45m..260m (right near water to launch a boat/sub into Deep Sea)
+          const coastPts =
+            coastDist <= 220
+              ? 100
+              : coastDist <= 420
+                ? 80 - ((coastDist - 220) / 200) * 25
+                : Math.max(0, 55 - ((coastDist - 420) / 600) * 55);
+          const boatPts = nearestBoat
+            ? boatDist <= 750
+              ? 100
+              : Math.max(15, 100 - ((boatDist - 750) / 1200) * 85)
+            : 50;
+          deepSeaScore = coastPts * 0.68 + boatPts * 0.32;
+        }
+
+        // 5. Low Traffic / Anti-Day-1-Raid Score
+        let minTrafficDist = Infinity;
+        let nearestTraffic = null;
+        let trafficPenalty = 0;
+        for (const hm of trafficMons) {
+          const d = Math.hypot(wx - hm.x, wy - hm.y);
+          if (d < minTrafficDist) {
+            minTrafficDist = d;
+            nearestTraffic = hm;
+          }
+          const tLower = hm.type.toLowerCase();
+          const dangerR = tLower.includes('outpost') || tLower.includes('launch') || tLower.includes('silo') ? 1050 : 800;
+          if (d < dangerR) {
+            trafficPenalty += ((dangerR - d) / dangerR) * 42;
+          }
+        }
+        const centerDist = Math.hypot(wx, wy);
+        if (centerDist < half * 0.36) {
+          trafficPenalty += 22 * (1 - centerDist / (half * 0.36));
+        }
+        const lowTrafficScore = Math.max(0, Math.min(100, 100 - trafficPenalty));
+
+        // 6. Stealth Cover (Cave / God Rock) Bonus
+        let nearestCover = null;
+        let coverDist = Infinity;
+        for (const sc of stealthCovers) {
+          const d = Math.hypot(wx - sc.x, wy - sc.y);
+          if (d < coverDist) {
+            coverDist = d;
+            nearestCover = sc;
+          }
+        }
+        const coverBonus = wantStealthRock && nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
+
+        // Weighted final score
+        const wTarget = nearestTarget ? 0.38 : 0;
+        const wDeep = wantDeepSea ? 0.32 : 0.08;
+        const wTraffic = wantLowTraffic ? 0.30 : 0.12;
+        const wSum = wTarget + wDeep + wTraffic || 1;
+        const total = Math.min(
+          100,
+          Math.round((targetScore * wTarget + deepSeaScore * wDeep + lowTrafficScore * wTraffic) / wSum + coverBonus)
+        );
+
+        candidates.push({
+          wx,
+          wy,
+          nx,
+          ny,
+          grid: bfWorldToGrid(wx, wy, mapSize),
+          score: total,
+          targetScore: Math.round(targetScore),
+          deepSeaScore: Math.round(deepSeaScore),
+          lowTrafficScore: Math.round(lowTrafficScore),
+          targetDist: Math.round(targetDist),
+          targetName: nearestTarget?.type || targetKey,
+          coastDist: Math.round(coastDist),
+          boatDist: Math.round(boatDist),
+          boatName: nearestBoat?.type || 'Coast',
+          minTrafficDist: Math.round(minTrafficDist),
+          nearestTrafficName: nearestTraffic?.type || 'None',
+          coverDist: Math.round(coverDist),
+          coverName: nearestCover && coverDist <= 320 ? nearestCover.type : ''
+        });
+      }
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+
+    // Pick Top 5 spatially distinct spots (at least 300m apart)
+    const picked = [];
+    const minSep = Math.max(260, mapSize * 0.09);
+    for (const c of candidates) {
+      if (picked.every((p) => Math.hypot(p.wx - c.wx, p.wy - c.wy) >= minSep)) {
+        picked.push(c);
+        if (picked.length >= 5) break;
+      }
+    }
+    return picked;
+  }
+
+  function renderBaseFinderMap() {
+    const canvas = document.getElementById('bfMapCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0b3a4a';
+    ctx.fillRect(0, 0, W, H);
+
+    if (!bfMapData) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 15px "Inter", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Paste a RustMaps URL above to visualize the map & best build grids', W / 2, H / 2);
+      return;
+    }
+
+    if (bfLoadedImage) {
+      ctx.drawImage(bfLoadedImage, 0, 0, W, H);
+    }
+
+    const mapSize = bfMapData.size || 4000;
+    const toPx = (wx, wy) => ({
+      px: ((wx + mapSize / 2) / mapSize) * W,
+      py: (1 - (wy + mapSize / 2) / mapSize) * H
+    });
+
+    // 1. Rust-accurate grid overlay
+    const count = Math.max(1, Math.ceil(mapSize / 150));
+    const cellPx = W / count;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.font = '600 9px "JetBrains Mono", monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    for (let i = 0; i <= count; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * cellPx, 0);
+      ctx.lineTo(i * cellPx, H);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * cellPx);
+      ctx.lineTo(W, i * cellPx);
+      ctx.stroke();
+      if (i < count) {
+        ctx.fillText(bfColLabel(i), i * cellPx + 3, 11);
+        ctx.fillText(String(i), 3, i * cellPx + 20);
+      }
+    }
+    ctx.restore();
+
+    const targetKey = document.getElementById('bfTargetMonumentSelect')?.value || 'powerplant';
+    const showZones = Boolean(document.getElementById('bfShowHeatmapCb')?.checked);
+    const mons = bfMapData.monuments || [];
+
+    // 2. Traffic danger zones + target sweet-spot ring
+    if (showZones) {
+      mons.forEach((m) => {
+        const { px, py } = toPx(m.x, m.y);
+        if (bfMatchesTarget(m.type, targetKey)) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(px, py, (450 / mapSize) * W, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.stroke();
+          ctx.restore();
+        } else if (bfIsHighTraffic(m.type)) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(px, py, (650 / mapSize) * W, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.14)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          ctx.restore();
+        }
+      });
+    }
+
+    // 3. Key monument pins
+    mons.forEach((m) => {
+      const { px, py } = toPx(m.x, m.y);
+      let color = '';
+      let short = '';
+      if (bfMatchesTarget(m.type, targetKey)) {
+        color = '#38bdf8';
+        short = `⚡ ${m.type}`;
+      } else if (bfIsBoatHub(m.type)) {
+        color = '#2dd4bf';
+        short = m.type.replace(' A', '').replace(' B', '').replace(' C', '');
+      } else if (bfIsHighTraffic(m.type)) {
+        color = '#ef4444';
+        short = m.type;
+      } else if (bfIsStealthCover(m.type) && (m.type.includes('Cave') || m.type.includes('Large God'))) {
+        color = '#c084fc';
+        short = '';
+      }
+      if (!color) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, short ? 5.5 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#090b0e';
+      ctx.stroke();
+      if (short) {
+        ctx.font = '700 10px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.88)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(short, px, py - 9);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(short, px, py - 9);
+      }
+      ctx.restore();
+    });
+
+    // 4. Top 5 Recommended Build Spots
+    bfTopSpots.forEach((spot, idx) => {
+      const { px, py } = toPx(spot.wx, spot.wy);
+      const isSel = idx === bfSelectedIdx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, isSel ? 18 : 13, 0, Math.PI * 2);
+      ctx.fillStyle = isSel ? 'rgba(34, 197, 94, 0.38)' : 'rgba(34, 197, 94, 0.22)';
+      ctx.fill();
+      ctx.lineWidth = isSel ? 2.8 : 1.8;
+      ctx.strokeStyle = idx === 0 ? '#facc15' : '#4ade80';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(px, py, 9, 0, Math.PI * 2);
+      ctx.fillStyle = idx === 0 ? '#eab308' : '#16a34a';
+      ctx.fill();
+
+      ctx.font = '800 10.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = idx === 0 ? '#090b0e' : '#ffffff';
+      ctx.fillText(`#${idx + 1}`, px, py + 0.5);
+
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '700 10.5px "JetBrains Mono", monospace';
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = 3;
+      const lbl = `[${spot.grid}] ${spot.score}/100`;
+      ctx.strokeText(lbl, px, py + 22);
+      ctx.fillStyle = idx === 0 ? '#facc15' : '#4ade80';
+      ctx.fillText(lbl, px, py + 22);
+      ctx.restore();
+    });
+  }
+
+  function renderBaseFinderResults() {
+    const listEl = document.getElementById('bfResultsList');
+    if (!listEl) return;
+    if (!bfTopSpots || bfTopSpots.length === 0) {
+      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted);">No valid build spots found for these filters.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = bfTopSpots
+      .map((s, idx) => {
+        const isSel = idx === bfSelectedIdx;
+        const riskLabel = s.lowTrafficScore >= 82 ? 'VERY LOW' : s.lowTrafficScore >= 62 ? 'LOW' : 'MEDIUM';
+        const riskColor = s.lowTrafficScore >= 82 ? '#4ade80' : s.lowTrafficScore >= 62 ? '#facc15' : '#f87171';
+        const rankBadge = idx === 0 ? '🥇 #1 BEST OVERALL' : `#${idx + 1} OPTION`;
+        return `
+          <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
+                ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.grid}]</span>
+              </div>
+              <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
+              <span style="color:#38bdf8;">⚡ ${s.targetName}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
+              <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
+              <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
+              <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary);">
+              Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+              ${s.coverName ? ` • <span style="color:#c084fc;">🪨 Cover nearby: ${s.coverName} (${s.coverDist}m)</span>` : ''}
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    listEl.querySelectorAll('.bf-spot-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        bfSelectedIdx = parseInt(card.getAttribute('data-bf-idx'), 10) || 0;
+        renderBaseFinderResults();
+        renderBaseFinderMap();
+      });
+    });
+  }
+
+  function rerunBaseFinderScoring() {
+    if (!bfMapData) return;
+    bfTopSpots = computeRecommendedBuildSpots();
+    bfSelectedIdx = 0;
+    renderBaseFinderResults();
+    renderBaseFinderMap();
+  }
+
+  function initBaseFinderModule() {
+    const analyzeBtn = document.getElementById('bfAnalyzeBtn');
+    const urlInput = document.getElementById('bfMapUrlInput');
+    const statusEl = document.getElementById('bfStatusBar');
+    const metaEl = document.getElementById('bfMapMetaLabel');
+
+    async function runAnalyze() {
+      const url = urlInput?.value.trim();
+      if (!url) {
+        alert('Paste a RustMaps.com URL (e.g. https://rustmaps.com/map/4250_1337420) or BattleMetrics server URL first!');
+        return;
+      }
+      if (!isServerConnected) {
+        alert('Backend server required to fetch RustMaps data.');
+        return;
+      }
+
+      const oldText = analyzeBtn.textContent;
+      analyzeBtn.textContent = '⏳ Analyzing Map...';
+      analyzeBtn.disabled = true;
+      if (statusEl) statusEl.textContent = 'Fetching map & monuments from RustMaps...';
+
+      try {
+        const res = await fetch('/api/rustmaps/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to analyze map');
+        }
+
+        bfMapData = data;
+        if (metaEl) {
+          metaEl.textContent = `Size: ${data.size} • Seed: ${data.seed} • ${data.monuments.length} map features detected`;
+        }
+        if (statusEl) {
+          statusEl.textContent = `✓ Loaded ${data.size}_${data.seed} (${data.monuments.length} monuments). Scanning coast & low-traffic grids...`;
+        }
+
+        if (data.imageUrl) {
+          const img = new Image();
+          img.onload = () => {
+            bfLoadedImage = img;
+            rerunBaseFinderScoring();
+            if (statusEl) {
+              statusEl.textContent = `✓ Analysis complete for ${data.size}_${data.seed}! Top spot: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
+            }
+          };
+          img.onerror = () => {
+            bfLoadedImage = null;
+            rerunBaseFinderScoring();
+          };
+          img.src = `/api/rustmaps/image?url=${encodeURIComponent(data.imageUrl)}`;
+        } else {
+          bfLoadedImage = null;
+          rerunBaseFinderScoring();
+        }
+      } catch (err) {
+        if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
+        alert(err.message);
+      } finally {
+        analyzeBtn.textContent = oldText;
+        analyzeBtn.disabled = false;
+      }
+    }
+
+    analyzeBtn?.addEventListener('click', runAnalyze);
+    urlInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runAnalyze();
+    });
+
+    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfStealthRockCb', 'bfShowHeatmapCb'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
+    });
+
+    renderBaseFinderMap();
+  }
+
+  // =========================================================================
   // MASTER RENDER & INITIALIZATION
   // =========================================================================
   function renderAll() {
@@ -2112,6 +2735,7 @@
     initGeneticsModule();
     initRecyclerDieselDecayModule();
     initBattleMetricsModule();
+    initBaseFinderModule();
     renderAll();
     initSquadSSE();
   });
