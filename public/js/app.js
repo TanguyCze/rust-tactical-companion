@@ -2091,12 +2091,17 @@
   let bfLoadedImage = null;
   let bfLandMask = null;
   let bfTopSpots = [];
+  let bfStealthBest = null;
   let bfSelectedIdx = 0;
   let bfActiveHeatmap = 'none';
   let bfHeatmapImages = {};
   let bfHeatmapGrids = {};
   let bfFarmingSpots = [];
   let bfSelectedFarmIdx = -1;
+
+  function getSelectedBuildSpot() {
+    return bfSelectedIdx === -1 ? bfStealthBest : (bfTopSpots[bfSelectedIdx] || null);
+  }
 
   function bfColLabel(idx) {
     let s = '';
@@ -2153,6 +2158,27 @@
   function bfIsStealthCover(typeStr) {
     const t = String(typeStr || '').toLowerCase();
     return t.includes('god rock') || t.includes('anvil rock') || t.includes('3 wall rock') || t.includes('cave');
+  }
+
+  // Weight for low-key fast-progression monuments (recycler + crates/puzzles without zerg traffic)
+  function bfFastProgWeight(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    if (
+      t.includes('sewer') ||
+      t.includes('satellite') ||
+      t.includes('water treatment') ||
+      t.includes('powerplant') ||
+      t.includes('harbor') ||
+      t.includes('ferry') ||
+      t.includes('sphere tank') ||
+      t.includes('radtown')
+    ) {
+      return 1.0;
+    }
+    if (t.includes('junkyard') || t.includes('lighthouse') || t.includes('supermarket') || t.includes('gas station') || t.includes('warehouse')) {
+      return 0.72;
+    }
+    return 0;
   }
 
   function bfIsNoBuildSource(typeStr) {
@@ -2374,15 +2400,21 @@
 
     const targetMons = mons.filter((m) => bfMatchesTarget(m.type, targetKey));
     const trafficMons = mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
+    const allTrafficMons = mons.filter((m) => bfIsHighTraffic(m.type));
+    const progMons = mons
+      .map((m) => ({ ...m, progW: bfFastProgWeight(m.type) }))
+      .filter((m) => m.progW > 0);
     const boatHubs = mons.filter((m) => bfIsBoatHub(m.type));
     const stealthCovers = mons.filter((m) => bfIsStealthCover(m.type));
     const noBuildList = mons
       .map((m) => ({ ...m, blockR: bfIsNoBuildSource(m.type) }))
       .filter((m) => m.blockR > 0);
 
+    const hempGrid = bfHeatmapGrids.Hemp || null;
     const mask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, mapSize) : null;
     const STEP_G = 72;
     const candidates = [];
+    let bestStealth = null;
 
     for (let gy = 2; gy < STEP_G - 2; gy++) {
       for (let gx = 2; gx < STEP_G - 2; gx++) {
@@ -2515,6 +2547,72 @@
         }
         const coverBonus = wantStealthRock && nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
 
+        // 7. Preference-independent "Under the Radar + Fast Progress" overall pick
+        let bestProgScore = 45;
+        let bestProgMon = null;
+        let bestProgDist = Infinity;
+        for (const pm of progMons) {
+          const d = Math.hypot(wx - pm.x, wy - pm.y);
+          const distPts =
+            d >= 200 && d <= 520
+              ? 100
+              : d < 200
+                ? 65
+                : Math.max(0, 100 - ((d - 520) / (mapSize * 0.28)) * 100);
+          const weighted = distPts * pm.progW;
+          if (weighted > bestProgScore) {
+            bestProgScore = weighted;
+            bestProgMon = pm;
+            bestProgDist = d;
+          }
+        }
+        // Separate strict low-traffic check against ALL high-traffic zerg hubs
+        let stealthPenalty = 0;
+        let minAllTrafficDist = Infinity;
+        let nearestAllTraffic = null;
+        for (const hm of allTrafficMons) {
+          const d = Math.hypot(wx - hm.x, wy - hm.y);
+          if (d < minAllTrafficDist) {
+            minAllTrafficDist = d;
+            nearestAllTraffic = hm;
+          }
+          const tLower = hm.type.toLowerCase();
+          const dangerR = tLower.includes('outpost') || tLower.includes('launch') || tLower.includes('silo') ? 1050 : 800;
+          if (d < dangerR) stealthPenalty += ((dangerR - d) / dangerR) * 44;
+        }
+        if (centerDist < half * 0.38) stealthPenalty += 24 * (1 - centerDist / (half * 0.38));
+        if (spawnGrid) stealthPenalty += bfSampleDensity(spawnGrid, nx, ny) * 20;
+        const stealthSafety = Math.max(0, Math.min(100, 100 - stealthPenalty));
+        const hempDensity = hempGrid ? bfSampleDensity(hempGrid, nx, ny) : 0.5;
+        const resScore = (oreDensity * 0.65 + hempDensity * 0.35) * 100;
+        const edgeStealthPts = coastDist <= 460 ? 100 : Math.max(25, 100 - ((coastDist - 460) / 800) * 75);
+        const stealthCoverBonus = nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
+        const stealthTotal = Math.min(
+          100,
+          Math.round(stealthSafety * 0.38 + bestProgScore * 0.32 + resScore * 0.20 + edgeStealthPts * 0.10 + stealthCoverBonus)
+        );
+        if (!bestStealth || stealthTotal > bestStealth.score) {
+          bestStealth = {
+            wx,
+            wy,
+            nx,
+            ny,
+            grid: bfWorldToGrid(wx, wy, mapSize),
+            score: stealthTotal,
+            lowTrafficScore: Math.round(stealthSafety),
+            oreScore,
+            targetDist: Math.round(bestProgDist),
+            targetName: bestProgMon?.type || 'Roadside / Coast',
+            coastDist: Math.round(coastDist),
+            boatDist: Math.round(boatDist),
+            boatName: nearestBoat?.type || 'Coast',
+            minTrafficDist: Math.round(minAllTrafficDist),
+            nearestTrafficName: nearestAllTraffic?.type || 'None',
+            coverDist: Math.round(coverDist),
+            coverName: nearestCover && coverDist <= 320 ? nearestCover.type : ''
+          };
+        }
+
         // Weighted final score
         const wTarget = nearestTarget ? 0.34 : 0;
         const wDeep = wantDeepSea ? 0.28 : 0.06;
@@ -2561,6 +2659,7 @@
         if (picked.length >= 5) break;
       }
     }
+    bfStealthBest = bestStealth;
     return picked;
   }
 
@@ -2729,6 +2828,40 @@
       ctx.restore();
     });
 
+    // 4B. Best Overall "Under the Radar" Fast-Progress Spot (regardless of preferences)
+    if (bfStealthBest) {
+      const { px, py } = toPx(bfStealthBest.wx, bfStealthBest.wy);
+      const isSel = bfSelectedIdx === -1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, isSel ? 20 : 14, 0, Math.PI * 2);
+      ctx.fillStyle = isSel ? 'rgba(168, 85, 247, 0.42)' : 'rgba(168, 85, 247, 0.24)';
+      ctx.fill();
+      ctx.lineWidth = isSel ? 2.8 : 2;
+      ctx.strokeStyle = '#c084fc';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#7e22ce';
+      ctx.fill();
+
+      ctx.font = '11px "Inter", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🥷', px, py + 0.5);
+
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '700 10.5px "JetBrains Mono", monospace';
+      ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+      ctx.lineWidth = 3;
+      const lbl = `🥷 [${bfStealthBest.grid}] ${bfStealthBest.score}/100`;
+      ctx.strokeText(lbl, px, py - 18);
+      ctx.fillStyle = '#e9d5ff';
+      ctx.fillText(lbl, px, py - 18);
+      ctx.restore();
+    }
+
     // 5. Top Farming Hotspots (Ore Ridges, Hemp/Berry Fields, Mining Quarries)
     bfFarmingSpots.forEach((fm, fIdx) => {
       const { px, py } = toPx(fm.wx, fm.wy);
@@ -2755,31 +2888,28 @@
   }
 
   function renderBaseFinderResults() {
+    const stealthSlot = document.getElementById('bfStealthBestSlot');
     const listEl = document.getElementById('bfResultsList');
-    if (!listEl) return;
-    if (!bfTopSpots || bfTopSpots.length === 0) {
-      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted);">No valid build spots found for these filters.</div>`;
-      return;
-    }
-
-    listEl.innerHTML = bfTopSpots
-      .map((s, idx) => {
-        const isSel = idx === bfSelectedIdx;
+    if (stealthSlot) {
+      if (bfStealthBest) {
+        const s = bfStealthBest;
+        const isSel = bfSelectedIdx === -1;
         const riskLabel = s.lowTrafficScore >= 82 ? 'VERY LOW' : s.lowTrafficScore >= 62 ? 'LOW' : 'MEDIUM';
         const riskColor = s.lowTrafficScore >= 82 ? '#4ade80' : s.lowTrafficScore >= 62 ? '#facc15' : '#f87171';
-        const rankBadge = idx === 0 ? '🥇 #1 BEST OVERALL' : `#${idx + 1} OPTION`;
-        return `
-          <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
+        stealthSlot.innerHTML = `
+          <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-1" style="border-color: rgba(168, 85, 247, 0.55); background: linear-gradient(135deg, rgba(126, 34, 206, 0.16), rgba(15, 23, 42, 0.72));">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
-                ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.grid}]</span>
+              <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#e9d5ff;">
+                🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.grid}]</span>
               </div>
-              <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
+              <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
+            </div>
+            <div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;">
+              Fast progression + low raid risk, calculated <strong>regardless of your filter preferences</strong>.
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
-              <span style="color:#38bdf8;">⚡ ${s.targetName}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
+              <span style="color:#38bdf8;">⚡ Progress: ${s.targetName} (${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'})</span>
               <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
-              <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
               <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
               <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
             </div>
@@ -2789,14 +2919,52 @@
             </div>
           </div>
         `;
-      })
-      .join('');
+      } else {
+        stealthSlot.innerHTML = '';
+      }
+    }
 
-    listEl.querySelectorAll('.bf-spot-card').forEach((card) => {
+    if (!listEl) return;
+    if (!bfTopSpots || bfTopSpots.length === 0) {
+      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted);">No valid build spots found for these filters.</div>`;
+    } else {
+      listEl.innerHTML = bfTopSpots
+        .map((s, idx) => {
+          const isSel = idx === bfSelectedIdx;
+          const riskLabel = s.lowTrafficScore >= 82 ? 'VERY LOW' : s.lowTrafficScore >= 62 ? 'LOW' : 'MEDIUM';
+          const riskColor = s.lowTrafficScore >= 82 ? '#4ade80' : s.lowTrafficScore >= 62 ? '#facc15' : '#f87171';
+          const rankBadge = idx === 0 ? '🥇 #1 BEST FOR YOUR FILTERS' : `#${idx + 1} OPTION`;
+          return `
+            <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
+                  ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.grid}]</span>
+                </div>
+                <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
+              </div>
+              <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
+                <span style="color:#38bdf8;">⚡ ${s.targetName}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
+                <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
+                <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
+                <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
+                <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
+              </div>
+              <div style="font-size:12px; color:var(--text-secondary);">
+                Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+                ${s.coverName ? ` • <span style="color:#c084fc;">🪨 Cover nearby: ${s.coverName} (${s.coverDist}m)</span>` : ''}
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    document.querySelectorAll('#tab-basefinder .bf-spot-card').forEach((card) => {
       card.addEventListener('click', () => {
-        bfSelectedIdx = parseInt(card.getAttribute('data-bf-idx'), 10) || 0;
+        const parsed = parseInt(card.getAttribute('data-bf-idx'), 10);
+        bfSelectedIdx = Number.isNaN(parsed) ? 0 : parsed;
         bfSelectedFarmIdx = -1;
-        bfFarmingSpots = computeFarmingSpots(bfLandMask, bfTopSpots[bfSelectedIdx]);
+        bfFarmingSpots = computeFarmingSpots(bfLandMask, getSelectedBuildSpot());
         renderBaseFinderResults();
         renderBaseFinderFarming();
         renderBaseFinderMap();
@@ -2807,8 +2975,10 @@
   function renderBaseFinderFarming() {
     const farmEl = document.getElementById('bfFarmingList');
     if (!farmEl) return;
-    const selSpot = bfTopSpots[bfSelectedIdx] || null;
-    const selLabel = selSpot ? `#${bfSelectedIdx + 1} [${selSpot.grid}]` : 'selected spot';
+    const selSpot = getSelectedBuildSpot();
+    const selLabel = selSpot
+      ? (bfSelectedIdx === -1 ? `🥷 Under-Radar [${selSpot.grid}]` : `#${bfSelectedIdx + 1} [${selSpot.grid}]`)
+      : 'selected spot';
 
     if (!bfFarmingSpots || bfFarmingSpots.length === 0) {
       farmEl.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px;">No quarries or resource hotspots detected near ${selLabel} (or heatmaps still loading).</div>`;
