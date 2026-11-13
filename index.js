@@ -463,6 +463,12 @@ const server = http.createServer(async (req, res) => {
           imageUrl: mapData.imageUrl || '',
           imageIconUrl: mapData.imageIconUrl || '',
           biomePercentages: mapData.biomePercentages || {},
+          heatMaps: (Array.isArray(mapData.heatMaps) ? mapData.heatMaps : []).reduce((acc, h) => {
+            if (h?.name && h?.url) {
+              acc[h.name] = h.url.endsWith('/') ? `${h.url}0/0/0.png` : `${h.url}/0/0/0.png`;
+            }
+            return acc;
+          }, {}),
           monuments: (mapData.monuments || []).map((m) => ({
             type: m.type || '',
             x: Number(m.coordinates?.x || 0),

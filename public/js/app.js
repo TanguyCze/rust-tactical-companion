@@ -2091,6 +2091,11 @@
   let bfLoadedImage = null;
   let bfTopSpots = [];
   let bfSelectedIdx = 0;
+  let bfActiveHeatmap = 'none';
+  let bfHeatmapImages = {};
+  let bfHeatmapGrids = {};
+  let bfFarmingSpots = [];
+  let bfSelectedFarmIdx = -1;
 
   function bfColLabel(idx) {
     let s = '';
@@ -2220,6 +2225,128 @@
     return { N, isWater, oceanPts };
   }
 
+  function bfBuildDensityGrid(img) {
+    const N = 120;
+    const off = document.createElement('canvas');
+    off.width = N;
+    off.height = N;
+    const ctx = off.getContext('2d');
+    ctx.drawImage(img, 0, 0, N, N);
+    const data = ctx.getImageData(0, 0, N, N).data;
+    const raw = new Float32Array(N * N);
+    for (let i = 0; i < N * N; i++) {
+      const a = data[i * 4 + 3];
+      const lum = Math.max(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+      raw[i] = a > 12 ? (a / 255) * (0.4 + 0.6 * (lum / 255)) : 0;
+    }
+    // Smooth neighborhood density (radius 4 cells ~ 120-150m)
+    const smooth = new Float32Array(N * N);
+    let maxV = 0.001;
+    const R = 4;
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        let sum = 0;
+        let cnt = 0;
+        for (let dy = -R; dy <= R; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= N) continue;
+          for (let dx = -R; dx <= R; dx++) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= N) continue;
+            sum += raw[yy * N + xx];
+            cnt++;
+          }
+        }
+        const v = cnt ? sum / cnt : 0;
+        smooth[y * N + x] = v;
+        if (v > maxV) maxV = v;
+      }
+    }
+    for (let i = 0; i < N * N; i++) smooth[i] = Math.min(1, smooth[i] / maxV);
+    return { N, grid: smooth };
+  }
+
+  function bfSampleDensity(gridObj, nx, ny) {
+    if (!gridObj) return 0;
+    const gx = Math.min(gridObj.N - 1, Math.max(0, Math.floor(nx * gridObj.N)));
+    const gy = Math.min(gridObj.N - 1, Math.max(0, Math.floor(ny * gridObj.N)));
+    return gridObj.grid[gy * gridObj.N + gx] || 0;
+  }
+
+  function computeFarmingSpots(mask) {
+    if (!bfMapData || !bfMapData.size) return [];
+    const mapSize = bfMapData.size;
+    const mons = bfMapData.monuments || [];
+    const results = [];
+    const baseSpot = bfTopSpots[0] || null;
+    const distFromBase = (wx, wy) => (baseSpot ? Math.round(Math.hypot(wx - baseSpot.wx, wy - baseSpot.wy)) : null);
+
+    // 1. Mining Quarries & Safe Caves from monuments
+    mons.forEach((m) => {
+      const t = m.type.toLowerCase();
+      if (t.includes('quarry')) {
+        results.push({
+          kind: 'quarry',
+          icon: '🏭',
+          title: m.type,
+          detail: t.includes('sulfur') ? 'Passive Sulfur Ore + Stone (needs Diesel)' : t.includes('hqm') ? 'Passive HQM + Metal Ore (needs Diesel)' : 'Passive Stone + Metal (needs Diesel)',
+          wx: m.x,
+          wy: m.y,
+          grid: bfWorldToGrid(m.x, m.y, mapSize),
+          distBase: distFromBase(m.x, m.y)
+        });
+      }
+    });
+
+    // 2. Peak hotspots from RustMaps heatmaps (Nodes, Hemp, Berries)
+    const extractPeaks = (gridKey, kind, icon, title, detail) => {
+      const g = bfHeatmapGrids[gridKey];
+      if (!g) return;
+      const pts = [];
+      for (let y = 3; y < g.N - 3; y++) {
+        for (let x = 3; x < g.N - 3; x++) {
+          const val = g.grid[y * g.N + x];
+          if (val < 0.45) continue;
+          const nx = (x + 0.5) / g.N;
+          const ny = (y + 0.5) / g.N;
+          if (mask) {
+            const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
+            const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
+            if (mask.isWater[my * mask.N + mx]) continue;
+          }
+          const wx = (nx - 0.5) * mapSize;
+          const wy = (0.5 - ny) * mapSize;
+          pts.push({ wx, wy, val });
+        }
+      }
+      pts.sort((a, b) => b.val - a.val);
+      const chosen = [];
+      const minSep = Math.max(320, mapSize * 0.11);
+      for (const p of pts) {
+        if (chosen.every((c) => Math.hypot(c.wx - p.wx, c.wy - p.wy) >= minSep)) {
+          chosen.push(p);
+          results.push({
+            kind,
+            icon,
+            title: `${title} (${Math.round(p.val * 100)}% density)`,
+            detail,
+            wx: p.wx,
+            wy: p.wy,
+            grid: bfWorldToGrid(p.wx, p.wy, mapSize),
+            distBase: distFromBase(p.wx, p.wy)
+          });
+          if (chosen.length >= 2) break;
+        }
+      }
+    };
+
+    extractPeaks('Nodes', 'ore', '⛏️', 'Rich Ore Ridge', 'High Sulfur / Metal / Stone node spawn cluster');
+    extractPeaks('Hemp', 'hemp', '🌿', 'Hemp / Cloth Field', 'Dense wild Hemp spawns (fast early cloth & bags)');
+    extractPeaks('Berries', 'berry', '🫐', 'Berry Tea Valley', 'Dense Berry spawns for Pure Ore & Scrap Teas');
+
+    return results;
+  }
+
   function computeRecommendedBuildSpots() {
     if (!bfMapData || !bfMapData.size) return [];
     const mapSize = bfMapData.size;
@@ -2230,6 +2357,9 @@
     const wantDeepSea = Boolean(document.getElementById('bfDeepSeaCb')?.checked);
     const wantLowTraffic = Boolean(document.getElementById('bfLowTrafficCb')?.checked);
     const wantStealthRock = Boolean(document.getElementById('bfStealthRockCb')?.checked);
+    const wantFarmOre = Boolean(document.getElementById('bfFarmOreCb')?.checked);
+    const oreGrid = bfHeatmapGrids.Nodes || null;
+    const spawnGrid = bfHeatmapGrids.PlayerSpawns || null;
 
     const targetMons = mons.filter((m) => bfMatchesTarget(m.type, targetKey));
     const trafficMons = mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
@@ -2353,7 +2483,14 @@
         if (centerDist < half * 0.36) {
           trafficPenalty += 22 * (1 - centerDist / (half * 0.36));
         }
+        if (spawnGrid) {
+          trafficPenalty += bfSampleDensity(spawnGrid, nx, ny) * 18;
+        }
         const lowTrafficScore = Math.max(0, Math.min(100, 100 - trafficPenalty));
+
+        // 5B. Real Ore Node Density Score (from RustMaps Nodes heatmap)
+        const oreDensity = oreGrid ? bfSampleDensity(oreGrid, nx, ny) : 0.5;
+        const oreScore = Math.round(oreDensity * 100);
 
         // 6. Stealth Cover (Cave / God Rock) Bonus
         let nearestCover = null;
@@ -2368,13 +2505,14 @@
         const coverBonus = wantStealthRock && nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
 
         // Weighted final score
-        const wTarget = nearestTarget ? 0.38 : 0;
-        const wDeep = wantDeepSea ? 0.32 : 0.08;
-        const wTraffic = wantLowTraffic ? 0.30 : 0.12;
-        const wSum = wTarget + wDeep + wTraffic || 1;
+        const wTarget = nearestTarget ? 0.34 : 0;
+        const wDeep = wantDeepSea ? 0.28 : 0.06;
+        const wTraffic = wantLowTraffic ? 0.26 : 0.10;
+        const wOre = wantFarmOre && oreGrid ? 0.12 : 0;
+        const wSum = wTarget + wDeep + wTraffic + wOre || 1;
         const total = Math.min(
           100,
-          Math.round((targetScore * wTarget + deepSeaScore * wDeep + lowTrafficScore * wTraffic) / wSum + coverBonus)
+          Math.round((targetScore * wTarget + deepSeaScore * wDeep + lowTrafficScore * wTraffic + oreScore * wOre) / wSum + coverBonus)
         );
 
         candidates.push({
@@ -2387,6 +2525,7 @@
           targetScore: Math.round(targetScore),
           deepSeaScore: Math.round(deepSeaScore),
           lowTrafficScore: Math.round(lowTrafficScore),
+          oreScore,
           targetDist: Math.round(targetDist),
           targetName: nearestTarget?.type || targetKey,
           coastDist: Math.round(coastDist),
@@ -2434,6 +2573,13 @@
 
     if (bfLoadedImage) {
       ctx.drawImage(bfLoadedImage, 0, 0, W, H);
+    }
+
+    if (bfActiveHeatmap !== 'none' && bfHeatmapImages[bfActiveHeatmap]) {
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(bfHeatmapImages[bfActiveHeatmap], 0, 0, W, H);
+      ctx.restore();
     }
 
     const mapSize = bfMapData.size || 4000;
@@ -2571,6 +2717,30 @@
       ctx.fillText(lbl, px, py + 22);
       ctx.restore();
     });
+
+    // 5. Top Farming Hotspots (Ore Ridges, Hemp/Berry Fields, Mining Quarries)
+    bfFarmingSpots.forEach((fm, fIdx) => {
+      const { px, py } = toPx(fm.wx, fm.wy);
+      const isSel = fIdx === bfSelectedFarmIdx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, isSel ? 13 : 8.5, 0, Math.PI * 2);
+      ctx.fillStyle = isSel ? 'rgba(245, 158, 11, 0.45)' : 'rgba(245, 158, 11, 0.25)';
+      ctx.fill();
+      ctx.lineWidth = isSel ? 2.4 : 1.5;
+      ctx.strokeStyle = '#fbbf24';
+      ctx.stroke();
+
+      ctx.font = '700 10px "Inter", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = 3;
+      const tag = `${fm.icon} [${fm.grid}]`;
+      ctx.strokeText(tag, px, py - 11);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText(tag, px, py - 11);
+      ctx.restore();
+    });
   }
 
   function renderBaseFinderResults() {
@@ -2599,6 +2769,7 @@
               <span style="color:#38bdf8;">⚡ ${s.targetName}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
               <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
               <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
+              <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
               <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">
@@ -2619,11 +2790,49 @@
     });
   }
 
+  function renderBaseFinderFarming() {
+    const farmEl = document.getElementById('bfFarmingList');
+    if (!farmEl) return;
+    if (!bfFarmingSpots || bfFarmingSpots.length === 0) {
+      farmEl.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px;">Loading resource heatmaps or no quarries/hotspots detected.</div>`;
+      return;
+    }
+
+    farmEl.innerHTML = bfFarmingSpots
+      .map((fm, idx) => {
+        const isSel = idx === bfSelectedFarmIdx;
+        return `
+          <div class="monument-item bf-farm-card ${isSel ? 'active' : ''}" data-farm-idx="${idx}" style="padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="font-family:var(--font-display); font-weight:700; font-size:13.5px; color:#fff;">
+                ${fm.icon} ${fm.title}
+              </div>
+              <span class="keycard-tag keycard-Fuse">[${fm.grid}]${fm.distBase !== null ? ` • ${fm.distBase}m from #1` : ''}</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${fm.detail}</div>
+          </div>
+        `;
+      })
+      .join('');
+
+    farmEl.querySelectorAll('.bf-farm-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        bfSelectedFarmIdx = parseInt(card.getAttribute('data-farm-idx'), 10);
+        renderBaseFinderFarming();
+        renderBaseFinderMap();
+      });
+    });
+  }
+
   function rerunBaseFinderScoring() {
     if (!bfMapData) return;
+    const mask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, bfMapData.size) : null;
     bfTopSpots = computeRecommendedBuildSpots();
+    bfFarmingSpots = computeFarmingSpots(mask);
     bfSelectedIdx = 0;
+    bfSelectedFarmIdx = -1;
     renderBaseFinderResults();
+    renderBaseFinderFarming();
     renderBaseFinderMap();
   }
 
@@ -2661,30 +2870,53 @@
         }
 
         bfMapData = data;
+        bfHeatmapImages = {};
+        bfHeatmapGrids = {};
         if (metaEl) {
           metaEl.textContent = `Size: ${data.size} • Seed: ${data.seed} • ${data.monuments.length} map features detected`;
         }
         if (statusEl) {
-          statusEl.textContent = `✓ Loaded ${data.size}_${data.seed} (${data.monuments.length} monuments). Scanning coast & low-traffic grids...`;
+          statusEl.textContent = `✓ Loaded ${data.size}_${data.seed} (${data.monuments.length} monuments). Scanning coast, ore nodes & low-traffic grids...`;
         }
 
-        if (data.imageUrl) {
-          const img = new Image();
-          img.onload = () => {
-            bfLoadedImage = img;
-            rerunBaseFinderScoring();
-            if (statusEl) {
-              statusEl.textContent = `✓ Analysis complete for ${data.size}_${data.seed}! Top spot: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
-            }
-          };
-          img.onerror = () => {
-            bfLoadedImage = null;
-            rerunBaseFinderScoring();
-          };
-          img.src = `/api/rustmaps/image?url=${encodeURIComponent(data.imageUrl)}`;
-        } else {
-          bfLoadedImage = null;
-          rerunBaseFinderScoring();
+        // Preload RustMaps resource heatmaps (Nodes, Hemp, Berries, Horses, PlayerSpawns) in parallel
+        const hmKeys = ['Nodes', 'Hemp', 'Berries', 'Horses', 'PlayerSpawns'];
+        const hmPromises = hmKeys.map((key) => {
+          const hmUrl = data.heatMaps?.[key];
+          if (!hmUrl) return Promise.resolve();
+          return new Promise((resolve) => {
+            const hImg = new Image();
+            hImg.onload = () => {
+              bfHeatmapImages[key] = hImg;
+              if (key === 'Nodes' || key === 'Hemp' || key === 'Berries' || key === 'PlayerSpawns') {
+                bfHeatmapGrids[key] = bfBuildDensityGrid(hImg);
+              }
+              resolve();
+            };
+            hImg.onerror = () => resolve();
+            hImg.src = `/api/rustmaps/image?url=${encodeURIComponent(hmUrl)}`;
+          });
+        });
+
+        const baseImgPromise = data.imageUrl
+          ? new Promise((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                bfLoadedImage = img;
+                resolve();
+              };
+              img.onerror = () => {
+                bfLoadedImage = null;
+                resolve();
+              };
+              img.src = `/api/rustmaps/image?url=${encodeURIComponent(data.imageUrl)}`;
+            })
+          : Promise.resolve((bfLoadedImage = null));
+
+        await Promise.all([baseImgPromise, ...hmPromises]);
+        rerunBaseFinderScoring();
+        if (statusEl) {
+          statusEl.textContent = `✓ Analysis complete for ${data.size}_${data.seed}! Top spot: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
         }
       } catch (err) {
         if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
@@ -2700,8 +2932,17 @@
       if (e.key === 'Enter') runAnalyze();
     });
 
-    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfStealthRockCb', 'bfShowHeatmapCb'].forEach((id) => {
+    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfStealthRockCb', 'bfFarmOreCb', 'bfShowHeatmapCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
+    });
+
+    document.querySelectorAll('#bfHeatmapPills .filter-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#bfHeatmapPills .filter-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        bfActiveHeatmap = btn.getAttribute('data-hm') || 'none';
+        renderBaseFinderMap();
+      });
     });
 
     renderBaseFinderMap();

@@ -554,6 +554,11 @@
             <input id="bfStealthRockCb" type="checkbox" checked />
             <span>🪨 <strong>Bonus for Caves &amp; God Rocks</strong></span>
           </label>
+
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
+            <input id="bfFarmOreCb" type="checkbox" checked />
+            <span>⛏️ <strong>Prioritize Ore Farming</strong> (Sulfur/Metal Nodes)</span>
+          </label>
         </div>
 
         <div id="bfStatusBar" style="margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);"></div>
@@ -572,11 +577,20 @@
               <span>Show Traffic / Safe Zones</span>
             </label>
           </div>
+          <div id="bfHeatmapPills" class="filter-pills" style="margin-bottom: 10px;">
+            <button class="filter-pill active" data-hm="none">🗺️ Clean Map</button>
+            <button class="filter-pill" data-hm="Nodes">⛏️ Ore Nodes</button>
+            <button class="filter-pill" data-hm="Hemp">🌿 Hemp</button>
+            <button class="filter-pill" data-hm="Berries">🫐 Berries</button>
+            <button class="filter-pill" data-hm="Horses">🐎 Horses</button>
+            <button class="filter-pill" data-hm="PlayerSpawns">🏃 Spawn Beach</button>
+          </div>
           <div style="background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
             <canvas id="bfMapCanvas" width="760" height="760" style="width: 100%; height: auto; display: block;"></canvas>
           </div>
           <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--text-secondary);">
             <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build Grids</span>
+            <span><strong style="color:#f59e0b;">⛏️</strong> Top Farm Zones</span>
             <span><strong style="color:#38bdf8;">⚡</strong> Target Monument</span>
             <span><strong style="color:#2dd4bf;">⚓</strong> Boat / Deep Sea Launch</span>
             <span><strong style="color:#ef4444;">🔴</strong> High-Traffic / Zerg Hub</span>
@@ -584,17 +598,33 @@
           </div>
         </div>
 
-        <!-- Right: Top 5 Ranked Build Spots -->
-        <div class="panel">
-          <div class="panel-header" style="margin-bottom: 10px;">
-            <div>
-              <div class="panel-title">🏆 Top 5 Recommended Build Grids</div>
-              <div class="panel-subtitle">Click any spot to highlight it on the map &amp; inspect exact distances</div>
+        <!-- Right: Top 5 Ranked Build Spots + Best Farming Spots -->
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="panel">
+            <div class="panel-header" style="margin-bottom: 10px;">
+              <div>
+                <div class="panel-title">🏆 Top 5 Recommended Build Grids</div>
+                <div class="panel-subtitle">Click any spot to highlight it on the map &amp; inspect exact distances</div>
+              </div>
+            </div>
+            <div id="bfResultsList" style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px;">
+                Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get your Top 5 low-traffic Power Plant + Deep Sea build spots.
+              </div>
             </div>
           </div>
-          <div id="bfResultsList" style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px;">
-              Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get your Top 5 low-traffic Power Plant + Deep Sea build spots.
+
+          <div class="panel">
+            <div class="panel-header" style="margin-bottom: 10px;">
+              <div>
+                <div class="panel-title">⛏️ Best Farming Spots &amp; Quarries</div>
+                <div class="panel-subtitle">Real RustMaps resource hotspots (Ore Nodes, Hemp, Berries) + Quarries &amp; Caves</div>
+              </div>
+            </div>
+            <div id="bfFarmingList" style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="padding: 16px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px; font-size: 12.5px;">
+                Analyze a map to reveal the richest Ore Node ridges, Hemp/Berry tea zones, and Mining Quarries.
+              </div>
             </div>
           </div>
         </div>
