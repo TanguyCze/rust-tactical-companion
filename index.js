@@ -454,6 +454,25 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
+        let buildingBlockArea = null;
+        if (mapData.buildingBlockAreaUrl) {
+          try {
+            const bbUrl = new URL(mapData.buildingBlockAreaUrl);
+            if (bbUrl.protocol === 'https:' && bbUrl.hostname.endsWith('rustmaps.com')) {
+              const bbRaw = await fetchTextHttps(bbUrl.toString());
+              const bbParsed = JSON.parse(bbRaw);
+              if (bbParsed && (Array.isArray(bbParsed.boxes) || Array.isArray(bbParsed.spheres))) {
+                buildingBlockArea = {
+                  boxes: Array.isArray(bbParsed.boxes) ? bbParsed.boxes : [],
+                  spheres: Array.isArray(bbParsed.spheres) ? bbParsed.spheres : []
+                };
+              }
+            }
+          } catch (_) {
+            buildingBlockArea = null;
+          }
+        }
+
         return sendJson(res, 200, {
           ok: true,
           rustmapsUrl,
@@ -462,6 +481,8 @@ const server = http.createServer(async (req, res) => {
           size: mapData.size,
           imageUrl: mapData.imageUrl || '',
           imageIconUrl: mapData.imageIconUrl || '',
+          buildingBlockAreaUrl: mapData.buildingBlockAreaUrl || '',
+          buildingBlockArea,
           biomePercentages: mapData.biomePercentages || {},
           heatMaps: (Array.isArray(mapData.heatMaps) ? mapData.heatMaps : []).reduce((acc, h) => {
             if (h?.name && h?.url) {

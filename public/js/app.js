@@ -2173,6 +2173,7 @@
   let bfPanX = 0;
   let bfPanY = 0;
   let bfRenderedPins = [];
+  let bfNoBuildColliders = { spheres: [], boxes: [], fallback: [] };
 
   function bfComputeFitZoom() {
     if (!bfMapData || !bfMapData.size) return 1;
@@ -2279,37 +2280,198 @@
 
   function bfIsNoBuildSource(typeStr) {
     const t = String(typeStr || '').toLowerCase();
-    if (bfIsStealthCover(t) || t.includes('iceberg') || t.includes('powerline')) return 0;
-    if (t.includes('launch site')) return 240;
+    if (bfIsStealthCover(t) || t.includes('iceberg') || t.includes('powerline') || t.includes('tunnel entrance')) return 0;
+    if (t.includes('launch site')) return 300;
+    if (t.includes('airfield')) return 260;
+    if (t.includes('harbor')) return 255;
+    if (t.includes('excavator')) return 250;
     if (
       t.includes('powerplant') ||
-      t.includes('airfield') ||
+      t.includes('power plant') ||
       t.includes('water treatment') ||
       t.includes('train yard') ||
+      t.includes('trainyard') ||
       t.includes('outpost') ||
       t.includes('bandit') ||
       t.includes('missile silo') ||
-      t.includes('military') ||
-      t.includes('excavator') ||
-      t.includes('harbor') ||
-      t.includes('ferry') ||
-      t.includes('fishing village') ||
-      t.includes('sphere tank') ||
-      t.includes('satellite') ||
-      t.includes('sewer') ||
-      t.includes('junkyard') ||
-      t.includes('radtown')
+      t.includes('military tunnel') ||
+      t.includes('military base') ||
+      t.includes('arctic research') ||
+      t.includes('ferry')
     ) {
-      return 175;
+      return 220;
     }
-    if (t.includes('substation') || t.includes('water well') || t.includes('warehouse') || t.includes('lighthouse') || t.includes('supermarket') || t.includes('gas station')) {
-      return 95;
+    if (t.includes('abandoned military') || t.includes('fishing village') || t.includes('radtown') || t.includes('ziggurat') || t.includes('jungle')) {
+      return 195;
+    }
+    if (t.includes('sphere tank') || t.includes('satellite') || t.includes('sewer') || t.includes('junkyard') || t.includes('oil rig') || t.includes('oilrig') || t.includes('underwater lab')) {
+      return 185;
+    }
+    if (t.includes('quarry')) return 150;
+    if (t.includes('ranch') || t.includes('large barn') || t.includes('stables')) return 135;
+    if (t.includes('substation') || t.includes('water well') || t.includes('warehouse') || t.includes('lighthouse') || t.includes('supermarket') || t.includes('gas station') || t.includes('swamp') || t.includes('ruin')) {
+      return 115;
     }
     return 0;
   }
 
+  function bfPointToSegDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq <= 1e-9) return Math.hypot(px - ax, py - ay);
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  function bfPointInPoly(px, py, pts) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const xi = pts[i].x;
+      const yi = pts[i].y;
+      const xj = pts[j].x;
+      const yj = pts[j].y;
+      const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi + 1e-12) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function bfPointToBoxDist(px, py, box) {
+    if (bfPointInPoly(px, py, box.corners)) return 0;
+    let best = Infinity;
+    const c = box.corners;
+    for (let i = 0; i < c.length; i++) {
+      const a = c[i];
+      const b = c[(i + 1) % c.length];
+      const d = bfPointToSegDist(px, py, a.x, a.y, b.x, b.y);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  function bfPrepareNoBuildData(data) {
+    const spheres = [];
+    const boxes = [];
+    const bb = data?.buildingBlockArea;
+    if (bb && Array.isArray(bb.spheres)) {
+      for (const s of bb.spheres) {
+        const x = Number(s?.center?.x);
+        const y = Number(s?.center?.y);
+        const r = Number(s?.radius);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(r) || r <= 0) continue;
+        spheres.push({ x, y, r, isLarge: r >= 20 });
+      }
+    }
+    if (bb && Array.isArray(bb.boxes)) {
+      for (const b of bb.boxes) {
+        if (!Array.isArray(b?.corners) || b.corners.length < 3) continue;
+        const corners = b.corners.map((c) => ({ x: Number(c.x), y: Number(c.y) })).filter((c) => Number.isFinite(c.x) && Number.isFinite(c.y));
+        if (corners.length < 3) continue;
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const c of corners) {
+          if (c.x < minX) minX = c.x;
+          if (c.x > maxX) maxX = c.x;
+          if (c.y < minY) minY = c.y;
+          if (c.y > maxY) maxY = c.y;
+        }
+        const edge0 = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
+        const edge1 = Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y);
+        const maxDim = Math.max(edge0, edge1);
+        boxes.push({ corners, minX, maxX, minY, maxY, maxDim, isLarge: maxDim >= 20 });
+      }
+    }
+    const fallback = (data?.monuments || [])
+      .map((m) => ({ x: Number(m.x || 0), y: Number(m.y || 0), r: bfIsNoBuildSource(m.type), type: m.type }))
+      .filter((m) => m.r > 0);
+    bfNoBuildColliders = { spheres, boxes, fallback };
+  }
+
+  function bfCheckNoBuildZone(wx, wy, majorMargin = 32, minorMargin = 14) {
+    const hasExact = bfNoBuildColliders.spheres.length > 0 || bfNoBuildColliders.boxes.length > 0;
+    let inside = false;
+    let blocked = false;
+    let minMajorEdge = Infinity;
+    let minAnyEdge = Infinity;
+
+    if (hasExact) {
+      for (const s of bfNoBuildColliders.spheres) {
+        const edgeDist = Math.hypot(wx - s.x, wy - s.y) - s.r;
+        if (edgeDist <= 0) inside = true;
+        if (edgeDist < minAnyEdge) minAnyEdge = edgeDist;
+        if (s.isLarge) {
+          if (edgeDist < minMajorEdge) minMajorEdge = edgeDist;
+          if (edgeDist < majorMargin) blocked = true;
+        } else if (edgeDist < minorMargin) {
+          blocked = true;
+        }
+      }
+      for (const b of bfNoBuildColliders.boxes) {
+        const margin = b.isLarge ? Math.max(majorMargin, 10) : Math.max(minorMargin, 10);
+        if (wx < b.minX - margin && b.isLarge) {
+          const fastX = b.minX - wx;
+          if (fastX < minMajorEdge) minMajorEdge = Math.min(minMajorEdge, Math.hypot(fastX, Math.max(0, b.minY - wy, wy - b.maxY)));
+          continue;
+        }
+        if (wx > b.maxX + margin && b.isLarge) {
+          const fastX = wx - b.maxX;
+          if (fastX < minMajorEdge) minMajorEdge = Math.min(minMajorEdge, Math.hypot(fastX, Math.max(0, b.minY - wy, wy - b.maxY)));
+          continue;
+        }
+        if (wy < b.minY - margin || wy > b.maxY + margin || wx < b.minX - margin || wx > b.maxX + margin) {
+          if (b.isLarge) {
+            const dx = Math.max(0, b.minX - wx, wx - b.maxX);
+            const dy = Math.max(0, b.minY - wy, wy - b.maxY);
+            const aabbDist = Math.hypot(dx, dy);
+            if (aabbDist < minMajorEdge) minMajorEdge = aabbDist;
+          }
+          continue;
+        }
+        const edgeDist = bfPointToBoxDist(wx, wy, b);
+        if (edgeDist <= 0) inside = true;
+        if (edgeDist < minAnyEdge) minAnyEdge = edgeDist;
+        if (b.isLarge) {
+          if (edgeDist < minMajorEdge) minMajorEdge = edgeDist;
+          if (edgeDist < majorMargin) blocked = true;
+        } else if (edgeDist < minorMargin) {
+          blocked = true;
+        }
+      }
+    } else {
+      for (const fb of bfNoBuildColliders.fallback) {
+        const edgeDist = Math.hypot(wx - fb.x, wy - fb.y) - fb.r;
+        if (edgeDist <= 0) inside = true;
+        if (edgeDist < minMajorEdge) minMajorEdge = edgeDist;
+        if (edgeDist < minAnyEdge) minAnyEdge = edgeDist;
+        if (edgeDist < majorMargin) blocked = true;
+      }
+    }
+
+    const reported = Number.isFinite(minMajorEdge) ? minMajorEdge : minAnyEdge;
+    return {
+      blocked,
+      inside,
+      minClearance: Number.isFinite(reported) ? Math.round(reported) : 999
+    };
+  }
+
+  function bfIsBasePlotBuildable(wx, wy, majorMargin = 32) {
+    const center = bfCheckNoBuildZone(wx, wy, majorMargin, 14);
+    if (center.blocked || center.inside) return { ok: false, minClearance: center.minClearance };
+    // Ensure a ~44m x 44m base + external TC footprint stays completely outside every collider
+    const pad = 22;
+    for (const [ox, oy] of [[pad, 0], [-pad, 0], [0, pad], [0, -pad]]) {
+      const corner = bfCheckNoBuildZone(wx + ox, wy + oy, 10, 8);
+      if (corner.inside || corner.blocked) return { ok: false, minClearance: center.minClearance };
+    }
+    return { ok: true, minClearance: center.minClearance };
+  }
+
   function bfBuildLandMask(img, mapSize) {
-    const N = 160;
+    const N = 240;
     const off = document.createElement('canvas');
     off.width = N;
     off.height = N;
@@ -2317,14 +2479,32 @@
     ctx.drawImage(img, 0, 0, N, N);
     const pixels = ctx.getImageData(0, 0, N, N).data;
     const isWater = new Uint8Array(N * N);
+    const lum = new Float32Array(N * N);
+    const roughness = new Float32Array(N * N);
 
     for (let i = 0; i < N * N; i++) {
       const r = pixels[i * 4];
       const g = pixels[i * 4 + 1];
       const b = pixels[i * 4 + 2];
-      // RustMaps ocean is deep teal/blue where Blue clearly exceeds Red
-      if (b > r + 14 && r < 95 && b > 70) {
+      lum[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      // RustMaps ocean & rivers/lakes where Blue clearly exceeds Red
+      if (b > r + 14 && r < 105 && b > 65) {
         isWater[i] = 1;
+      }
+    }
+
+    for (let gy = 1; gy < N - 1; gy++) {
+      for (let gx = 1; gx < N - 1; gx++) {
+        let minL = 1;
+        let maxL = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const v = lum[(gy + dy) * N + (gx + dx)];
+            if (v < minL) minL = v;
+            if (v > maxL) maxL = v;
+          }
+        }
+        roughness[gy * N + gx] = Math.min(1, (maxL - minL) * 2.2);
       }
     }
 
@@ -2332,7 +2512,7 @@
     for (let gy = 0; gy < N; gy++) {
       for (let gx = 0; gx < N; gx++) {
         if (!isWater[gy * N + gx]) continue;
-        // Edge of ocean (adjacent to land) speeds up distance checks dramatically
+        // Edge of water (adjacent to land) speeds up coastline distance checks
         const hasLandNeighbor =
           (gx > 0 && !isWater[gy * N + (gx - 1)]) ||
           (gx < N - 1 && !isWater[gy * N + (gx + 1)]) ||
@@ -2345,7 +2525,51 @@
         }
       }
     }
-    return { N, isWater, oceanPts };
+    return { N, isWater, roughness, oceanPts };
+  }
+
+  function bfIsPointWater(mask, mapSize, wx, wy) {
+    if (!mask) return false;
+    const nx = wx / mapSize + 0.5;
+    const ny = 0.5 - wy / mapSize;
+    if (nx < 0 || nx >= 1 || ny < 0 || ny >= 1) return true;
+    const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
+    const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
+    return Boolean(mask.isWater[my * mask.N + mx]);
+  }
+
+  function bfCheckTerrainFootprint(mask, mapSize, wx, wy) {
+    if (!mask) return { buildable: true, flatnessScore: 70 };
+    const halfPlot = 22;
+    const pts = [
+      [wx, wy],
+      [wx + halfPlot, wy],
+      [wx - halfPlot, wy],
+      [wx, wy + halfPlot],
+      [wx, wy - halfPlot]
+    ];
+    let roughSum = 0;
+    for (let pIdx = 0; pIdx < pts.length; pIdx++) {
+      const [px, py] = pts[pIdx];
+      const nx = px / mapSize + 0.5;
+      const ny = 0.5 - py / mapSize;
+      if (nx <= 0.01 || nx >= 0.99 || ny <= 0.01 || ny >= 0.99) return { buildable: false, flatnessScore: 0 };
+      const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
+      const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
+      if (mask.isWater[my * mask.N + mx]) return { buildable: false, flatnessScore: 0 };
+      // Center must also not border water directly
+      if (pIdx === 0) {
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nmx = Math.min(mask.N - 1, Math.max(0, mx + dx));
+          const nmy = Math.min(mask.N - 1, Math.max(0, my + dy));
+          if (mask.isWater[nmy * mask.N + nmx]) return { buildable: false, flatnessScore: 0 };
+        }
+      }
+      roughSum += mask.roughness ? mask.roughness[my * mask.N + mx] : 0.25;
+    }
+    const avgRough = roughSum / pts.length;
+    const flatnessScore = Math.max(0, Math.min(100, Math.round((1 - Math.min(1, avgRough) / 0.85) * 100)));
+    return { buildable: true, flatnessScore };
   }
 
   function bfBuildDensityGrid(img) {
@@ -2511,13 +2735,12 @@
       const t = String(m.type || '').toLowerCase();
       return t.includes('small oil') || t.includes('oilrig_small') || (t.includes('oil rig') && !t.includes('large'));
     });
-    const noBuildList = mons
-      .map((m) => ({ ...m, blockR: bfIsNoBuildSource(m.type) }))
-      .filter((m) => m.blockR > 0);
-
     const hempGrid = bfHeatmapGrids.Hemp || null;
-    const mask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, mapSize) : null;
-    const STEP_G = 72;
+    const mask = bfLandMask || (bfLoadedImage ? bfBuildLandMask(bfLoadedImage, mapSize) : null);
+    if (!bfNoBuildColliders.spheres.length && !bfNoBuildColliders.boxes.length && !bfNoBuildColliders.fallback.length) {
+      bfPrepareNoBuildData(bfMapData);
+    }
+    const STEP_G = 96;
     const candidates = [];
     let bestStealth = null;
 
@@ -2528,21 +2751,11 @@
         const wx = (nx - 0.5) * mapSize;
         const wy = (0.5 - ny) * mapSize;
 
-        // 1. Land & coast check via image mask (or fallback radial check)
+        // 1. Dry land footprint & coast distance check (~44m x 44m buildable land plot)
         let coastDist = Math.max(0, half * 0.85 - Math.hypot(wx, wy));
+        const terrainCheck = bfCheckTerrainFootprint(mask, mapSize, wx, wy);
+        if (!terrainCheck.buildable) continue;
         if (mask) {
-          const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
-          const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
-          if (mask.isWater[my * mask.N + mx]) continue;
-          // Require surrounding pixels to also be land so we don't pick tiny ocean rocks
-          let landNeighbors = 0;
-          for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
-            const nmx = Math.min(mask.N - 1, Math.max(0, mx + dx));
-            const nmy = Math.min(mask.N - 1, Math.max(0, my + dy));
-            if (!mask.isWater[nmy * mask.N + nmx]) landNeighbors++;
-          }
-          if (landNeighbors < 3) continue;
-
           if (mask.oceanPts.length > 0) {
             let minCoast = Infinity;
             for (const op of mask.oceanPts) {
@@ -2551,19 +2764,14 @@
             }
             coastDist = minCoast;
           }
+          if (coastDist < 34) continue;
         } else {
           if (Math.hypot(wx, wy) > half * 0.86) continue;
         }
 
-        // 2. Skip building-blocked monument zones
-        let blocked = false;
-        for (const nb of noBuildList) {
-          if (Math.hypot(wx - nb.x, wy - nb.y) < nb.blockR) {
-            blocked = true;
-            break;
-          }
-        }
-        if (blocked) continue;
+        // 2. Skip building-blocked monument/collider zones (+32m base clearance margin)
+        const plotCheck = bfIsBasePlotBuildable(wx, wy, 32);
+        if (!plotCheck.ok) continue;
 
         // 3. Target Monument Score (Power Plant sweet spot: 240m - 580m)
         let targetDist = Infinity;
@@ -2717,7 +2925,15 @@
         const stealthLabBonus = nearestLab && labDist <= 1200 ? (1 - labDist / 1200) * 5 : 0;
         const stealthTotal = Math.min(
           100,
-          Math.round(stealthSafety * 0.36 + bestProgScore * 0.34 + resScore * 0.20 + edgeStealthPts * 0.10 + supportBonus + stealthLabBonus)
+          Math.round(
+            stealthSafety * 0.35 +
+              bestProgScore * 0.33 +
+              resScore * 0.19 +
+              edgeStealthPts * 0.09 +
+              terrainCheck.flatnessScore * 0.04 +
+              supportBonus +
+              stealthLabBonus
+          )
         );
         if (!bestStealth || stealthTotal > bestStealth.score) {
           bestStealth = {
@@ -2729,6 +2945,8 @@
             score: stealthTotal,
             lowTrafficScore: Math.round(stealthSafety),
             oreScore,
+            flatnessScore: terrainCheck.flatnessScore,
+            noBuildClearance: plotCheck.minClearance,
             targetDist: Math.round(bestProgDist),
             targetName: bestProgMon?.type || 'No T2 on map',
             supportDist: Math.round(supportDist),
@@ -2747,14 +2965,23 @@
         }
 
         // Weighted final score
-        const wTarget = nearestTarget ? 0.34 : 0;
-        const wDeep = wantDeepSea ? 0.28 : 0.06;
-        const wTraffic = wantLowTraffic ? 0.26 : 0.10;
-        const wOre = wantFarmOre && oreGrid ? 0.12 : 0;
-        const wSum = wTarget + wDeep + wTraffic + wOre || 1;
+        const wTarget = nearestTarget ? 0.33 : 0;
+        const wDeep = wantDeepSea ? 0.27 : 0.06;
+        const wTraffic = wantLowTraffic ? 0.25 : 0.10;
+        const wOre = wantFarmOre && oreGrid ? 0.11 : 0;
+        const wFlat = 0.04;
+        const wSum = wTarget + wDeep + wTraffic + wOre + wFlat || 1;
         const total = Math.min(
           100,
-          Math.round((targetScore * wTarget + deepSeaScore * wDeep + lowTrafficScore * wTraffic + oreScore * wOre) / wSum + labBonus)
+          Math.round(
+            (targetScore * wTarget +
+              deepSeaScore * wDeep +
+              lowTrafficScore * wTraffic +
+              oreScore * wOre +
+              terrainCheck.flatnessScore * wFlat) /
+              wSum +
+              labBonus
+          )
         );
 
         candidates.push({
@@ -2768,6 +2995,8 @@
           deepSeaScore: Math.round(deepSeaScore),
           lowTrafficScore: Math.round(lowTrafficScore),
           oreScore,
+          flatnessScore: terrainCheck.flatnessScore,
+          noBuildClearance: plotCheck.minClearance,
           targetDist: Math.round(targetDist),
           targetName: nearestTarget?.type || targetKey,
           coastDist: Math.round(coastDist),
@@ -2953,6 +3182,49 @@
           ctx.restore();
         }
       });
+    }
+
+    // 2B. Exact Rust No-Build Zones overlay (from RustMaps building_block.json or monument fallback)
+    const showNoBuild = Boolean(document.getElementById('bfShowNoBuildCb')?.checked ?? true);
+    if (showNoBuild) {
+      const hasExact = bfNoBuildColliders.spheres.length > 0 || bfNoBuildColliders.boxes.length > 0;
+      ctx.save();
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.16)';
+      ctx.strokeStyle = 'rgba(251, 146, 60, 0.72)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 3]);
+
+      if (hasExact) {
+        bfNoBuildColliders.spheres.forEach((s) => {
+          if (!s.isLarge && bfZoom < 2.0) return;
+          const { px, py } = toPx(s.x, s.y);
+          ctx.beginPath();
+          ctx.arc(px, py, Math.max(2, s.r * scale), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+        bfNoBuildColliders.boxes.forEach((b) => {
+          if (!b.isLarge && bfZoom < 2.0) return;
+          ctx.beginPath();
+          b.corners.forEach((c, idx) => {
+            const p = toPx(c.x, c.y);
+            if (idx === 0) ctx.moveTo(p.px, p.py);
+            else ctx.lineTo(p.px, p.py);
+          });
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        });
+      } else {
+        bfNoBuildColliders.fallback.forEach((fb) => {
+          const { px, py } = toPx(fb.x, fb.y);
+          ctx.beginPath();
+          ctx.arc(px, py, fb.r * scale, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
     }
 
     // 3. Monument pins (all monuments when Show All Monuments is checked, or key hubs only)
@@ -3240,6 +3512,7 @@
               ${s.supportName ? `<span style="color:#86efac;">🟢 Support: ${s.supportName} (${s.supportDist}m)</span>` : ''}
               <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
               <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
+              <span style="color:#86efac;">🧱 No-Build Clear: ${s.noBuildClearance >= 900 ? 'Open Land' : `+${s.noBuildClearance}m`}</span>
               <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">
@@ -3276,6 +3549,7 @@
                 <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
                 <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
                 <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
+                <span style="color:#86efac;">🧱 No-Build Clear: ${s.noBuildClearance >= 900 ? 'Open Land' : `+${s.noBuildClearance}m`}</span>
                 <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
               </div>
               <div style="font-size:12px; color:var(--text-secondary);">
@@ -3571,6 +3845,7 @@
         }
 
         bfMapData = data;
+        bfPrepareNoBuildData(data);
         bfZoom = bfComputeFitZoom();
         bfPanX = 0;
         bfPanY = 0;
@@ -3644,6 +3919,7 @@
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
+    document.getElementById('bfShowNoBuildCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowRouteCb')?.addEventListener('change', renderBaseFinderMap);
 
     // Zoom, Fit All, Island 100%, Full-Width Expand, and Drag-to-Pan controls
@@ -3749,7 +4025,16 @@
 
         if (hudEl) {
           hudEl.style.display = 'block';
-          hudEl.textContent = `Grid ${grid}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : '#' + (bfSelectedIdx + 1)} [${selSpot.grid}]` : ''}`;
+          const isWaterPx = bfIsPointWater(bfLandMask, mapSize, wx, wy);
+          const nb = bfCheckNoBuildZone(wx, wy, 32, 14);
+          const buildStatus = isWaterPx
+            ? '<span style="color:#38bdf8;">🌊 WATER</span>'
+            : nb.inside
+              ? '<span style="color:#f87171;">🚫 BUILDING BLOCKED</span>'
+              : nb.blocked
+                ? `<span style="color:#fb923c;">⚠️ Too Close (${Math.max(0, nb.minClearance)}m)</span>`
+                : `<span style="color:#4ade80;">🧱 Buildable (${nb.minClearance >= 900 ? 'Open' : `+${nb.minClearance}m`})</span>`;
+          hudEl.innerHTML = `Grid ${grid}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : '#' + (bfSelectedIdx + 1)} [${selSpot.grid}]` : ''} • ${buildStatus}`;
         }
 
         if (tooltipEl) {
