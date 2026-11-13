@@ -1194,6 +1194,11 @@
   }
 
   const GENE_WEIGHT_MAP = { G: 0.6, Y: 0.6, H: 0.6, W: 1.0, X: 1.0 };
+  let selectedRecipeIdx = 0;
+  let lastSolvedRecipes = [];
+  let lastSolvedCrop = 'Hemp';
+  let lastCloneNumMap = new Map();
+  let lastHighlightedGenes = new Set();
 
   function geneCounts(genes) {
     let g = 0;
@@ -1219,25 +1224,86 @@
     if (targetGoal === 'YYYYGG') return c.y >= 4 && c.g >= 2;
     if (targetGoal === 'GGGGYY') return c.g >= 4 && c.y >= 2;
     if (targetGoal === 'GGGYHY') return c.g >= 3 && c.y >= 2 && c.h >= 1;
+    if (targetGoal === 'CUSTOM') return c.bad === 0 && (c.g + c.y) >= 5;
     return c.g === 3 && c.y === 3;
   }
 
-  function scoreCloneAgainstTarget(genes, targetGoal, exactChance = 1, genSteps = 1, donorCount = 4) {
+  function getGeneticsFilters() {
+    const parseOptInt = (id) => {
+      const raw = document.getElementById(id)?.value?.trim();
+      if (raw === '' || raw === undefined) return null;
+      const n = parseInt(raw, 10);
+      return Number.isNaN(n) ? null : Math.max(0, Math.min(6, n));
+    };
+    const minD = Math.max(2, Math.min(8, parseInt(document.getElementById('geneticsMinDonors')?.value, 10) || 2));
+    const maxD = Math.max(minD, Math.min(8, parseInt(document.getElementById('geneticsMaxDonors')?.value, 10) || 5));
+    const maxGen = parseInt(document.getElementById('geneticsMaxGen')?.value, 10) === 1 ? 1 : 2;
+    const slotTargets = [1, 2, 3, 4, 5, 6].map((idx) => {
+      const v = (document.getElementById(`filterSlot${idx}`)?.value || '').toUpperCase().trim();
+      return /^[GYHWX]$/.test(v) ? v : '';
+    });
+    return {
+      targetGoal: document.getElementById('geneticsTargetGoal')?.value || 'GGGYYY',
+      minDonors: minD,
+      maxDonors: maxD,
+      maxGen,
+      allowDupes: Boolean(document.getElementById('geneticsAllowDupesCb')?.checked ?? true),
+      exactG: parseOptInt('filterCountG'),
+      exactY: parseOptInt('filterCountY'),
+      exactH: parseOptInt('filterCountH'),
+      slotTargets,
+      minChance: parseFloat(document.getElementById('filterMinChance')?.value || '0') || 0
+    };
+  }
+
+  function hasActiveResultFilter(f) {
+    return (
+      f.exactG !== null ||
+      f.exactY !== null ||
+      f.exactH !== null ||
+      f.slotTargets.some(Boolean) ||
+      f.minChance > 0
+    );
+  }
+
+  function matchesResultFilters(genes, exactChance, f) {
+    if (exactChance + 1e-6 < f.minChance) return false;
     const c = geneCounts(genes);
-    const tc = geneCounts(targetGoal);
+    if (f.exactG !== null && c.g !== f.exactG) return false;
+    if (f.exactY !== null && c.y !== f.exactY) return false;
+    if (f.exactH !== null && c.h !== f.exactH) return false;
+    for (let i = 0; i < 6; i++) {
+      if (f.slotTargets[i] && genes[i] !== f.slotTargets[i]) return false;
+    }
+    return true;
+  }
+
+  function scoreCloneAgainstTarget(genes, targetGoal, exactChance = 1, genSteps = 1, donorCount = 4, filters = null) {
+    const c = geneCounts(genes);
+    const goalPattern = targetGoal === 'CUSTOM' ? 'GGGYYY' : targetGoal;
+    const tc = geneCounts(goalPattern);
     const isGod = isGodCloneForGoal(genes, targetGoal);
 
-    let score = c.g * 16 + c.y * 16 + c.h * 9 - c.x * 20 - c.w * 22;
-    score -= Math.abs(c.g - tc.g) * 6 + Math.abs(c.y - tc.y) * 6 + Math.abs(c.h - tc.h) * 4;
+    let score = c.g * 16 + c.y * 16 + c.h * 9 - c.x * 22 - c.w * 24;
+    if (targetGoal !== 'CUSTOM') {
+      score -= Math.abs(c.g - tc.g) * 6 + Math.abs(c.y - tc.y) * 6 + Math.abs(c.h - tc.h) * 4;
+    } else if (filters) {
+      if (filters.exactG !== null) score -= Math.abs(c.g - filters.exactG) * 14;
+      if (filters.exactY !== null) score -= Math.abs(c.y - filters.exactY) * 14;
+      if (filters.exactH !== null) score -= Math.abs(c.h - filters.exactH) * 14;
+      for (let i = 0; i < 6; i++) {
+        if (filters.slotTargets[i] && genes[i] === filters.slotTargets[i]) score += 18;
+      }
+    }
 
     if (isGod) {
-      score += exactChance === 1 ? 500 : 180 * exactChance;
+      score += exactChance === 1 ? 520 : 190 * exactChance;
     } else if (c.bad === 0 && exactChance === 1) {
-      score += 80;
+      score += 85;
     }
     score += exactChance * 45;
-    score -= (genSteps - 1) * 28;
-    score -= donorCount * 0.15;
+    score -= (genSteps - 1) * 30;
+    score -= donorCount * 0.25;
     return score;
   }
 
@@ -1245,7 +1311,8 @@
     const resultGenes = [];
     const slotBreakdown = [];
     let exactChance = 1;
-    const tc = geneCounts(targetGoal);
+    let canUseAnyCenter = true;
+    const tc = geneCounts(targetGoal === 'CUSTOM' ? 'GGGYYY' : targetGoal);
     const preferOrder = tc.y > tc.g ? ['Y', 'G', 'H', 'X', 'W'] : ['G', 'Y', 'H', 'X', 'W'];
 
     for (let slot = 0; slot < 6; slot++) {
@@ -1263,6 +1330,10 @@
       Object.values(totals).forEach((w) => {
         if (w > maxDonorWeight) maxDonorWeight = w;
       });
+
+      if (maxDonorWeight <= 1.0) {
+        canUseAnyCenter = false;
+      }
 
       let finalGene = centerGene;
       let tiedGenes = [centerGene];
@@ -1295,23 +1366,24 @@
     return {
       offspring: resultGenes.join(''),
       exactChance,
+      canUseAnyCenter,
       slotBreakdown
     };
   }
 
-  function generateDonorCombos(pool, allowDupes) {
+  function generateDonorCombos(pool, allowDupes, minDonors = 2, maxDonors = 5) {
     const n = pool.length;
     const combos = [];
     const seenKeys = new Set();
     const addCombo = (arr) => {
-      if (arr.length < 2 || arr.length > 8) return;
+      if (arr.length < minDonors || arr.length > maxDonors) return;
       const key = [...arr].sort().join('|');
       if (seenKeys.has(key)) return;
       seenKeys.add(key);
       combos.push(arr);
     };
 
-    // 1. Subsets of distinct saved clones (2..8 donors)
+    // 1. Subsets of distinct saved clones
     const capN = Math.min(n, 10);
     const maxMask = 1 << capN;
     for (let mask = 1; mask < maxMask; mask++) {
@@ -1322,9 +1394,9 @@
       addCombo(subset);
     }
 
-    // 2. Combinations with duplicate cloned donors (size 2..5)
+    // 2. Combinations with duplicate cloned donors
     if (allowDupes && n > 0) {
-      const dupePool = pool.slice(0, Math.min(n, 8));
+      const dupePool = pool.slice(0, Math.min(n, 7));
       const m = dupePool.length;
       const rec = (startIdx, cur, targetLen) => {
         if (cur.length === targetLen) {
@@ -1337,15 +1409,21 @@
           cur.pop();
         }
       };
-      const maxRepLen = m <= 5 ? 5 : 4;
-      for (let len = 2; len <= maxRepLen; len++) {
+      const maxRepLen = Math.min(maxDonors, m <= 5 ? 5 : 4);
+      for (let len = minDonors; len <= maxRepLen; len++) {
         rec(0, [], len);
       }
-      // Also allow planting 6..8 total donors using 2..3 copies of top clones if helpful
-      if (m >= 2 && m <= 6) {
+      if (maxDonors >= 5 && m >= 2 && m <= 6) {
         for (let i = 0; i < m; i++) {
           for (let j = i; j < m; j++) {
-            addCombo([dupePool[i], dupePool[i], dupePool[j], dupePool[j], dupePool[0], dupePool[Math.min(1, m - 1)]]);
+            const p0 = dupePool[0];
+            const p1 = dupePool[Math.min(1, m - 1)];
+            if (maxDonors >= 6) {
+              addCombo([dupePool[i], dupePool[i], dupePool[j], dupePool[j], p0, p1].slice(0, maxDonors));
+            }
+            if (maxDonors >= 8) {
+              addCombo([dupePool[i], dupePool[i], dupePool[j], dupePool[j], p0, p0, p1, p1]);
+            }
           }
         }
       }
@@ -1353,26 +1431,32 @@
     return combos;
   }
 
-  function findBestSingleStepPlan(centers, donorPool, targetGoal, allowDupes) {
-    const donorCombos = generateDonorCombos(donorPool, allowDupes);
-    let bestPlan = null;
+  function findBestSingleStepPlans(centers, donorPool, filters, genSteps = 1) {
+    const donorCombos = generateDonorCombos(donorPool, filters.allowDupes, filters.minDonors, filters.maxDonors);
+    const allPlans = [];
     const topByOffspring = new Map();
 
     for (const centerGenes of centers) {
       for (const donors of donorCombos) {
-        const sim = simulateCrossbreed(centerGenes, donors, targetGoal);
-        const score = scoreCloneAgainstTarget(sim.offspring, targetGoal, sim.exactChance, 1, donors.length);
+        const sim = simulateCrossbreed(centerGenes, donors, filters.targetGoal);
+        const score = scoreCloneAgainstTarget(
+          sim.offspring,
+          filters.targetGoal,
+          sim.exactChance,
+          genSteps,
+          donors.length,
+          filters
+        );
         const plan = {
           centerGenes,
           donors,
           offspring: sim.offspring,
           exactChance: sim.exactChance,
+          canUseAnyCenter: sim.canUseAnyCenter,
           slotBreakdown: sim.slotBreakdown,
           score
         };
-        if (!bestPlan || score > bestPlan.score) {
-          bestPlan = plan;
-        }
+        allPlans.push(plan);
         const prev = topByOffspring.get(sim.offspring);
         if (!prev || score > prev.score) {
           topByOffspring.set(sim.offspring, plan);
@@ -1380,13 +1464,19 @@
       }
     }
 
+    allPlans.sort((a, b) => b.score - a.score);
     const intermediates = Array.from(topByOffspring.values())
       .sort((a, b) => b.score - a.score)
-      .slice(0, 14);
-    return { bestPlan, intermediates };
+      .slice(0, 12);
+    return { topPlans: allPlans.slice(0, 40), intermediates };
   }
 
-  function renderPlanterStepHtml(plan, badgeText, headingText, borderColor = 'rgba(34,197,94,0.45)') {
+  function formatCloneRef(genes, cloneNumMap) {
+    const num = cloneNumMap.get(genes);
+    return num ? `#${num} ${genes}` : `${genes} (GEN.1)`;
+  }
+
+  function renderPlanterStepHtml(plan, badgeText, headingText, cloneNumMap, borderColor = 'rgba(34,197,94,0.45)') {
     const gc = geneCounts(plan.offspring);
     const greenCount = gc.g + gc.y + gc.h;
     const chancePct = Math.round(plan.exactChance * 100);
@@ -1395,23 +1485,34 @@
         ? `<span class="keycard-tag keycard-Green">🟢 100% GUARANTEED</span>`
         : `<span class="keycard-tag keycard-Fuse">🟡 ${chancePct}% CHANCE (RNG TIE IN ${plan.slotBreakdown.filter((s) => s.tiedGenes.length > 1).map((s) => '#' + s.slot).join(', ')})</span>`;
 
-    // Build 3x3 Large Planter Box cells (Center is index 4)
+    const anyCenterBadge = plan.canUseAnyCenter
+      ? `<span class="keycard-tag" style="background:rgba(56,189,248,0.16); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45);">🌱 ANY SPARE SEED/CLONE IN CENTER</span>`
+      : '';
+
     const cellsHtml = [];
     let dIdx = 0;
     for (let i = 0; i < 9; i++) {
       if (i === 4) {
+        const centerNum = cloneNumMap.get(plan.centerGenes);
+        const centerTitle = plan.canUseAnyCenter
+          ? 'CENTER (ANY SPARE)'
+          : centerNum
+          ? `CENTER #${centerNum}`
+          : 'CENTER (GEN.1 CLONE)';
         cellsHtml.push(`
           <div class="planter-cell center-target">
-            <span style="font-size:10px; font-family:var(--font-mono); color:var(--sulfur-yellow); font-weight:700;">CENTER SAPLING</span>
+            <span style="font-size:10px; font-family:var(--font-mono); color:var(--sulfur-yellow); font-weight:700;">${centerTitle}</span>
             <div style="font-family:var(--font-mono); font-weight:800; color:#fff; letter-spacing:0.08em;">${plan.centerGenes}</div>
             <span style="font-size:10px; color:#4ade80;">→ ${plan.offspring}</span>
           </div>
         `);
       } else if (dIdx < plan.donors.length) {
         const dg = plan.donors[dIdx++];
+        const dNum = cloneNumMap.get(dg);
+        const dLabel = dNum ? `DONOR #${dNum}` : `GEN.1 INTERMEDIATE`;
         cellsHtml.push(`
           <div class="planter-cell">
-            <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary);">DONOR #${dIdx}</span>
+            <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary);">${dLabel}</span>
             <div style="font-family:var(--font-mono); font-weight:700; color:#fff; letter-spacing:0.08em;">${dg}</div>
           </div>
         `);
@@ -1433,6 +1534,7 @@
                 ${badgeText} (${greenCount}/6 GREEN)
               </span>
               ${chanceBadge}
+              ${anyCenterBadge}
             </div>
             <div style="font-family:var(--font-display); font-size:18px; font-weight:700; color:#fff;">
               ${headingText}
@@ -1486,110 +1588,231 @@
             </table>
           </div>
         </div>
+
+        <div style="margin-top:12px; padding:8px 10px; background:rgba(0,0,0,0.28); border-left:3px solid var(--sulfur-yellow); border-radius:4px; font-size:11.5px; color:var(--text-secondary);">
+          💡 <strong>Planting Order Tip:</strong> Plant the surrounding donors first, wait until they grow close to the <strong>Crossbreeding</strong> stage, then plant the <strong>Center</strong> plant (${formatCloneRef(plan.centerGenes, cloneNumMap)}) last so donors cleanly overwrite it without infecting each other.
+        </div>
       </div>
     `;
+  }
+
+  function renderSelectedRecipeDetails(existingBannerHtml = '', filterBannerHtml = '') {
+    const container = document.getElementById('crossbreedResultContainer');
+    if (!container) return;
+
+    const recipes = lastSolvedRecipes;
+    if (!recipes.length) return;
+
+    if (selectedRecipeIdx >= recipes.length) selectedRecipeIdx = 0;
+    const chosen = recipes[selectedRecipeIdx];
+
+    lastHighlightedGenes = new Set();
+    if (chosen.gens === 1) {
+      if (!chosen.plan.canUseAnyCenter) lastHighlightedGenes.add(chosen.plan.centerGenes);
+      chosen.plan.donors.forEach((d) => lastHighlightedGenes.add(d));
+    } else {
+      if (!chosen.gen1Plan.canUseAnyCenter) lastHighlightedGenes.add(chosen.gen1Plan.centerGenes);
+      chosen.gen1Plan.donors.forEach((d) => lastHighlightedGenes.add(d));
+      if (!chosen.gen2Plan.canUseAnyCenter) lastHighlightedGenes.add(chosen.gen2Plan.centerGenes);
+      chosen.gen2Plan.donors.forEach((d) => lastHighlightedGenes.add(d));
+    }
+    renderSavedClonesAndTeas();
+
+    const cardsHtml = `
+      <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+        <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+          DISCOVERED RECIPES (${recipes.length} SHOWN) — CLICK ANY CARD TO VIEW PLANTER &amp; HIGHLIGHT PARENTS:
+        </span>
+      </div>
+      <div class="rb-recipe-cards">
+        ${recipes
+          .map((r, idx) => {
+            const pct = Math.round(r.exactChance * 100);
+            const genTag = r.gens === 1 ? 'GEN.1' : 'GEN.2';
+            const donorsUsed = r.gens === 1 ? r.plan.donors.length : `${r.gen1Plan.donors.length}+${r.gen2Plan.donors.length}`;
+            const anyCenterTag =
+              (r.gens === 1 ? r.plan.canUseAnyCenter : r.gen2Plan.canUseAnyCenter)
+                ? `<span style="color:#7dd3fc;">• Any Center</span>`
+                : '';
+            const parentNums = (r.gens === 1 ? [r.plan.centerGenes, ...r.plan.donors] : [r.gen1Plan.centerGenes, ...r.gen1Plan.donors, r.gen2Plan.centerGenes, ...r.gen2Plan.donors])
+              .map((g) => lastCloneNumMap.get(g))
+              .filter(Boolean);
+            const uniqueNums = Array.from(new Set(parentNums)).map((n) => `#${n}`).join(' ');
+            return `
+              <button type="button" class="rb-recipe-card ${idx === selectedRecipeIdx ? 'active' : ''}" data-recipe-idx="${idx}">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <span style="font-family:var(--font-mono); font-size:10.5px; font-weight:700; color:${r.gens === 1 ? '#4ade80' : '#38bdf8'};">${genTag} • ${donorsUsed} DONORS ${anyCenterTag}</span>
+                  <span style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:${pct === 100 ? '#4ade80' : '#facc15'};">${pct}%</span>
+                </div>
+                <div style="margin-bottom:6px;">${formatGenesCircles(r.offspring)}</div>
+                <div style="font-family:var(--font-mono); font-size:10.5px; color:var(--text-muted);">Uses: ${uniqueNums || 'Gen.1 clone'}</div>
+              </button>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+
+    let detailHtml = '';
+    if (chosen.gens === 1) {
+      detailHtml = renderPlanterStepHtml(
+        chosen.plan,
+        `GEN.1 • OPTIMAL ${lastSolvedCrop.toUpperCase()} RESULT`,
+        'Resulting Clone:',
+        lastCloneNumMap
+      );
+    } else {
+      detailHtml =
+        `<div style="padding:10px 12px; margin-bottom:10px; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45); font-size:12.5px; color:#e0f2fe;">
+          🧬 <strong>2-Generation Crossbreed Path (GEN.1 → GEN.2):</strong> Breed <strong>Step 1 → ${chosen.gen1Plan.offspring}</strong>, clone it once grown, then use it in <strong>Step 2 → ${chosen.offspring}</strong> (${Math.round(chosen.exactChance * 100)}% combined odds).
+        </div>` +
+        renderPlanterStepHtml(
+          chosen.gen1Plan,
+          `STEP 1 (GEN.1) • INTERMEDIATE ${lastSolvedCrop.toUpperCase()}`,
+          `Intermediate Clone (${chosen.gen1Plan.offspring}) → Clone & Move to Step 2:`,
+          lastCloneNumMap,
+          'rgba(56,189,248,0.45)'
+        ) +
+        renderPlanterStepHtml(
+          chosen.gen2Plan,
+          `STEP 2 (GEN.2) • FINAL ${lastSolvedCrop.toUpperCase()} CLONE`,
+          'Final Resulting Clone:',
+          lastCloneNumMap,
+          'rgba(34,197,94,0.6)'
+        );
+    }
+
+    container.innerHTML = existingBannerHtml + filterBannerHtml + cardsHtml + detailHtml;
+
+    container.querySelectorAll('.rb-recipe-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        selectedRecipeIdx = parseInt(card.getAttribute('data-recipe-idx'), 10) || 0;
+        renderSelectedRecipeDetails(existingBannerHtml, filterBannerHtml);
+      });
+    });
   }
 
   function solveBestCrossbreed() {
     const container = document.getElementById('crossbreedResultContainer');
     if (!container) return;
 
-    const targetGoal = document.getElementById('geneticsTargetGoal')?.value || 'GGGYYY';
-    const allowDupes = Boolean(document.getElementById('geneticsAllowDupesCb')?.checked ?? true);
+    const filters = getGeneticsFilters();
     const crop = document.getElementById('cloneCropSelect')?.value || selectedCloneCropFilter;
-    const cropClones = (appState.savedClones || []).filter((c) => c.crop === crop && /^[GYHWX]{6}$/.test(String(c.genes || '').toUpperCase()));
+    const cropClones = (appState.savedClones || []).filter(
+      (c) => c.crop === crop && /^[GYHWX]{6}$/.test(String(c.genes || '').toUpperCase())
+    );
 
     if (cropClones.length < 2) {
+      lastSolvedRecipes = [];
+      lastHighlightedGenes = new Set();
+      renderSavedClonesAndTeas();
       container.innerHTML = `
         <div style="padding:16px; background:var(--bg-card); border-radius:6px; color:var(--text-secondary);">
-          Add at least <strong>2 clones</strong> of <strong>${crop}</strong> above (or click <strong>"Load Example Batch"</strong>) to compute the optimal 3x3 crossbreed!
+          Add at least <strong>2 clones</strong> of <strong>${crop}</strong> above (or click <strong>"Load Example Batch"</strong>) to compute optimal 3x3 crossbreeds!
         </div>
       `;
       return;
     }
 
-    // Deduplicate saved genomes while sorting strongest green clones first
-    const uniquePool = Array.from(new Set(cropClones.map((c) => String(c.genes).toUpperCase())))
-      .sort((a, b) => scoreCloneAgainstTarget(b, targetGoal) - scoreCloneAgainstTarget(a, targetGoal))
+    const cloneNumMap = new Map();
+    const orderedUnique = [];
+    cropClones.forEach((c) => {
+      const g = String(c.genes).toUpperCase();
+      if (!cloneNumMap.has(g)) {
+        orderedUnique.push(g);
+        cloneNumMap.set(g, orderedUnique.length);
+      }
+    });
+
+    const uniquePool = [...orderedUnique]
+      .sort((a, b) => scoreCloneAgainstTarget(b, filters.targetGoal, 1, 1, 4, filters) - scoreCloneAgainstTarget(a, filters.targetGoal, 1, 1, 4, filters))
       .slice(0, 12);
 
-    // Check if player ALREADY saved a matching God Clone
-    const existingGod = uniquePool.find((g) => isGodCloneForGoal(g, targetGoal));
-    if (existingGod) {
-      container.innerHTML = `
-        <div style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.55); border-radius:8px; padding:14px 16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    const existingGod = uniquePool.find((g) => isGodCloneForGoal(g, filters.targetGoal));
+    const existingBannerHtml = existingGod
+      ? `<div style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.55); border-radius:8px; padding:12px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
-            <div style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">🏆 YOU ALREADY HAVE THIS ${crop.toUpperCase()} GOD CLONE!</div>
-            <div style="font-size:12.5px; color:#e2e8f0; margin-top:2px;">Plant and clone <strong>${existingGod}</strong> — no crossbreeding needed. (Best crossbreed from other clones also shown below.)</div>
+            <div style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">🏆 YOU ALREADY HAVE THIS ${crop.toUpperCase()} GOD CLONE (#${cloneNumMap.get(existingGod)})!</div>
+            <div style="font-size:12px; color:#e2e8f0; margin-top:2px;">Plant & clone <strong>${existingGod}</strong> — or compare alternative recipes below.</div>
           </div>
           ${formatGenesCircles(existingGod)}
-        </div>
-      `;
-    } else {
-      container.innerHTML = '';
-    }
+        </div>`
+      : '';
 
-    // Generation 1 search
-    const gen1 = findBestSingleStepPlan(uniquePool, uniquePool, targetGoal, allowDupes);
-    const bestGen1 = gen1.bestPlan;
-    if (!bestGen1) return;
+    const gen1 = findBestSingleStepPlans(uniquePool, uniquePool, filters, 1);
+    const allCandidates = gen1.topPlans.map((plan) => ({
+      gens: 1,
+      plan,
+      offspring: plan.offspring,
+      exactChance: plan.exactChance,
+      score: plan.score,
+      sig: `1|${plan.offspring}|${plan.centerGenes}|${[...plan.donors].sort().join(',')}`
+    }));
 
-    const gen1IsPerfect = isGodCloneForGoal(bestGen1.offspring, targetGoal) && bestGen1.exactChance === 1;
-
-    // Generation 2 search when Gen 1 isn't already a 100% guaranteed God Clone
-    let bestTwoGen = null;
-    if (!gen1IsPerfect && gen1.intermediates.length > 0) {
+    if (filters.maxGen >= 2 && gen1.intermediates.length > 0) {
       for (const inter of gen1.intermediates) {
-        if (inter.offspring === bestGen1.offspring && isGodCloneForGoal(inter.offspring, targetGoal)) continue;
-        const poolWithInter = Array.from(new Set([inter.offspring, ...uniquePool])).slice(0, 10);
-        const g2 = findBestSingleStepPlan([inter.offspring, ...uniquePool.slice(0, 5)], poolWithInter, targetGoal, allowDupes);
-        if (!g2.bestPlan) continue;
-        const g2Score = scoreCloneAgainstTarget(g2.bestPlan.offspring, targetGoal, g2.bestPlan.exactChance, 2, g2.bestPlan.donors.length);
-        const totalChance = inter.exactChance * g2.bestPlan.exactChance;
-        const candidateScore = g2Score + totalChance * 25;
-        if (!bestTwoGen || candidateScore > bestTwoGen.score) {
-          bestTwoGen = {
-            gen1Plan: inter,
-            gen2Plan: g2.bestPlan,
+        const poolWithInter = Array.from(new Set([inter.offspring, ...uniquePool])).slice(0, 9);
+        const g2 = findBestSingleStepPlans([inter.offspring, ...uniquePool.slice(0, 5)], poolWithInter, filters, 2);
+        for (const g2Plan of g2.topPlans.slice(0, 8)) {
+          const totalChance = inter.exactChance * g2Plan.exactChance;
+          const g2Score = scoreCloneAgainstTarget(
+            g2Plan.offspring,
+            filters.targetGoal,
             totalChance,
-            score: candidateScore
-          };
+            2,
+            inter.donors.length + g2Plan.donors.length,
+            filters
+          );
+          allCandidates.push({
+            gens: 2,
+            gen1Plan: inter,
+            gen2Plan: g2Plan,
+            offspring: g2Plan.offspring,
+            exactChance: totalChance,
+            score: g2Score,
+            sig: `2|${g2Plan.offspring}|${inter.offspring}|${g2Plan.centerGenes}|${[...g2Plan.donors].sort().join(',')}`
+          });
         }
       }
     }
 
-    const gen1ScoreNorm = scoreCloneAgainstTarget(bestGen1.offspring, targetGoal, bestGen1.exactChance, 1, bestGen1.donors.length);
-    const useTwoGen =
-      bestTwoGen &&
-      ((isGodCloneForGoal(bestTwoGen.gen2Plan.offspring, targetGoal) &&
-        (!isGodCloneForGoal(bestGen1.offspring, targetGoal) || bestTwoGen.totalChance > bestGen1.exactChance)) ||
-        bestTwoGen.score > gen1ScoreNorm + 18);
-
-    if (useTwoGen) {
-      container.innerHTML +=
-        `<div style="padding:10px 12px; margin-bottom:10px; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45); font-size:12.5px; color:#e0f2fe;">
-          🧬 <strong>2-Generation God Clone Path Found!</strong> A single step couldn't hit a 100% ${targetGoal} God Clone from these ${crop} plants, so breed <strong>Step 1 → intermediate sapling</strong>, clone it once harvested, then run <strong>Step 2 → Final God Clone</strong> (${Math.round(bestTwoGen.totalChance * 100)}% combined odds).
-        </div>` +
-        renderPlanterStepHtml(
-          bestTwoGen.gen1Plan,
-          `STEP 1 OF 2 • BREED INTERMEDIATE ${crop.toUpperCase()}`,
-          `Step 1 Result (${bestTwoGen.gen1Plan.offspring}) → Clone & Move to Step 2 Center:`,
-          'rgba(56,189,248,0.45)'
-        ) +
-        renderPlanterStepHtml(
-          bestTwoGen.gen2Plan,
-          `STEP 2 OF 2 • FINAL ${crop.toUpperCase()} GOD CLONE`,
-          `Final God Clone Result:`,
-          'rgba(34,197,94,0.6)'
-        );
-    } else {
-      const godLabel = isGodCloneForGoal(bestGen1.offspring, targetGoal) ? 'GOD CLONE RESULT' : 'BEST 1-STEP CROSSBREED RESULT';
-      container.innerHTML += renderPlanterStepHtml(
-        bestGen1,
-        `✨ OPTIMAL ${crop.toUpperCase()} ${godLabel}`,
-        'Resulting Clone:'
-      );
+    const seenSig = new Set();
+    const deduped = [];
+    allCandidates.sort((a, b) => b.score - a.score);
+    for (const cand of allCandidates) {
+      if (seenSig.has(cand.sig)) continue;
+      seenSig.add(cand.sig);
+      deduped.push(cand);
     }
+
+    const filterActive = hasActiveResultFilter(filters);
+    let filtered = filterActive ? deduped.filter((c) => matchesResultFilters(c.offspring, c.exactChance, filters)) : deduped;
+    let filterBannerHtml = '';
+
+    if (filterActive && filtered.length === 0) {
+      filtered = deduped;
+      filterBannerHtml = `<div style="padding:8px 12px; margin-bottom:10px; border-radius:6px; background:rgba(234,179,8,0.12); border:1px solid rgba(234,179,8,0.45); font-size:12px; color:#fde047;">
+        ⚠️ No clone combination matched your exact filter (check G/Y/H counts, slot filters, Max Donors up to 8, or Max Gens = 2). Showing best closest paths instead:
+      </div>`;
+    }
+
+    const chosen = [];
+    const perOffspringCount = new Map();
+    for (const c of filtered) {
+      const cnt = perOffspringCount.get(c.offspring) || 0;
+      if (cnt >= 2 && chosen.length >= 3) continue;
+      perOffspringCount.set(c.offspring, cnt + 1);
+      chosen.push(c);
+      if (chosen.length >= 6) break;
+    }
+
+    if (!chosen.length) return;
+    lastSolvedRecipes = chosen;
+    lastSolvedCrop = crop;
+    lastCloneNumMap = cloneNumMap;
+    selectedRecipeIdx = 0;
+
+    renderSelectedRecipeDetails(existingBannerHtml, filterBannerHtml);
   }
 
   function renderSavedClonesAndTeas() {
@@ -1601,21 +1824,36 @@
       if (allClones.length === 0) {
         clonesList.innerHTML = `<div style="padding:14px; color:var(--text-muted);">No clones saved yet.</div>`;
       } else {
+        let cropDisplayNum = 0;
+        const seenActiveGenes = new Map();
         const sortedWithIdx = allClones
           .map((c, idx) => ({ ...c, origIdx: idx }))
           .sort((a, b) => (a.crop === activeCrop ? -1 : 1) - (b.crop === activeCrop ? -1 : 1));
         clonesList.innerHTML = sortedWithIdx
-          .map(
-            (c) => `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); border:1px solid ${c.crop === activeCrop ? 'rgba(34,197,94,0.4)' : 'var(--border-subtle)'}; opacity:${c.crop === activeCrop ? '1' : '0.62'}; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-              <div>
-                <span class="target-tier-tag" style="margin-right:8px;">${c.crop}</span>
+          .map((c) => {
+            const gUpper = String(c.genes || '').toUpperCase();
+            let numLabel = '';
+            let isUsed = false;
+            if (c.crop === activeCrop) {
+              if (!seenActiveGenes.has(gUpper)) {
+                cropDisplayNum += 1;
+                seenActiveGenes.set(gUpper, cropDisplayNum);
+              }
+              numLabel = `#${seenActiveGenes.get(gUpper)}`;
+              isUsed = lastHighlightedGenes.has(gUpper);
+            }
+            return `
+            <div class="${isUsed ? 'clone-row-used' : ''}" style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); border:1px solid ${c.crop === activeCrop ? 'rgba(34,197,94,0.4)' : 'var(--border-subtle)'}; opacity:${c.crop === activeCrop ? '1' : '0.62'}; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                ${numLabel ? `<span style="font-family:var(--font-mono); font-weight:800; font-size:12px; color:var(--sulfur-yellow); min-width:24px;">${numLabel}</span>` : ''}
+                <span class="target-tier-tag">${c.crop}</span>
                 ${formatGenesCircles(c.genes)}
+                ${isUsed ? `<span style="font-family:var(--font-mono); font-size:10px; font-weight:700; color:var(--sulfur-yellow);">★ USED</span>` : ''}
               </div>
               <button class="btn btn-sm remove-clone-btn" data-idx="${c.origIdx}">✕</button>
             </div>
-          `
-          )
+          `;
+          })
           .join('');
 
         clonesList.querySelectorAll('.remove-clone-btn').forEach((btn) => {
@@ -1624,7 +1862,6 @@
             if (!Number.isNaN(idx)) {
               appState.savedClones.splice(idx, 1);
               syncStateToServer();
-              renderSavedClonesAndTeas();
               solveBestCrossbreed();
             }
           });
@@ -1683,9 +1920,13 @@
     document.querySelectorAll('.gene-quick-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (!input) return;
-        const cleanLen = input.value.replace(/[^GYHWXgyhwx]/g, '').length;
-        if (cleanLen < 6) {
-          input.value = (input.value + btn.getAttribute('data-g')).toUpperCase();
+        const g = btn.getAttribute('data-g');
+        const val = input.value.toUpperCase();
+        const lastToken = (val.split(/[\s,;]+/).pop() || '').replace(/[^GYHWX]/g, '');
+        if (lastToken.length >= 6 && val.trim().length > 0 && !/[\s,;]$/.test(val)) {
+          input.value = val + '\n' + g;
+        } else {
+          input.value = val + g;
         }
       });
     });
@@ -1699,13 +1940,14 @@
 
     const saveInputClones = () => {
       const rawText = (input?.value || '').toUpperCase().trim();
-      const tokens = rawText
+      const cleaned = rawText.replace(/^[ \t]*#?\d+[.):\s-]+/gm, '');
+      const tokens = cleaned
         .split(/[\s,;]+/)
         .map((t) => t.trim())
         .filter(Boolean);
       const valid = tokens.filter((t) => /^[GYHWX]{6}$/.test(t));
       if (!valid.length || valid.length !== tokens.length) {
-        alert('Enter valid 6-gene codes using G, Y, H, W, or X (e.g. YGYWGG, or separate multiple clones with spaces).');
+        alert('Enter valid 6-gene codes using G, Y, H, W, or X (e.g. YGYWGG, or paste multiple lines).');
         return;
       }
       const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
@@ -1718,13 +1960,12 @@
       });
       if (input) input.value = '';
       syncStateToServer();
-      renderSavedClonesAndTeas();
       solveBestCrossbreed();
     };
 
     document.getElementById('addCloneBtn')?.addEventListener('click', saveInputClones);
     input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         saveInputClones();
       }
@@ -1739,7 +1980,6 @@
         }
       });
       syncStateToServer();
-      renderSavedClonesAndTeas();
       solveBestCrossbreed();
     });
 
@@ -1747,17 +1987,42 @@
       const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
       appState.savedClones = (appState.savedClones || []).filter((c) => c.crop !== crop);
       syncStateToServer();
-      renderSavedClonesAndTeas();
       solveBestCrossbreed();
     });
 
     document.getElementById('cloneCropSelect')?.addEventListener('change', (e) => {
       selectedCloneCropFilter = e.target.value;
-      renderSavedClonesAndTeas();
       solveBestCrossbreed();
     });
+
     document.getElementById('geneticsTargetGoal')?.addEventListener('change', solveBestCrossbreed);
-    document.getElementById('geneticsAllowDupesCb')?.addEventListener('change', solveBestCrossbreed);
+    ['geneticsMinDonors', 'geneticsMaxDonors', 'geneticsMaxGen', 'geneticsAllowDupesCb', 'filterMinChance'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', solveBestCrossbreed);
+    });
+
+    ['filterCountG', 'filterCountY', 'filterCountH', 'filterSlot1', 'filterSlot2', 'filterSlot3', 'filterSlot4', 'filterSlot5', 'filterSlot6'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('input', (e) => {
+        if (id.startsWith('filterSlot')) {
+          e.target.value = e.target.value.toUpperCase().replace(/[^GYHWX]/g, '').slice(0, 1);
+        }
+        const goalSel = document.getElementById('geneticsTargetGoal');
+        if (goalSel && goalSel.value !== 'CUSTOM') goalSel.value = 'CUSTOM';
+        solveBestCrossbreed();
+      });
+    });
+
+    document.getElementById('resetGeneFiltersBtn')?.addEventListener('click', () => {
+      ['filterCountG', 'filterCountY', 'filterCountH', 'filterSlot1', 'filterSlot2', 'filterSlot3', 'filterSlot4', 'filterSlot5', 'filterSlot6'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      const chanceEl = document.getElementById('filterMinChance');
+      if (chanceEl) chanceEl.value = '0';
+      const goalSel = document.getElementById('geneticsTargetGoal');
+      if (goalSel && goalSel.value === 'CUSTOM') goalSel.value = 'GGGYYY';
+      solveBestCrossbreed();
+    });
+
     document.getElementById('runGeneticsSolverBtn')?.addEventListener('click', solveBestCrossbreed);
     document.getElementById('calcFertilizerBtn')?.addEventListener('click', calculateFertilizerScrap);
 

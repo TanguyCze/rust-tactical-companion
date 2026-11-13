@@ -23,7 +23,7 @@
             RUST TACTICAL COMPANION
             <span id="squadNameBadge" class="nav-badge" style="color: var(--sulfur-yellow); border: 1px solid rgba(234,179,8,0.4);">RUST SQUAD ALPHA</span>
           </div>
-          <div class="brand-subtitle">RAIDBOI OPTIMIZER • MONUMENT ATLAS • LIVE TIMERS • GENETICS • BATTLEMETRICS</div>
+          <div class="brand-subtitle">RAIDBOI OPTIMIZER • MONUMENT ATLAS • LIVE TIMERS • GENETICS</div>
         </div>
       </div>
 
@@ -284,40 +284,101 @@
                   <option value="YYYYGG">🌾 Target: YYYYGG (Max Yield 4Y/2G God Clone)</option>
                   <option value="GGGGYY">⚡ Target: GGGGYY (Fast Growth 4G/2Y Clone)</option>
                   <option value="GGGYHY">❄️ Target: GGGYHY (Snow Biome 3G/2Y/1H Clone)</option>
+                  <option value="CUSTOM">🎛️ Custom (Use Filters Below)</option>
                 </select>
-                <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-secondary); cursor:pointer;" title="Allows planting multiple cloned copies of your saved plants as donors in the 3x3 planter">
-                  <input id="geneticsAllowDupesCb" type="checkbox" checked />
-                  <span>Allow 2×+ Cloned Donors</span>
-                </label>
               </div>
             </div>
 
-            <!-- Add Clone Input Bar -->
-            <div style="background: var(--bg-card); padding: 14px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 16px;">
-              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <!-- Add Clone Input Bar + RustBreeder Solver Options -->
+            <div style="background: var(--bg-card); padding: 14px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 12px;">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start;">
                 <select id="cloneCropSelect" class="select">
                   <option value="Hemp">🌿 Hemp (Cloth)</option>
                   <option value="Blue Berry">🫐 Blue Berry (Ore Tea)</option>
                   <option value="Yellow Berry">🍋 Yellow Berry (Ore/Scrap Tea)</option>
                   <option value="Red Berry">🍓 Red Berry (Max HP Tea)</option>
                   <option value="White Berry">⚪ White Berry (Scrap Tea)</option>
-                  <option value="Pumpkin">🎃 Pumpkin / Potato</option>
+                  <option value="Green Berry">🍏 Green Berry</option>
+                  <option value="Pumpkin">🎃 Pumpkin</option>
+                  <option value="Potato">🥔 Potato</option>
+                  <option value="Corn">🌽 Corn</option>
+                  <option value="Wheat">🌾 Wheat</option>
+                  <option value="Sunflower">🌻 Sunflower</option>
+                  <option value="Rose">🌹 Rose</option>
+                  <option value="Orchid">🌸 Orchid</option>
                 </select>
-                <input id="cloneGeneInput" type="text" class="input" placeholder="6 genes or paste list (e.g. YGYWGG)" style="font-family: var(--font-mono); text-transform: uppercase; width: 225px; letter-spacing: 0.08em;" />
-                <div style="display: flex; gap: 4px;">
-                  <button class="btn btn-sm gene-quick-btn" data-g="G" style="border-color:#22c55e; color:#4ade80;">+G</button>
-                  <button class="btn btn-sm gene-quick-btn" data-g="Y" style="border-color:#22c55e; color:#4ade80;">+Y</button>
-                  <button class="btn btn-sm gene-quick-btn" data-g="H" style="border-color:#22c55e; color:#4ade80;">+H</button>
-                  <button class="btn btn-sm gene-quick-btn" data-g="W" style="border-color:#ef4444; color:#f87171;">+W</button>
-                  <button class="btn btn-sm gene-quick-btn" data-g="X" style="border-color:#ef4444; color:#f87171;">+X</button>
-                  <button id="clearGeneInputBtn" class="btn btn-sm" title="Clear input">⌫</button>
+                <textarea id="cloneGeneInput" rows="2" class="input" placeholder="Enter 6 genes or paste multiline list (#1 YGYWGG, GGYYXW...)" style="font-family: var(--font-mono); text-transform: uppercase; width: 255px; min-height: 40px; letter-spacing: 0.06em; resize: vertical;"></textarea>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button class="btn btn-sm gene-quick-btn" data-g="G" style="border-color:#22c55e; color:#4ade80;">+G</button>
+                    <button class="btn btn-sm gene-quick-btn" data-g="Y" style="border-color:#22c55e; color:#4ade80;">+Y</button>
+                    <button class="btn btn-sm gene-quick-btn" data-g="H" style="border-color:#22c55e; color:#4ade80;">+H</button>
+                    <button class="btn btn-sm gene-quick-btn" data-g="W" style="border-color:#ef4444; color:#f87171;">+W</button>
+                    <button class="btn btn-sm gene-quick-btn" data-g="X" style="border-color:#ef4444; color:#f87171;">+X</button>
+                    <button id="clearGeneInputBtn" class="btn btn-sm" title="Clear input">⌫</button>
+                  </div>
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button id="addCloneBtn" class="btn btn-primary btn-sm">+ Save Clones</button>
+                    <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
+                  </div>
                 </div>
-                <button id="addCloneBtn" class="btn btn-primary">+ Save Clone</button>
-                <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
               </div>
+
+              <!-- Solver Options Row (RustBreeder style) -->
+              <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle); font-size:11.5px; color:var(--text-secondary);">
+                <label style="display:flex; align-items:center; gap:5px;">
+                  <span>Donors:</span>
+                  <select id="geneticsMinDonors" class="select" style="padding:3px 6px; font-size:11.5px;">
+                    <option value="2" selected>Min 2</option>
+                    <option value="3">Min 3</option>
+                    <option value="4">Min 4</option>
+                  </select>
+                  <select id="geneticsMaxDonors" class="select" style="padding:3px 6px; font-size:11.5px;">
+                    <option value="4">Max 4</option>
+                    <option value="5" selected>Max 5</option>
+                    <option value="6">Max 6</option>
+                    <option value="8">Max 8</option>
+                  </select>
+                </label>
+                <label style="display:flex; align-items:center; gap:5px;">
+                  <span>Max Gens:</span>
+                  <select id="geneticsMaxGen" class="select" style="padding:3px 6px; font-size:11.5px;">
+                    <option value="1">1 Gen</option>
+                    <option value="2" selected>2 Gens (RustBreeder)</option>
+                  </select>
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer;" title="Allows planting multiple cloned copies of your saved plants as donors in the 3x3 planter">
+                  <input id="geneticsAllowDupesCb" type="checkbox" checked />
+                  <span>Allow 2×+ Cloned Donors</span>
+                </label>
+              </div>
+
               <div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
-                DOMINANCE WEIGHTS: <span style="color:#4ade80;">G / Y / H = 0.6</span> • <span style="color:#f87171;">W / X = 1.0</span> (2× Green = 1.2 beats 1× Red 1.0! Paste multiple space/comma-separated clones too)
+                WEIGHTS: <span style="color:#4ade80;">G / Y / H = 0.6</span> • <span style="color:#f87171;">W / X = 1.0</span> (2× Green = 1.2 beats 1× Red 1.0; equal tie = 50% RNG)
               </div>
+            </div>
+
+            <!-- RustBreeder-Style Result Filters -->
+            <div class="rb-filter-bar">
+              <span style="font-family:var(--font-mono); font-size:11px; color:var(--sulfur-yellow); font-weight:700;">FILTER RESULTS:</span>
+              <label class="rb-filter-field">G <input id="filterCountG" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
+              <label class="rb-filter-field">Y <input id="filterCountY" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
+              <label class="rb-filter-field">H <input id="filterCountH" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span style="font-size:11px; color:var(--text-secondary);">Slots:</span>
+                <input id="filterSlot1" maxlength="1" placeholder="1" class="input rb-slot-input" />
+                <input id="filterSlot2" maxlength="1" placeholder="2" class="input rb-slot-input" />
+                <input id="filterSlot3" maxlength="1" placeholder="3" class="input rb-slot-input" />
+                <input id="filterSlot4" maxlength="1" placeholder="4" class="input rb-slot-input" />
+                <input id="filterSlot5" maxlength="1" placeholder="5" class="input rb-slot-input" />
+                <input id="filterSlot6" maxlength="1" placeholder="6" class="input rb-slot-input" />
+              </div>
+              <select id="filterMinChance" class="select" style="padding:3px 6px; font-size:11.5px;">
+                <option value="0">Any Odds</option>
+                <option value="0.5">50%+ Odds</option>
+                <option value="1">100% Guaranteed Only</option>
+              </select>
+              <button id="resetGeneFiltersBtn" class="btn btn-sm">Reset Filters</button>
             </div>
 
             <!-- Optimal Crossbreed Result & 3x3 Planter Layout -->
