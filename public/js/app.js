@@ -3048,23 +3048,23 @@
     { match: 'power plant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 3, cards: 'Green + Blue', safe: false, vend: 0 },
     { match: 'train yard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue', safe: false, vend: 0 },
     { match: 'airfield', icon: '✈️', label: 'Airfield', color: '#fb923c', r: 5.5, tier: 2, rec: 2, cards: 'Green + Blue', safe: false, vend: 0 },
-    { match: 'sphere tank', icon: '🔵', label: 'The Dome', color: '#fb923c', r: 5, tier: 2, rec: 1, cards: 'None (Mil Crates)', safe: false, vend: 0 },
-    { match: 'arctic research', icon: '❄️', label: 'Arctic Base', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Blue', safe: false, vend: 0 },
+    { match: 'sphere tank', icon: '🔵', label: 'The Dome', color: '#fb923c', r: 5, tier: 2, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'arctic research', icon: '❄️', label: 'Arctic Base', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Blue (→ Red)', safe: false, vend: 0 },
     { match: 'abandoned military', icon: '🪖', label: 'Aband. Mil.', color: '#fb923c', r: 5, tier: 2, rec: 0, cards: 'None (MLRS)', safe: false, vend: 0 },
     // Boat Hubs & Ocean
     { match: 'fishing village', icon: '⚓', label: 'Fishing', color: '#2dd4bf', r: 5, tier: 0, rec: 0, cards: 'None (Boat Vendor)', safe: true, vend: 1 },
-    { match: 'harbor', icon: '⚓', label: 'Harbor', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
-    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
+    { match: 'harbor', icon: '⚓', label: 'Harbor', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5, tier: 2, rec: 0, cards: 'Green + Blue (+ Red*)', safe: false, vend: 0 },
     // Tier 0/1 & Support Monuments
-    { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
-    { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
-    { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
-    { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
-    { match: 'lighthouse', icon: '🗼', label: 'Lighthouse', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
-    { match: 'supermarket', icon: '🛒', label: 'Market', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
-    { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
-    { match: 'warehouse', icon: '📦', label: 'Mining Outpost', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
+    { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
+    { match: 'lighthouse', icon: '🗼', label: 'Lighthouse', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
+    { match: 'supermarket', icon: '🛒', label: 'Market', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
+    { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
+    { match: 'warehouse', icon: '📦', label: 'Mining Outpost', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None (No Green Card)', safe: false, vend: 0 },
     { match: 'quarry', icon: '🏭', label: null, color: '#fbbf24', r: 4.5, tier: 1, rec: 0, cards: 'Diesel', safe: false, vend: 0 },
     { match: 'water well', icon: '🚰', label: 'Well', color: '#94a3b8', r: 3.5, tier: 0, rec: 0, cards: 'None', safe: false, vend: 0 }
   ];
@@ -3399,7 +3399,7 @@
         const steps = computeProgressionRoute(selSpot);
         let prev = selPx;
         steps.forEach((st, sIdx) => {
-          if (st.wx === undefined || st.wy === undefined) return;
+          if (st.wx === undefined || st.wy === undefined || (sIdx === 0 && st.dist === 0)) return;
           const next = toPx(st.wx, st.wy);
           ctx.save();
           ctx.beginPath();
@@ -3648,24 +3648,69 @@
       return best ? { ...best, dist: Math.round(bestD), grid: bfWorldToGrid(best.x, best.y, mapSize) } : null;
     };
 
-    const step1 = findNearest((t) => t.includes('supermarket') || t.includes('gas station') || t.includes('warehouse') || t.includes('lighthouse') || t.includes('junkyard'));
-    const step2 = findNearest((t) => t.includes('sewer') || t.includes('satellite') || t.includes('harbor') || t.includes('ferry') || t.includes('radtown'));
-    const step3 = findNearest((t) => bfTier2ProgWeight(t) > 0);
+    const greenCardMon = findNearest((t) => t.includes('supermarket') || t.includes('gas station') || t.includes('lighthouse') || t.includes('junkyard'));
+    const nearWarehouse = findNearest((t) => t.includes('warehouse'));
+    const step2 = findNearest((t) => t.includes('sewer') || t.includes('satellite') || t.includes('harbor') || t.includes('ferry') || t.includes('radtown') || t.includes('sphere tank'));
+    const step3 =
+      findNearest(
+        (t) =>
+          t.includes('water treatment') ||
+          t.includes('powerplant') ||
+          t.includes('power plant') ||
+          t.includes('train yard') ||
+          t.includes('trainyard') ||
+          t.includes('airfield') ||
+          t.includes('arctic research')
+      ) || findNearest((t) => bfTier2ProgWeight(t) > 0);
     const step4 = findNearest((t) => t.includes('underwater lab') || t.includes('fishing village') || t.includes('oil'));
 
     const route = [];
-    if (step1) {
+    if (greenCardMon && (!nearWarehouse || greenCardMon.dist <= 850 || greenCardMon.dist <= nearWarehouse.dist + 200)) {
       route.push({
         step: '1. Green Card & Scrap',
         color: '#a3e635',
-        name: step1.type,
-        grid: step1.grid,
-        dist: step1.dist,
-        wx: step1.x,
-        wy: step1.y,
-        note: 'Grab Green Card + early scrap/recycle (~250 scrap for WB1/tools).'
+        name: greenCardMon.type,
+        grid: greenCardMon.grid,
+        dist: greenCardMon.dist,
+        wx: greenCardMon.x,
+        wy: greenCardMon.y,
+        note: 'Guaranteed Green Card desk + recycler (or farm Road Scientists along any road).'
+      });
+    } else if (nearWarehouse) {
+      route.push({
+        step: '1. Road Scientists + Scrap',
+        color: '#a3e635',
+        name: `Road / Mining Outpost`,
+        grid: nearWarehouse.grid,
+        dist: nearWarehouse.dist,
+        wx: nearWarehouse.x,
+        wy: nearWarehouse.y,
+        note: `Mining Outpost has NO Green Card spawn — farm Road Scientists on the road (~8% Green Card drop) & recycle here${greenCardMon ? ` (nearest desk: ${greenCardMon.type} [${greenCardMon.grid}], ${greenCardMon.dist}m)` : ''}.`
+      });
+    } else if (greenCardMon) {
+      route.push({
+        step: '1. Green Card (or Road Scientists)',
+        color: '#a3e635',
+        name: greenCardMon.type,
+        grid: greenCardMon.grid,
+        dist: greenCardMon.dist,
+        wx: greenCardMon.x,
+        wy: greenCardMon.y,
+        note: `Nearest guaranteed Green Card desk is ${greenCardMon.dist}m away — farming Road Scientists near base is usually faster!`
+      });
+    } else {
+      route.push({
+        step: '1. Green Card Farm',
+        color: '#a3e635',
+        name: 'Roadside Scientists',
+        grid: spot.grid,
+        dist: 0,
+        wx: spot.wx,
+        wy: spot.wy,
+        note: 'No Green Card desk monument on map — kill Road Scientists along roads (~8% Green Card drop) + hit barrels for early scrap.'
       });
     }
+
     if (step2) {
       route.push({
         step: '2. Blue Card Puzzle',
@@ -3675,12 +3720,20 @@
         dist: step2.dist,
         wx: step2.x,
         wy: step2.y,
-        note: 'Bring 1× Green Card + 1× Fuse → loot Blue Card + components.'
+        note: 'Bring 1× Green Card + 1× Fuse → loot Blue Card + Blueprint Page + crates.'
       });
     }
     if (step3) {
       const rule = BF_MONUMENT_STYLE_RULES.find((r) => String(step3.type || '').toLowerCase().includes(r.match));
       const recText = rule && rule.rec > 0 ? ` • ${rule.rec}× Recycler` : '';
+      const t3 = String(step3.type || '').toLowerCase();
+      const s3Note = t3.includes('abandoned military')
+        ? `No puzzle needed — loot MLRS crates/Military Crates${recText}.`
+        : t3.includes('arctic research')
+          ? `Bring 1× Blue Card (0 Fuses!) → Red Card + 2× BP Pages${recText}.`
+          : t3.includes('airfield') || t3.includes('train')
+            ? `Bring Blue (+ Green) Card + Fuses → Red Card + BP Pages${recText}.`
+            : `Bring 1× Blue Card + 1× Fuse → Red Card + Mil Crates${recText}.`;
       route.push({
         step: '3. Tier 2 & Red Card',
         color: '#fb923c',
@@ -3689,7 +3742,7 @@
         dist: step3.dist,
         wx: step3.x,
         wy: step3.y,
-        note: `Bring 1× Blue Card + 1× Fuse → Red Card + Mil Crates${recText}.`
+        note: s3Note
       });
     }
     if (step4) {
@@ -3738,7 +3791,7 @@
         <div class="monument-item bf-route-step-card" data-route-idx="${idx}" style="padding:9px 12px; border-left:3px solid ${st.color}; cursor:pointer;" title="Click to focus map on ${st.name}">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:${st.color};">${st.step}: <span style="color:#fff;">${st.name}</span></div>
-            <span class="keycard-tag keycard-Fuse">[${st.grid}] • ${st.dist}m</span>
+            <span class="keycard-tag keycard-Fuse">[${st.grid}] • ${st.dist > 0 ? `${st.dist}m` : 'Roads'}</span>
           </div>
           <div style="font-size:11.5px; color:var(--text-secondary); margin-top:3px;">${st.note}</div>
         </div>
