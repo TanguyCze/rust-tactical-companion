@@ -2101,6 +2101,7 @@
   let bfZoom = 1;
   let bfPanX = 0;
   let bfPanY = 0;
+  let bfRenderedPins = [];
 
   function bfComputeFitZoom() {
     if (!bfMapData || !bfMapData.size) return 1;
@@ -2727,62 +2728,62 @@
     return picked;
   }
 
+  // Enriched monument metadata (tiers, recyclers, keycards, safe zones, vending) from Rust bundle data
   const BF_MONUMENT_STYLE_RULES = [
     // Tier 3 & Zerg Hubs
-    { match: 'launch site', icon: '🚀', label: 'Launch Site', color: '#ef4444', r: 6 },
-    { match: 'missile silo', icon: '☢️', label: 'Missile Silo', color: '#ef4444', r: 6 },
-    { match: 'military tunnel', icon: '🪖', label: 'Mil. Tunnels', color: '#ef4444', r: 6 },
-    { match: 'excavator', icon: '🏗️', label: 'Excavator', color: '#ef4444', r: 6 },
-    { match: 'large oil', icon: '🛢️', label: 'Large Oil', color: '#ef4444', r: 6 },
-    { match: 'oilrig_large', icon: '🛢️', label: 'Large Oil', color: '#ef4444', r: 6 },
-    { match: 'small oil', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5 },
-    { match: 'oil rig', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5 },
-    { match: 'oilrig', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5 },
-    { match: 'outpost', icon: '🛡️', label: 'Outpost', color: '#22c55e', r: 6 },
-    { match: 'bandit', icon: '🏴‍☠️', label: 'Bandit Camp', color: '#22c55e', r: 6 },
+    { match: 'launch site', icon: '🚀', label: 'Launch Site', color: '#ef4444', r: 6, tier: 3, rec: 1, cards: 'Green + Red', safe: false, vend: 0 },
+    { match: 'missile silo', icon: '☢️', label: 'Missile Silo', color: '#ef4444', r: 6, tier: 3, rec: 0, cards: 'Red', safe: false, vend: 0 },
+    { match: 'military tunnel', icon: '🪖', label: 'Mil. Tunnels', color: '#ef4444', r: 6, tier: 3, rec: 1, cards: 'Green + Blue + Red', safe: false, vend: 0 },
+    { match: 'excavator', icon: '🏗️', label: 'Excavator', color: '#ef4444', r: 6, tier: 3, rec: 1, cards: 'None (Diesel)', safe: false, vend: 0 },
+    { match: 'large oil', icon: '🛢️', label: 'Large Oil', color: '#ef4444', r: 6, tier: 3, rec: 0, cards: 'Green + Blue + Red', safe: false, vend: 0 },
+    { match: 'oilrig_large', icon: '🛢️', label: 'Large Oil', color: '#ef4444', r: 6, tier: 3, rec: 0, cards: 'Green + Blue + Red', safe: false, vend: 0 },
+    { match: 'small oil', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5, tier: 2, rec: 0, cards: 'Green + Blue + Red', safe: false, vend: 0 },
+    { match: 'oil rig', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5, tier: 2, rec: 0, cards: 'Green + Blue + Red', safe: false, vend: 0 },
+    { match: 'oilrig', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5, tier: 2, rec: 0, cards: 'Green + Blue + Red', safe: false, vend: 0 },
+    { match: 'outpost', icon: '🛡️', label: 'Outpost', color: '#22c55e', r: 6, tier: 0, rec: 3, cards: 'None', safe: true, vend: 7 },
+    { match: 'bandit', icon: '🏴‍☠️', label: 'Bandit Camp', color: '#22c55e', r: 6, tier: 0, rec: 2, cards: 'None', safe: true, vend: 4 },
     // Tier 2 Monuments
-    { match: 'water treatment', icon: '💧', label: 'Water Treat.', color: '#fb923c', r: 5.5 },
-    { match: 'powerplant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5 },
-    { match: 'power plant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5 },
-    { match: 'train yard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5 },
-    { match: 'airfield', icon: '✈️', label: 'Airfield', color: '#fb923c', r: 5.5 },
-    { match: 'sphere tank', icon: '🔵', label: 'The Dome', color: '#fb923c', r: 5 },
-    { match: 'arctic research', icon: '❄️', label: 'Arctic Base', color: '#fb923c', r: 5.5 },
-    { match: 'abandoned military', icon: '🪖', label: 'Aband. Mil.', color: '#fb923c', r: 5 },
+    { match: 'water treatment', icon: '💧', label: 'Water Treat.', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue', safe: false, vend: 0 },
+    { match: 'powerplant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 3, cards: 'Green + Blue', safe: false, vend: 0 },
+    { match: 'power plant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 3, cards: 'Green + Blue', safe: false, vend: 0 },
+    { match: 'train yard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue', safe: false, vend: 0 },
+    { match: 'airfield', icon: '✈️', label: 'Airfield', color: '#fb923c', r: 5.5, tier: 2, rec: 2, cards: 'Green + Blue', safe: false, vend: 0 },
+    { match: 'sphere tank', icon: '🔵', label: 'The Dome', color: '#fb923c', r: 5, tier: 2, rec: 1, cards: 'None (Mil Crates)', safe: false, vend: 0 },
+    { match: 'arctic research', icon: '❄️', label: 'Arctic Base', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Blue', safe: false, vend: 0 },
+    { match: 'abandoned military', icon: '🪖', label: 'Aband. Mil.', color: '#fb923c', r: 5, tier: 2, rec: 0, cards: 'None (MLRS)', safe: false, vend: 0 },
     // Boat Hubs & Ocean
-    { match: 'fishing village', icon: '⚓', label: 'Fishing', color: '#2dd4bf', r: 5 },
-    { match: 'harbor', icon: '⚓', label: 'Harbor', color: '#2dd4bf', r: 5 },
-    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5 },
-    { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5 },
+    { match: 'fishing village', icon: '⚓', label: 'Fishing', color: '#2dd4bf', r: 5, tier: 0, rec: 0, cards: 'None (Boat Vendor)', safe: true, vend: 1 },
+    { match: 'harbor', icon: '⚓', label: 'Harbor', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
+    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
+    { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5, tier: 2, rec: 0, cards: 'Green + Blue (+ Red*)', safe: false, vend: 0 },
     // Tier 0/1 & Support Monuments
-    { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5 },
-    { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5 },
-    { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5 },
-    { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5 },
-    { match: 'lighthouse', icon: '🗼', label: 'Lighthouse', color: '#94a3b8', r: 4 },
-    { match: 'supermarket', icon: '🛒', label: 'Market', color: '#94a3b8', r: 4 },
-    { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4 },
-    { match: 'warehouse', icon: '📦', label: 'Mining Outpost', color: '#94a3b8', r: 4 },
-    { match: 'quarry', icon: '🏭', label: null, color: '#fbbf24', r: 4.5 },
-    { match: 'water well', icon: '🚰', label: 'Well', color: '#94a3b8', r: 3.5 }
+    { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
+    { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
+    { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green', safe: false, vend: 0 },
+    { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
+    { match: 'lighthouse', icon: '🗼', label: 'Lighthouse', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
+    { match: 'supermarket', icon: '🛒', label: 'Market', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
+    { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
+    { match: 'warehouse', icon: '📦', label: 'Mining Outpost', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None', safe: false, vend: 0 },
+    { match: 'quarry', icon: '🏭', label: null, color: '#fbbf24', r: 4.5, tier: 1, rec: 0, cards: 'Diesel', safe: false, vend: 0 },
+    { match: 'water well', icon: '🚰', label: 'Well', color: '#94a3b8', r: 3.5, tier: 0, rec: 0, cards: 'None', safe: false, vend: 0 }
   ];
 
   function bfGetMonumentVisual(m, targetKey) {
     const raw = String(m?.type || m || '');
     const t = raw.toLowerCase();
+    const matchedRule = BF_MONUMENT_STYLE_RULES.find((rule) => t.includes(rule.match)) || null;
     if (bfMatchesTarget(raw, targetKey)) {
-      return { color: '#38bdf8', short: `⚡ ${raw}`, r: 6.5, isMajor: true };
+      return { color: '#38bdf8', short: `⚡ ${raw}`, r: 6.5, isMajor: true, meta: matchedRule };
     }
     if (t.includes('underwater lab')) {
       const redTag = m?.hasRedKeycard === true ? ' 🔴' : m?.hasRedKeycard === false ? ' (No Red)' : '';
-      return { color: '#38bdf8', short: `🔬 Lab${redTag}`, r: 5.5, isMajor: true };
+      return { color: '#38bdf8', short: `🔬 Lab${redTag}`, r: 5.5, isMajor: true, meta: matchedRule };
     }
-    for (const rule of BF_MONUMENT_STYLE_RULES) {
-      if (t.includes(rule.match)) {
-        const name = rule.label || raw.replace(' A', '').replace(' B', '').replace(' C', '');
-        const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0 || t.includes('oil');
-        return { color: rule.color, short: `${rule.icon} ${name}`, r: rule.r, isMajor };
-      }
+    if (matchedRule) {
+      const name = matchedRule.label || raw.replace(' A', '').replace(' B', '').replace(' C', '');
+      const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0 || t.includes('oil');
+      return { color: matchedRule.color, short: `${matchedRule.icon} ${name}`, r: matchedRule.r, isMajor, meta: matchedRule };
     }
     return null;
   }
@@ -2884,6 +2885,7 @@
     }
 
     // 3. Monument pins (all monuments when Show All Monuments is checked, or key hubs only)
+    bfRenderedPins = [];
     const showAllMons = Boolean(document.getElementById('bfShowMonumentsCb')?.checked ?? true);
     mons.forEach((m) => {
       const vis = bfGetMonumentVisual(m, targetKey);
@@ -2891,6 +2893,37 @@
       if (!showAllMons && !vis.isMajor) return;
 
       const { px, py } = toPx(m.x, m.y);
+      const grid = bfWorldToGrid(m.x, m.y, mapSize);
+      const meta = vis.meta;
+      const lines = [];
+      if (meta) {
+        lines.push(`Tier ${meta.tier}${meta.safe ? ' • 🛡️ Safe Zone' : ''}`);
+        if (meta.cards && meta.cards !== 'None') lines.push(`🔑 Cards: ${meta.cards}`);
+        const fac = [];
+        if (meta.rec > 0) fac.push(`♻️ ${meta.rec}× Recycler`);
+        if (meta.vend > 0) fac.push(`🛒 ${meta.vend}× Vending`);
+        if (fac.length) lines.push(fac.join(' • '));
+      }
+      if (String(m.type || '').toLowerCase().includes('underwater lab')) {
+        lines.push(
+          m.hasRedKeycard === true
+            ? '🔴 Red Keycard Room Confirmed'
+            : m.hasRedKeycard === false
+              ? 'No Red Keycard Room'
+              : '⚠️ Red Keycard depends on lab layout'
+        );
+      }
+      bfRenderedPins.push({
+        px,
+        py,
+        r: vis.r,
+        wx: m.x,
+        wy: m.y,
+        title: `${vis.short || m.type} [${grid}]`,
+        color: vis.color,
+        lines
+      });
+
       ctx.save();
       ctx.beginPath();
       ctx.arc(px, py, vis.r, 0, Math.PI * 2);
@@ -3317,6 +3350,57 @@
         bfPanY += dy / scale;
         renderBaseFinderMap();
       });
+      const tooltipEl = document.getElementById('bfMapTooltip');
+      const hudEl = document.getElementById('bfMapHudReadout');
+      bfCanvas.addEventListener('mouseleave', () => {
+        if (tooltipEl) tooltipEl.style.display = 'none';
+        if (hudEl) hudEl.style.display = 'none';
+      });
+      bfCanvas.addEventListener('mousemove', (e) => {
+        if (dragging || !bfMapData) return;
+        const rect = bfCanvas.getBoundingClientRect();
+        const mapSize = bfMapData.size || 4000;
+        const scale = (bfCanvas.width / mapSize) * bfZoom;
+        const cx = ((e.clientX - rect.left) * bfCanvas.width) / Math.max(1, rect.width);
+        const cy = ((e.clientY - rect.top) * bfCanvas.height) / Math.max(1, rect.height);
+        const wx = (cx - bfCanvas.width / 2) / scale + bfPanX;
+        const wy = -(cy - bfCanvas.height / 2) / scale + bfPanY;
+        const grid = bfWorldToGrid(wx, wy, mapSize);
+        const selSpot = getSelectedBuildSpot();
+        const selDist = selSpot ? Math.round(Math.hypot(wx - selSpot.wx, wy - selSpot.wy)) : null;
+
+        if (hudEl) {
+          hudEl.style.display = 'block';
+          hudEl.textContent = `Grid ${grid}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : '#' + (bfSelectedIdx + 1)} [${selSpot.grid}]` : ''}`;
+        }
+
+        if (tooltipEl) {
+          let hit = null;
+          let bestD = Infinity;
+          for (const pin of bfRenderedPins) {
+            const d = Math.hypot(cx - pin.px, cy - pin.py);
+            if (d <= pin.r + 9 && d < bestD) {
+              bestD = d;
+              hit = pin;
+            }
+          }
+          if (hit) {
+            const distFromSel = selSpot ? Math.round(Math.hypot(hit.wx - selSpot.wx, hit.wy - selSpot.wy)) : null;
+            const extraLines = [...hit.lines];
+            if (distFromSel !== null) extraLines.push(`📍 ${distFromSel}m from [${selSpot.grid}]`);
+            tooltipEl.innerHTML = `<div style="font-weight:700; color:${hit.color || '#fff'}; margin-bottom:3px;">${hit.title}</div>` +
+              extraLines.map((l) => `<div style="color:#cbd5e1; line-height:1.35;">${l}</div>`).join('');
+            tooltipEl.style.display = 'block';
+            const leftPx = Math.min(rect.width - 230, Math.max(8, e.clientX - rect.left + 14));
+            const topPx = Math.min(rect.height - 95, Math.max(8, e.clientY - rect.top + 14));
+            tooltipEl.style.left = `${leftPx}px`;
+            tooltipEl.style.top = `${topPx}px`;
+          } else {
+            tooltipEl.style.display = 'none';
+          }
+        }
+      });
+
       bfCanvas.addEventListener(
         'wheel',
         (e) => {
