@@ -3135,6 +3135,7 @@
         bfFarmingSpots = computeFarmingSpots(bfLandMask, getSelectedBuildSpot());
         renderBaseFinderResults();
         renderBaseFinderFarming();
+        renderBaseFinderRoute();
         renderBaseFinderMap();
       });
     });
@@ -3181,6 +3182,107 @@
     });
   }
 
+  function computeProgressionRoute(spot) {
+    if (!spot || !bfMapData) return [];
+    const mons = bfMapData.monuments || [];
+    const mapSize = bfMapData.size || 4000;
+    const findNearest = (matcher) => {
+      let best = null;
+      let bestD = Infinity;
+      for (const m of mons) {
+        if (!matcher(String(m.type || '').toLowerCase())) continue;
+        const d = Math.hypot(m.x - spot.wx, m.y - spot.wy);
+        if (d < bestD) {
+          bestD = d;
+          best = m;
+        }
+      }
+      return best ? { ...best, dist: Math.round(bestD), grid: bfWorldToGrid(best.x, best.y, mapSize) } : null;
+    };
+
+    const step1 = findNearest((t) => t.includes('supermarket') || t.includes('gas station') || t.includes('warehouse') || t.includes('lighthouse') || t.includes('junkyard'));
+    const step2 = findNearest((t) => t.includes('sewer') || t.includes('satellite') || t.includes('harbor') || t.includes('ferry') || t.includes('radtown'));
+    const step3 = findNearest((t) => bfTier2ProgWeight(t) > 0);
+    const step4 = findNearest((t) => t.includes('underwater lab') || t.includes('fishing village') || t.includes('oil'));
+
+    const route = [];
+    if (step1) {
+      route.push({
+        step: '1. Green Card & Scrap',
+        color: '#a3e635',
+        name: step1.type,
+        grid: step1.grid,
+        dist: step1.dist,
+        note: 'Grab Green Card + early scrap/recycle (~250 scrap for WB1/tools).'
+      });
+    }
+    if (step2) {
+      route.push({
+        step: '2. Blue Card Puzzle',
+        color: '#38bdf8',
+        name: step2.type,
+        grid: step2.grid,
+        dist: step2.dist,
+        note: 'Bring 1× Green Card + 1× Fuse → loot Blue Card + components.'
+      });
+    }
+    if (step3) {
+      const rule = BF_MONUMENT_STYLE_RULES.find((r) => String(step3.type || '').toLowerCase().includes(r.match));
+      const recText = rule && rule.rec > 0 ? ` • ${rule.rec}× Recycler` : '';
+      route.push({
+        step: '3. Tier 2 & Red Card',
+        color: '#fb923c',
+        name: step3.type,
+        grid: step3.grid,
+        dist: step3.dist,
+        note: `Bring 1× Blue Card + 1× Fuse → Red Card + Mil Crates${recText}.`
+      });
+    }
+    if (step4) {
+      const isLab = String(step4.type || '').toLowerCase().includes('underwater lab');
+      const labNote =
+        isLab && step4.hasRedKeycard === true
+          ? 'Red Keycard room confirmed — bring Green/Blue/Red + 3 Fuses.'
+          : isLab
+            ? 'Low-key ocean loot (scout layout for Red Card room; bring sub/scuba).'
+            : 'Safe boat/sub access or offshore Tier 3 Red Card run.';
+      route.push({
+        step: '4. Ocean / Endgame Loop',
+        color: '#2dd4bf',
+        name: step4.type,
+        grid: step4.grid,
+        dist: step4.dist,
+        note: labNote
+      });
+    }
+    return route;
+  }
+
+  function renderBaseFinderRoute() {
+    const routeEl = document.getElementById('bfRouteList');
+    if (!routeEl) return;
+    const spot = getSelectedBuildSpot();
+    if (!spot) return;
+    const steps = computeProgressionRoute(spot);
+    if (!steps.length) {
+      routeEl.innerHTML = `<div style="padding:12px; text-align:center; color:var(--text-muted); font-size:12px;">No progression monuments found on this map.</div>`;
+      return;
+    }
+    routeEl.innerHTML = steps
+      .map(
+        (st) => `
+        <div class="monument-item" style="padding:9px 12px; border-left:3px solid ${st.color};">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:${st.color};">${st.step}: <span style="color:#fff;">${st.name}</span></div>
+            <span class="keycard-tag keycard-Fuse">[${st.grid}] • ${st.dist}m</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--text-secondary); margin-top:3px;">${st.note}</div>
+        </div>
+      `
+      )
+      .join('');
+  }
+
   function rerunBaseFinderScoring() {
     if (!bfMapData) return;
     bfLandMask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, bfMapData.size) : null;
@@ -3190,6 +3292,7 @@
     bfFarmingSpots = computeFarmingSpots(bfLandMask, bfTopSpots[0]);
     renderBaseFinderResults();
     renderBaseFinderFarming();
+    renderBaseFinderRoute();
     renderBaseFinderMap();
   }
 
