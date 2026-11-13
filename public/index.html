@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RUST TACTICAL COMPANION — Raid, Map, Monuments, Genetics & BattleMetrics</title>
+  <title>RUST TACTICAL COMPANION — Base Finder, Monuments, Raid, Genetics &amp; Timers</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
@@ -52,26 +52,23 @@
        ==================================================================== -->
   <nav class="nav-bar">
     <div class="nav-inner">
-      <button class="nav-tab active" data-tab="tab-raid">
-        💥 Raid & Sulfur Optimizer <span class="nav-badge">COMBOS</span>
+      <button class="nav-tab active" data-tab="tab-basefinder">
+        📍 Base Finder <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">RUSTMAPS</span>
       </button>
       <button class="nav-tab" data-tab="tab-map">
         🏛️ Monuments <span class="nav-badge">KEYCARDS</span>
       </button>
-      <button class="nav-tab" data-tab="tab-timers">
-        ⏱️ Monument Timers <span id="navTimerCount" class="nav-badge">0</span>
-      </button>
-      <button class="nav-tab" data-tab="tab-genetics">
-        🌱 Genetics & Tea Lab <span class="nav-badge">6-GENE</span>
+      <button class="nav-tab" data-tab="tab-raid">
+        💥 Raid &amp; Sulfur <span class="nav-badge">COMBOS</span>
       </button>
       <button class="nav-tab" data-tab="tab-recycler">
-        ♻️ Recycler, Diesel & Decay <span class="nav-badge">SCRAP + BOOM</span>
+        ♻️ Recycler &amp; Decay <span class="nav-badge">SCRAP + BOOM</span>
       </button>
-      <button class="nav-tab" data-tab="tab-battlemetrics">
-        📡 BattleMetrics Raid Intel <span class="nav-badge">LIVE POP</span>
+      <button class="nav-tab" data-tab="tab-genetics">
+        🌱 Genetics &amp; Tea <span class="nav-badge">6-GENE</span>
       </button>
-      <button class="nav-tab" data-tab="tab-basefinder">
-        📍 Base Finder <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">RUSTMAPS</span>
+      <button class="nav-tab" data-tab="tab-timers">
+        ⏱️ Timers <span id="navTimerCount" class="nav-badge">0</span>
       </button>
     </div>
   </nav>
@@ -84,7 +81,7 @@
     <!-- ==================================================================
          TAB 1: RAID CALCULATOR & SULFUR SAVER COMBO ENGINE
          ================================================================== -->
-    <section id="tab-raid" class="tab-panel active">
+    <section id="tab-raid" class="tab-panel">
       <div class="grid-2">
         <!-- Left Column: Target Selector + Combo & Method Inspector -->
         <div style="display: flex; flex-direction: column; gap: 20px;">
@@ -438,90 +435,19 @@
     </section>
 
     <!-- ==================================================================
-         TAB 6: BATTLEMETRICS SERVER INTEL & BEST TIME TO RAID
+         TAB 7: RUSTMAPS BASE SPOT ANALYZER
          ================================================================== -->
-    <section id="tab-battlemetrics" class="tab-panel">
-      <div class="grid-2">
-        <!-- Left Column: Live Server Search + 24-Hour Raid Window Analyzer -->
-        <div style="display: flex; flex-direction: column; gap: 20px;">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">📡 BattleMetrics Server Lookup & Live Population</div>
-                <div class="panel-subtitle">Search any Rust server or enter its BattleMetrics Server ID to analyze the best raid window</div>
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
-              <input id="bmSearchInput" type="text" class="input" placeholder="Server name, BattleMetrics URL (e.g. .../servers/rust/28653982), or Server ID..." style="flex: 1; min-width: 220px;" />
-              <button id="bmSearchBtn" class="btn btn-primary">🔍 Search BattleMetrics</button>
-              <button id="bmSimulatePresetBtn" class="btn btn-sm">📊 Load EU/US Main Profile</button>
-            </div>
-
-            <!-- Search Results Dropdown / List -->
-            <div id="bmSearchResults" style="margin-bottom: 14px;"></div>
-
-            <!-- Active Server Telemetry Card -->
-            <div id="bmServerTelemetryCard"></div>
-          </div>
-
-          <!-- 24-Hour Population Curve & Raid Window Recommendation -->
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">🕒 24-Hour Population Curve & Best Time to Raid</div>
-                <div class="panel-subtitle">Identifies the exact lowest-counter raid window and recommends the safest raid method for current pop</div>
-              </div>
-            </div>
-
-            <div id="bmRaidWindowSummary" style="margin-bottom: 16px;"></div>
-            <div id="bmHeatmapContainer" class="bm-heatmap-bars"></div>
-            <div id="bmRaidMethodAdvisor" style="margin-top: 26px;"></div>
-          </div>
-        </div>
-
-        <!-- Right Column: Enemy Clan / Raid Target Watchlist -->
-        <div style="display: flex; flex-direction: column; gap: 20px;">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">🎯 Enemy Clan & Raid Target Watchlist</div>
-                <div class="panel-subtitle">Track rival groups, base grid coordinates, and typical offline hours across your squad</div>
-              </div>
-            </div>
-
-            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 14px;">
-              <div style="display: grid; grid-template-columns: 1.3fr 0.6fr 1fr; gap: 8px; margin-bottom: 8px;">
-                <input id="watchNameInput" type="text" class="input" placeholder="Clan / Player Name (e.g. [AK] Roofcampers)" />
-                <input id="watchGridInput" type="text" class="input" placeholder="Grid (Q14)" />
-                <input id="watchOfflineInput" type="text" class="input" placeholder="Offline Window (04:00 - 10:00)" />
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <input id="watchNotesInput" type="text" class="input" placeholder="Raid notes (e.g. 2x2 Honeycombed, 3 Garage Doors, Turret on roof)" style="flex: 1;" />
-                <button id="addWatchlistBtn" class="btn btn-primary">+ Track Target</button>
-              </div>
-            </div>
-
-            <div id="bmWatchlistContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================================================================
-         TAB 7: RUSTMAPS BASE SPOT ANALYZER (POWERPLANT + DEEP SEA + LOW TRAFFIC)
-         ================================================================== -->
-    <section id="tab-basefinder" class="tab-panel">
+    <section id="tab-basefinder" class="tab-panel active">
       <div class="panel" style="margin-bottom: 16px;">
         <div class="panel-header">
           <div>
             <div class="panel-title">📍 Smart Base Finder (RustMaps URL Analyzer)</div>
-            <div class="panel-subtitle">Paste any RustMaps.com link, BattleMetrics server link, or <code>size_seed</code> — scores every buildable grid for your playstyle</div>
+            <div class="panel-subtitle">Paste any RustMaps.com link or <code>size_seed</code> — scores every buildable grid for your playstyle</div>
           </div>
         </div>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
-          <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: 280px;" placeholder="https://rustmaps.com/map/4250_1337420  or  BattleMetrics server URL  or  4250_1337420" />
+          <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: 280px;" placeholder="https://rustmaps.com/map/4250_1337420  or  4250_1337420" />
           <button id="bfAnalyzeBtn" class="btn btn-primary" style="font-weight: 700;">🔍 Analyze Map &amp; Find Best Spots</button>
         </div>
 
@@ -622,63 +548,53 @@
           </div>
         </div>
 
-        <!-- Right: Top 5 Ranked Build Spots + Best Farming Spots -->
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <div class="panel">
-            <div class="panel-header" style="margin-bottom: 10px;">
-              <div>
-                <div class="panel-title">🏆 Top 5 Recommended Build Grids</div>
-                <div class="panel-subtitle">Click any spot to highlight it on the map &amp; inspect nearby farming</div>
-              </div>
+        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips) -->
+        <div class="panel">
+          <div class="bf-subtabs">
+            <button class="bf-subtab-btn active" data-bf-sub="spots">🏆 Build Spots</button>
+            <button class="bf-subtab-btn" data-bf-sub="farming">⛏️ Farming <span id="bfFarmCountBadge" style="opacity:0.75;"></span></button>
+            <button class="bf-subtab-btn" data-bf-sub="route">⚡ Route &amp; Tips</button>
+          </div>
+
+          <div id="bfSubSpots" class="bf-subpanel active">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
+              Click any spot to highlight it on the map &amp; update nearby farming and progression route.
             </div>
             <div id="bfStealthBestSlot" style="margin-bottom: 10px;"></div>
             <div id="bfResultsList" style="display: flex; flex-direction: column; gap: 10px;">
               <div style="padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px;">
-                Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get your Top 5 low-traffic Power Plant + Deep Sea build spots.
+                Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get your Under-the-Radar + Top 5 build spots.
               </div>
             </div>
           </div>
 
-          <div class="panel">
-            <div class="panel-header" style="margin-bottom: 10px;">
-              <div>
-                <div class="panel-title">⛏️ Best Farming Spots &amp; Quarries</div>
-                <div class="panel-subtitle">Real RustMaps resource hotspots (Ore Nodes, Hemp, Berries) + Quarries &amp; Caves</div>
-              </div>
+          <div id="bfSubFarming" class="bf-subpanel">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
+              Real RustMaps Ore Nodes, Hemp, Berries &amp; Quarries nearby your selected build spot.
             </div>
             <div id="bfFarmingList" style="display: flex; flex-direction: column; gap: 8px;">
               <div style="padding: 16px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px; font-size: 12.5px;">
-                Analyze a map to reveal the richest Ore Node ridges, Hemp/Berry tea zones, and Mining Quarries.
+                Analyze a map to reveal nearby Ore Node ridges, Hemp/Berry tea zones, and Mining Quarries.
               </div>
             </div>
           </div>
 
-          <div class="panel">
-            <div class="panel-header" style="margin-bottom: 10px;">
-              <div>
-                <div class="panel-title">⚡ Fast-Start Wipe Route (Zero → Tier 2/3)</div>
-                <div class="panel-subtitle">Auto-planned progression loop from your selected build grid</div>
-              </div>
-            </div>
-            <div id="bfRouteList" style="display: flex; flex-direction: column; gap: 8px;">
+          <div id="bfSubRoute" class="bf-subpanel">
+            <div style="font-weight: 700; font-size: 13px; color: #fff; margin-bottom: 6px;">⚡ Fast-Start Wipe Route (Zero → Tier 2/3)</div>
+            <div id="bfRouteList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
               <div style="padding: 14px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px; font-size: 12.5px;">
                 Analyze a map and select a spot to generate your fastest Green → Blue → Red card route.
               </div>
             </div>
-          </div>
 
-          <div class="panel" style="border-color: rgba(56, 189, 248, 0.35);">
-            <div class="panel-header" style="margin-bottom: 8px;">
-              <div>
-                <div class="panel-title">🛡️ Working-Player Survival &amp; Time Edge</div>
-                <div class="panel-subtitle">High-ROI habits when other players have more hours</div>
+            <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px;">
+              <div style="font-weight: 700; font-size: 13px; color: #38bdf8; margin-bottom: 6px;">🛡️ Working-Player Survival &amp; Time Edge</div>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.45;">
+                <div>• <strong style="color:#fff;">Stability / Roof Bunker (2×1 or 2×2):</strong> Seal your core before logging off for work — forces raiders through 15–23 rockets instead of 3–4 rockets on doors.</div>
+                <div>• <strong style="color:#fff;">External TC + Split Stash:</strong> Keep spare cards, tools, and a starter kit in an external TC / disconnectable so an offline raid doesn't reset you to zero.</div>
+                <div>• <strong style="color:#fff;">48h TC Upkeep Buffer:</strong> Always stock 24–48h upkeep before work; upgrade core to Sheet/HQM only after securing Garage Doors.</div>
+                <div>• <strong style="color:#fff;">Off-Peak Safe Recycling:</strong> Run <strong>Power Plant (3× Recyclers)</strong>, <strong>Harbor</strong>, or <strong>Fishing Village → Underwater Labs</strong> instead of contesting Launch Site / Outpost.</div>
               </div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary); line-height: 1.45;">
-              <div>• <strong style="color:#fff;">Stability / Roof Bunker (2×1 or 2×2):</strong> Seal your core before logging off for work — forces raiders through 15–23 rockets instead of 3–4 rockets on doors.</div>
-              <div>• <strong style="color:#fff;">External TC + Split Stash:</strong> Keep spare cards, tools, and a starter kit in an external TC / disconnectable so an offline raid doesn't reset you to zero.</div>
-              <div>• <strong style="color:#fff;">48h TC Upkeep Buffer:</strong> Always stock 24–48h upkeep before work; upgrade core to Sheet/HQM only after securing Garage Doors.</div>
-              <div>• <strong style="color:#fff;">Off-Peak Safe Recycling:</strong> Run <strong>Power Plant (3× Recyclers)</strong>, <strong>Harbor</strong>, or <strong>Fishing Village → Underwater Labs</strong> instead of contesting Launch Site / Outpost.</div>
             </div>
           </div>
         </div>
@@ -704,10 +620,6 @@
         <div>
           <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SQUAD PIN (If SQUAD_PIN is set in Pterodactyl env)</label>
           <input id="settingSquadPin" type="password" class="input" style="width: 100%;" placeholder="Leave blank if no PIN configured on server" />
-        </div>
-        <div>
-          <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATTLEMETRICS API TOKEN (Optional for higher rate limits)</label>
-          <input id="settingBmToken" type="password" class="input" style="width: 100%;" placeholder="Optional Personal Access Token" />
         </div>
         <div>
           <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DISCORD WEBHOOK URL (For Squad Raid & Timer Alerts)</label>

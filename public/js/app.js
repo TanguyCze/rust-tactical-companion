@@ -202,7 +202,6 @@
     document.getElementById('openSettingsBtn').addEventListener('click', () => {
       document.getElementById('settingSquadName').value = appState.squadName || '';
       document.getElementById('settingSquadPin').value = getSquadPin();
-      document.getElementById('settingBmToken').value = getBmToken();
       const whEl = document.getElementById('settingDiscordWebhook');
       if (whEl) whEl.value = appState.discordWebhookUrl || '';
       modal.classList.add('open');
@@ -231,7 +230,6 @@
       appState.squadName = document.getElementById('settingSquadName').value.trim() || 'RUST SQUAD ALPHA';
       appState.discordWebhookUrl = document.getElementById('settingDiscordWebhook')?.value.trim() || '';
       localStorage.setItem(PIN_STORAGE_KEY, document.getElementById('settingSquadPin').value);
-      localStorage.setItem(BM_TOKEN_KEY, document.getElementById('settingBmToken').value.trim());
       syncStateToServer();
       renderAll();
       modal.classList.remove('open');
@@ -3217,6 +3215,10 @@
 
   function renderBaseFinderFarming() {
     const farmEl = document.getElementById('bfFarmingList');
+    const farmBadge = document.getElementById('bfFarmCountBadge');
+    if (farmBadge) {
+      farmBadge.textContent = bfFarmingSpots && bfFarmingSpots.length > 0 ? `(${bfFarmingSpots.length})` : '';
+    }
     if (!farmEl) return;
     const selSpot = getSelectedBuildSpot();
     const selLabel = selSpot
@@ -3599,6 +3601,17 @@
       });
     });
 
+    document.querySelectorAll('.bf-subtab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-bf-sub');
+        document.querySelectorAll('.bf-subtab-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.bf-subpanel').forEach((p) => p.classList.remove('active'));
+        const map = { spots: 'bfSubSpots', farming: 'bfSubFarming', route: 'bfSubRoute' };
+        document.getElementById(map[target])?.classList.add('active');
+      });
+    });
+
     renderBaseFinderMap();
   }
 
@@ -3619,7 +3632,6 @@
     renderRecyclerCalculator();
     renderDieselCalculator();
     renderDecayCalculator();
-    renderBattleMetricsDashboard();
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -3629,7 +3641,6 @@
     initTimerModule();
     initGeneticsModule();
     initRecyclerDieselDecayModule();
-    initBattleMetricsModule();
     initBaseFinderModule();
     renderAll();
     initSquadSSE();
