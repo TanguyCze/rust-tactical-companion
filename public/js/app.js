@@ -1198,6 +1198,7 @@
   let lastSolvedRecipes = [];
   let lastSolvedCrop = 'Hemp';
   let lastCloneNumMap = new Map();
+  let lastCloneLocMap = new Map();
   let lastHighlightedGenes = new Set();
 
   function geneCounts(genes) {
@@ -1471,9 +1472,11 @@
     return { topPlans: allPlans.slice(0, 40), intermediates };
   }
 
-  function formatCloneRef(genes, cloneNumMap) {
+  function formatCloneRef(genes, cloneNumMap, cloneLocMap = lastCloneLocMap) {
     const num = cloneNumMap.get(genes);
-    return num ? `#${num} ${genes}` : `${genes} (GEN.1)`;
+    const loc = cloneLocMap?.get(genes);
+    const base = num ? `#${num} ${genes}` : `${genes} (GEN.1)`;
+    return loc ? `${base} [${loc}]` : base;
   }
 
   function renderPlanterStepHtml(plan, badgeText, headingText, cloneNumMap, borderColor = 'rgba(34,197,94,0.45)') {
@@ -1494,6 +1497,7 @@
     for (let i = 0; i < 9; i++) {
       if (i === 4) {
         const centerNum = cloneNumMap.get(plan.centerGenes);
+        const centerLoc = !plan.canUseAnyCenter ? lastCloneLocMap.get(plan.centerGenes) : '';
         const centerTitle = plan.canUseAnyCenter
           ? 'CENTER (ANY SPARE)'
           : centerNum
@@ -1503,17 +1507,20 @@
           <div class="planter-cell center-target">
             <span style="font-size:10px; font-family:var(--font-mono); color:var(--sulfur-yellow); font-weight:700;">${centerTitle}</span>
             <div style="font-family:var(--font-mono); font-weight:800; color:#fff; letter-spacing:0.08em;">${plan.centerGenes}</div>
+            ${centerLoc ? `<span style="font-size:9.5px; font-family:var(--font-mono); color:#7dd3fc;">📍 ${centerLoc}</span>` : ''}
             <span style="font-size:10px; color:#4ade80;">→ ${plan.offspring}</span>
           </div>
         `);
       } else if (dIdx < plan.donors.length) {
         const dg = plan.donors[dIdx++];
         const dNum = cloneNumMap.get(dg);
+        const dLoc = lastCloneLocMap.get(dg);
         const dLabel = dNum ? `DONOR #${dNum}` : `GEN.1 INTERMEDIATE`;
         cellsHtml.push(`
           <div class="planter-cell">
             <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary);">${dLabel}</span>
             <div style="font-family:var(--font-mono); font-weight:700; color:#fff; letter-spacing:0.08em;">${dg}</div>
+            ${dLoc ? `<span style="font-size:9.5px; font-family:var(--font-mono); color:#7dd3fc;">📍 ${dLoc}</span>` : ''}
           </div>
         `);
       } else {
@@ -1715,12 +1722,16 @@
     }
 
     const cloneNumMap = new Map();
+    const cloneLocMap = new Map();
     const orderedUnique = [];
     cropClones.forEach((c) => {
       const g = String(c.genes).toUpperCase();
       if (!cloneNumMap.has(g)) {
         orderedUnique.push(g);
         cloneNumMap.set(g, orderedUnique.length);
+      }
+      if (c.location && !cloneLocMap.has(g)) {
+        cloneLocMap.set(g, c.location);
       }
     });
 
@@ -1810,6 +1821,7 @@
     lastSolvedRecipes = chosen;
     lastSolvedCrop = crop;
     lastCloneNumMap = cloneNumMap;
+    lastCloneLocMap = cloneLocMap;
     selectedRecipeIdx = 0;
 
     renderSelectedRecipeDetails(existingBannerHtml, filterBannerHtml);
@@ -1848,6 +1860,7 @@
                 ${numLabel ? `<span style="font-family:var(--font-mono); font-weight:800; font-size:12px; color:var(--sulfur-yellow); min-width:24px;">${numLabel}</span>` : ''}
                 <span class="target-tier-tag">${c.crop}</span>
                 ${formatGenesCircles(c.genes)}
+                <button type="button" class="btn btn-sm edit-clone-loc-btn" data-idx="${c.origIdx}" title="Click to set or edit container position (e.g. Line 5 · Col 6)" style="padding:2px 7px; font-size:10.5px; font-family:var(--font-mono); color:${c.location ? '#7dd3fc' : 'var(--text-muted)'}; border-color:${c.location ? 'rgba(56,189,248,0.45)' : 'var(--border-subtle)'};">${c.location ? `📍 ${c.location}` : '📍 +Pos'}</button>
                 ${isUsed ? `<span style="font-family:var(--font-mono); font-size:10px; font-weight:700; color:var(--sulfur-yellow);">★ USED</span>` : ''}
               </div>
               <button class="btn btn-sm remove-clone-btn" data-idx="${c.origIdx}">✕</button>
@@ -1855,6 +1868,19 @@
           `;
           })
           .join('');
+
+        clonesList.querySelectorAll('.edit-clone-loc-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+            if (Number.isNaN(idx) || !appState.savedClones[idx]) return;
+            const cur = appState.savedClones[idx].location || '';
+            const next = prompt('Enter box position for this clone (e.g. Line 5 · Col 6 or Box 1 L3 C2):', cur);
+            if (next === null) return;
+            appState.savedClones[idx].location = next.trim();
+            syncStateToServer();
+            solveBestCrossbreed();
+          });
+        });
 
         clonesList.querySelectorAll('.remove-clone-btn').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -1951,12 +1977,19 @@
         return;
       }
       const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
+      const slotLoc = lastDetectedBoxSlot?.label || '';
       valid.forEach((genes, i) => {
-        appState.savedClones.unshift({
-          id: 'c-' + Date.now() + '-' + i,
-          crop,
-          genes
-        });
+        const existing = appState.savedClones.find((c) => c.crop === crop && c.genes === genes);
+        if (!existing) {
+          appState.savedClones.unshift({
+            id: 'c-' + Date.now() + '-' + i,
+            crop,
+            genes,
+            location: valid.length === 1 ? slotLoc : ''
+          });
+        } else if (valid.length === 1 && slotLoc && !existing.location) {
+          existing.location = slotLoc;
+        }
       });
       if (input) input.value = '';
       syncStateToServer();
@@ -2331,12 +2364,19 @@
         return;
       }
       const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
+      const slotLoc = lastDetectedBoxSlot?.label || '';
       valid.forEach((genes, i) => {
-        appState.savedClones.unshift({
-          id: 'c-' + Date.now() + '-' + i,
-          crop,
-          genes
-        });
+        const existing = appState.savedClones.find((c) => c.crop === crop && c.genes === genes);
+        if (!existing) {
+          appState.savedClones.unshift({
+            id: 'c-' + Date.now() + '-' + i,
+            crop,
+            genes,
+            location: valid.length === 1 ? slotLoc : ''
+          });
+        } else if (valid.length === 1 && slotLoc && !existing.location) {
+          existing.location = slotLoc;
+        }
       });
       scannedClonesQueue = [];
       renderScannedClonesList();
@@ -2350,6 +2390,19 @@
   let liveScanBusy = false;
   let lastLiveFrameSig = '';
   let liveAddedTotal = 0;
+  let scannerDragMode = 'box'; // 'box' | 'gene'
+  let scannerBoxGridRect = null; // { x, y, w, h } in original image pixels
+  let lastDetectedBoxSlot = null; // { row, col, label }
+  let prevBoxFrameCanvas = null;
+
+  function getBoxGridDims() {
+    const val = document.getElementById('scannerBoxLayoutSelect')?.value || '8x6';
+    const [rStr, cStr] = val.split('x');
+    return {
+      rows: Math.max(1, parseInt(rStr, 10) || 8),
+      cols: Math.max(1, parseInt(cStr, 10) || 6)
+    };
+  }
 
   function getScannerSourceDimensions(src) {
     if (!src) return { w: 0, h: 0 };
@@ -2359,11 +2412,95 @@
     };
   }
 
+  function detectBoxGridSlot(curFullCanvas, boxRect, prevCanvas) {
+    if (!curFullCanvas || !boxRect || boxRect.w < 24 || boxRect.h < 24) return null;
+    const { rows, cols } = getBoxGridDims();
+    const bx = Math.max(0, Math.round(boxRect.x));
+    const by = Math.max(0, Math.round(boxRect.y));
+    const bw = Math.max(cols * 4, Math.min(curFullCanvas.width - bx, Math.round(boxRect.w)));
+    const bh = Math.max(rows * 4, Math.min(curFullCanvas.height - by, Math.round(boxRect.h)));
+    const cw = bw / cols;
+    const ch = bh / rows;
+
+    const curData = curFullCanvas.getContext('2d').getImageData(bx, by, bw, bh).data;
+    const canCompare =
+      prevCanvas &&
+      prevCanvas.width === curFullCanvas.width &&
+      prevCanvas.height === curFullCanvas.height;
+    const prevData = canCompare ? prevCanvas.getContext('2d').getImageData(bx, by, bw, bh).data : null;
+
+    let best = null;
+    let secondScore = 0;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x1 = Math.floor(c * cw + cw * 0.06);
+        const x2 = Math.min(bw, Math.ceil((c + 1) * cw - cw * 0.06));
+        const y1 = Math.floor(r * ch + ch * 0.06);
+        const y2 = Math.min(bh, Math.ceil((r + 1) * ch - ch * 0.06));
+        let samples = 0;
+        let blueHighlightHits = 0;
+        let diffSum = 0;
+        let blueGainSum = 0;
+
+        for (let y = y1; y < y2; y += 2) {
+          for (let x = x1; x < x2; x += 2) {
+            const p = (y * bw + x) * 4;
+            const rr = curData[p];
+            const gg = curData[p + 1];
+            const bb = curData[p + 2];
+            samples++;
+            // Rust selected slot uses a cyan/blue selection tint + bright border
+            if (bb > rr + 14 && bb >= 85 && gg >= 60) {
+              blueHighlightHits++;
+            }
+            if (prevData) {
+              const pr = prevData[p];
+              const pg = prevData[p + 1];
+              const pb = prevData[p + 2];
+              const d = Math.abs(rr - pr) + Math.abs(gg - pg) + Math.abs(bb - pb);
+              diffSum += d;
+              if (bb - pb > 12 && bb > rr + 10) {
+                blueGainSum += bb - pb;
+              }
+            }
+          }
+        }
+
+        if (!samples) continue;
+        const blueRatio = blueHighlightHits / samples;
+        const avgDiff = canCompare ? diffSum / samples : 0;
+        const avgBlueGain = canCompare ? blueGainSum / samples : 0;
+        const score = blueRatio * 120 + avgBlueGain * 1.6 + avgDiff * 0.35;
+
+        if (!best || score > best.score) {
+          if (best) secondScore = Math.max(secondScore, best.score);
+          best = { row: r + 1, col: c + 1, score, blueRatio, avgDiff };
+        } else if (score > secondScore) {
+          secondScore = score;
+        }
+      }
+    }
+
+    if (!best) return null;
+    if (best.score < 2.2) return null;
+    if (best.score <= secondScore * 1.12 && best.blueRatio < 0.05) return null;
+
+    const boxName = (document.getElementById('scannerBoxNameInput')?.value || '').trim();
+    const posText = `Line ${best.row} · Col ${best.col}`;
+    return {
+      row: best.row,
+      col: best.col,
+      label: boxName ? `${boxName} • ${posText}` : posText
+    };
+  }
+
   function drawScannerCanvasPreview() {
     const canvas = document.getElementById('geneScannerCanvas');
     const wrap = document.getElementById('scannerPreviewWrap');
     const rescanCropBtn = document.getElementById('rescanCropBtn');
     const clearCropBtn = document.getElementById('clearCropBtn');
+    const clearBoxGridBtn = document.getElementById('clearBoxGridBtn');
     const dims = getScannerSourceDimensions(scannerActiveImage);
     if (!canvas || !wrap || !scannerActiveImage || !dims.w || !dims.h) return;
 
@@ -2376,7 +2513,7 @@
 
     if (scannerCropRect && scannerCropRect.w > 8 && scannerCropRect.h > 8) {
       ctx.save();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(
         scannerActiveImage,
@@ -2399,6 +2536,56 @@
     } else {
       if (rescanCropBtn) rescanCropBtn.style.display = 'none';
       if (clearCropBtn) clearCropBtn.style.display = 'none';
+    }
+
+    // Draw calibrated Rust storage container grid overlay (rows x cols)
+    if (scannerBoxGridRect && scannerBoxGridRect.w > 18 && scannerBoxGridRect.h > 18) {
+      const { rows, cols } = getBoxGridDims();
+      const cw = scannerBoxGridRect.w / cols;
+      const ch = scannerBoxGridRect.h / rows;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+      ctx.lineWidth = Math.max(1.5, canvas.width / 500);
+      ctx.strokeRect(scannerBoxGridRect.x, scannerBoxGridRect.y, scannerBoxGridRect.w, scannerBoxGridRect.h);
+
+      ctx.beginPath();
+      for (let c = 1; c < cols; c++) {
+        const x = scannerBoxGridRect.x + c * cw;
+        ctx.moveTo(x, scannerBoxGridRect.y);
+        ctx.lineTo(x, scannerBoxGridRect.y + scannerBoxGridRect.h);
+      }
+      for (let r = 1; r < rows; r++) {
+        const y = scannerBoxGridRect.y + r * ch;
+        ctx.moveTo(scannerBoxGridRect.x, y);
+        ctx.lineTo(scannerBoxGridRect.x + scannerBoxGridRect.w, y);
+      }
+      ctx.stroke();
+
+      const fontSize = Math.max(11, Math.round(Math.min(cw, ch) * 0.28));
+      ctx.font = `700 ${fontSize}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#7dd3fc';
+      for (let c = 0; c < cols; c++) {
+        ctx.fillText(`C${c + 1}`, scannerBoxGridRect.x + (c + 0.5) * cw, Math.max(fontSize, scannerBoxGridRect.y - fontSize * 0.65));
+      }
+      for (let r = 0; r < rows; r++) {
+        ctx.fillText(`L${r + 1}`, Math.max(fontSize, scannerBoxGridRect.x - fontSize * 0.9), scannerBoxGridRect.y + (r + 0.5) * ch);
+      }
+
+      if (lastDetectedBoxSlot && lastDetectedBoxSlot.row <= rows && lastDetectedBoxSlot.col <= cols) {
+        const hx = scannerBoxGridRect.x + (lastDetectedBoxSlot.col - 1) * cw;
+        const hy = scannerBoxGridRect.y + (lastDetectedBoxSlot.row - 1) * ch;
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.26)';
+        ctx.fillRect(hx, hy, cw, ch);
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = Math.max(2.5, canvas.width / 320);
+        ctx.strokeRect(hx, hy, cw, ch);
+      }
+      ctx.restore();
+      if (clearBoxGridBtn) clearBoxGridBtn.style.display = 'inline-flex';
+    } else if (clearBoxGridBtn) {
+      clearBoxGridBtn.style.display = 'none';
     }
   }
 
@@ -2439,6 +2626,13 @@
       fullCanvas.height = dims.h;
       fullCanvas.getContext('2d').drawImage(srcEl, 0, 0, dims.w, dims.h);
 
+      const detectedSlot = scannerBoxGridRect
+        ? detectBoxGridSlot(fullCanvas, scannerBoxGridRect, prevBoxFrameCanvas)
+        : null;
+      if (detectedSlot) {
+        lastDetectedBoxSlot = detectedSlot;
+      }
+
       const activeRect = cropRect && cropRect.w > 12 && cropRect.h > 12
         ? cropRect
         : { x: 0, y: 0, w: fullCanvas.width, h: fullCanvas.height };
@@ -2454,15 +2648,17 @@
       const stripBoxes = findRustBadgeStripRegions(targetCanvas);
       if (isLive) {
         if (!stripBoxes.length && !cropRect) {
+          prevBoxFrameCanvas = fullCanvas;
           return;
         }
         const sigTarget = stripBoxes.length ? stripBoxes[0] : { x: 0, y: 0, w: targetCanvas.width, h: targetCanvas.height };
-        const sig = `${stripBoxes.length}|${computeCanvasRegionSig(targetCanvas, sigTarget)}`;
+        const sig = `${stripBoxes.length}|${detectedSlot?.label || ''}|${computeCanvasRegionSig(targetCanvas, sigTarget)}`;
         if (sig === lastLiveFrameSig) {
           return;
         }
         lastLiveFrameSig = sig;
       }
+      prevBoxFrameCanvas = fullCanvas;
 
       const newlyFound = [];
 
@@ -2493,23 +2689,31 @@
       if (isLive && autoAddLive) {
         if (uniqueNew.length > 0) {
           const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
+          const slotLoc = detectedSlot?.label || '';
           let addedNow = 0;
+          let updatedLoc = 0;
           uniqueNew.forEach((genes, i) => {
-            if (!appState.savedClones.some((c) => c.crop === crop && c.genes === genes)) {
+            const existing = appState.savedClones.find((c) => c.crop === crop && c.genes === genes);
+            if (!existing) {
               appState.savedClones.unshift({
                 id: 'c-' + Date.now() + '-' + i,
                 crop,
-                genes
+                genes,
+                location: slotLoc
               });
               addedNow++;
               liveAddedTotal++;
+            } else if (slotLoc && !existing.location) {
+              existing.location = slotLoc;
+              updatedLoc++;
             }
           });
-          if (addedNow > 0) {
+          if (addedNow > 0 || updatedLoc > 0) {
             playAlertSound('urgent');
             syncStateToServer();
             solveBestCrossbreed();
-            setStatus(`🟢 LIVE: Added ${uniqueNew.join(', ')} (${liveAddedTotal} new clone${liveAddedTotal > 1 ? 's' : ''} scanned this session)! Keep clicking clones in Rust...`);
+            const locSuffix = slotLoc ? ` at 📍 ${slotLoc}` : '';
+            setStatus(`🟢 LIVE: ${addedNow > 0 ? 'Added' : 'Tagged'} ${uniqueNew.join(', ')}${locSuffix} (${liveAddedTotal} new this session)!`);
           }
         }
         return;
@@ -2522,9 +2726,10 @@
 
       if (!isLive) {
         if (scannedClonesQueue.length > 0) {
-          setStatus(`✅ Found ${scannedClonesQueue.length} clone sequence(s)! Review below and click "+ Add All to Clones".`);
+          const locMsg = detectedSlot ? ` (📍 ${detectedSlot.label})` : '';
+          setStatus(`✅ Found ${scannedClonesQueue.length} clone sequence(s)${locMsg}! Review below and click "+ Add All to Clones".`);
         } else {
-          setStatus('⚠️ No 6-gene code detected cleanly. Drag a tight yellow box right over the 6 gene circles above and click "Scan Box Now".');
+          setStatus('⚠️ No 6-gene code detected cleanly. Switch tool to "🔍 Lock Gene Crop", drag a tight yellow box over the 6 gene circles, and click "Scan Gene Box".');
         }
       }
     } catch (err) {
@@ -2542,6 +2747,8 @@
       liveMediaStream = null;
     }
     liveScanBusy = false;
+    prevBoxFrameCanvas = null;
+    lastDetectedBoxSlot = null;
     const video = document.getElementById('liveScanVideo');
     if (video) video.srcObject = null;
 
@@ -2735,7 +2942,33 @@
       if (file) await loadImageFileToScanner(file, scannedClonesQueue.length > 0);
     });
 
-    // Interactive drag-crop on scanner canvas
+    // Interactive drag tool on scanner canvas: either 📦 Box Grid (Line/Col) or 🔍 Gene OCR Box
+    const boxBtn = document.getElementById('dragModeBoxBtn');
+    const geneBtn = document.getElementById('dragModeGeneBtn');
+    const dragHint = document.getElementById('scannerDragHint');
+    const setDragMode = (mode) => {
+      scannerDragMode = mode;
+      boxBtn?.classList.toggle('btn-primary', mode === 'box');
+      geneBtn?.classList.toggle('btn-primary', mode === 'gene');
+      if (dragHint) {
+        dragHint.innerHTML =
+          mode === 'box'
+            ? 'ACTIVE DRAG TOOL: <strong style="color:#4ade80;">📦 Mark Box Grid</strong> — drag across your Rust storage box slots so every scanned clone tags its exact Line &amp; Column!'
+            : 'ACTIVE DRAG TOOL: <strong style="color:#eab308;">🔍 Lock Gene Crop</strong> — drag tightly around the 6 gene circles to lock OCR to just that panel!';
+      }
+    };
+    boxBtn?.addEventListener('click', () => setDragMode('box'));
+    geneBtn?.addEventListener('click', () => setDragMode('gene'));
+    document.getElementById('scannerBoxLayoutSelect')?.addEventListener('change', () => {
+      lastDetectedBoxSlot = null;
+      drawScannerCanvasPreview();
+    });
+    document.getElementById('clearBoxGridBtn')?.addEventListener('click', () => {
+      scannerBoxGridRect = null;
+      lastDetectedBoxSlot = null;
+      drawScannerCanvasPreview();
+    });
+
     if (canvas) {
       let dragging = false;
       let startPt = null;
@@ -2755,20 +2988,28 @@
       canvas.addEventListener('pointermove', (e) => {
         if (!dragging || !startPt) return;
         const cur = toCanvasCoords(e);
-        scannerCropRect = {
+        const rect = {
           x: Math.min(startPt.x, cur.x),
           y: Math.min(startPt.y, cur.y),
           w: Math.abs(cur.x - startPt.x),
           h: Math.abs(cur.y - startPt.y)
         };
+        if (scannerDragMode === 'box') {
+          scannerBoxGridRect = rect;
+        } else {
+          scannerCropRect = rect;
+        }
         drawScannerCanvasPreview();
       });
       canvas.addEventListener('pointerup', () => {
         dragging = false;
-        if (scannerCropRect && (scannerCropRect.w < 12 || scannerCropRect.h < 12)) {
-          scannerCropRect = null;
-          drawScannerCanvasPreview();
+        if (scannerDragMode === 'box' && scannerBoxGridRect && (scannerBoxGridRect.w < 20 || scannerBoxGridRect.h < 20)) {
+          scannerBoxGridRect = null;
         }
+        if (scannerDragMode === 'gene' && scannerCropRect && (scannerCropRect.w < 12 || scannerCropRect.h < 12)) {
+          scannerCropRect = null;
+        }
+        drawScannerCanvasPreview();
       });
     }
 
