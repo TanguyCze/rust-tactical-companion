@@ -1042,20 +1042,20 @@
   // MODULE 1B: STASH & BOOM LIVE WINDOW/OCR SCANNER + READINESS ENGINE
   // =========================================================================
   const STASH_ITEM_META = {
-    sulfur: { name: 'Sulfur', sulfurEq: 1 },
-    sulfur_ore: { name: 'Sulfur Ore', sulfurEq: 1 },
-    gunpowder: { name: 'Gun Powder', sulfurEq: 2 },
-    explosives: { name: 'Explosives', sulfurEq: 110 },
-    c4: { name: 'C4', sulfurEq: 2200 },
-    rocket: { name: 'Rocket', sulfurEq: 1400 },
-    explo_ammo: { name: 'Explosive 5.56', sulfurEq: 25 },
-    satchel: { name: 'Satchel Charge', sulfurEq: 480 },
-    beancan: { name: 'Beancan Grenade', sulfurEq: 120 },
-    hv_rocket: { name: 'HV Rocket', sulfurEq: 200 },
-    incen_rocket: { name: 'Incen Rocket', sulfurEq: 610 },
-    molotov: { name: 'Molotov', sulfurEq: 0 },
-    charcoal: { name: 'Charcoal', sulfurEq: 0 },
-    lgf: { name: 'Low Grade Fuel', sulfurEq: 0 }
+    sulfur: { name: 'Sulfur', short: 'Sulf', color: '#facc15', sulfurEq: 1 },
+    sulfur_ore: { name: 'Sulfur Ore', short: 'Ore', color: '#d97706', sulfurEq: 1 },
+    gunpowder: { name: 'Gun Powder', short: 'GP', color: '#94a3b8', sulfurEq: 2 },
+    explosives: { name: 'Explosives', short: 'Exp', color: '#84cc16', sulfurEq: 110 },
+    c4: { name: 'C4', short: 'C4', color: '#f87171', sulfurEq: 2200 },
+    rocket: { name: 'Rocket', short: 'Rkt', color: '#fb923c', sulfurEq: 1400 },
+    explo_ammo: { name: 'Explosive 5.56', short: '5.56', color: '#60a5fa', sulfurEq: 25 },
+    satchel: { name: 'Satchel Charge', short: 'Sat', color: '#a78bfa', sulfurEq: 480 },
+    beancan: { name: 'Beancan Grenade', short: 'Bean', color: '#cbd5e1', sulfurEq: 120 },
+    hv_rocket: { name: 'HV Rocket', short: 'HV', color: '#38bdf8', sulfurEq: 200 },
+    incen_rocket: { name: 'Incen Rocket', short: 'Inc', color: '#f97316', sulfurEq: 610 },
+    molotov: { name: 'Molotov', short: 'Mol', color: '#4ade80', sulfurEq: 0 },
+    charcoal: { name: 'Charcoal', short: 'Char', color: '#64748b', sulfurEq: 0 },
+    lgf: { name: 'Low Grade Fuel', short: 'LGF', color: '#f59e0b', sulfurEq: 0 }
   };
 
   let raidOcrWorkerPromise = null;
@@ -1069,7 +1069,8 @@
   let raidLastLiveSig = '';
   let raidPrevBoxCanvas = null;
   let raidLastBoxSlot = null;
-  let raidScannedHistory = []; // { id, key, name, qty, sulfurEq, mode, prevVal, slotLabel }
+  let raidLastBoxSlotTags = []; // [{ row, col, key, qty }]
+  let raidScannedHistory = [];
 
   async function ensureRaidOcrWorker(setStatus) {
     if (!raidOcrWorkerPromise) {
@@ -1160,11 +1161,15 @@
     const affordEl = document.getElementById('raidAffordabilityGrid');
     if (!readinessEl || !affordEl) return;
 
+    const includeUncooked = Boolean(document.getElementById('raidIncludeUncookedCb')?.checked ?? true);
+    const furnaceChoice = document.getElementById('raidFurnaceCountSelect')?.value || '6';
     const metrics = getStashTotals();
     const { stash, smeltedCraftPool, withOreCraftPool, craftedBoomSulfur, totalReadySulfurEq, totalWithOreSulfurEq } = metrics;
+    const activeCraftPool = includeUncooked ? withOreCraftPool : smeltedCraftPool;
+    const activeTotalSulfurEq = includeUncooked ? totalWithOreSulfurEq : totalReadySulfurEq;
     const { reqTools, planSulfur } = getQueuedShoppingRequirements();
 
-    // Compute exact plan gap accounting for crafted matching boom in stash first
+    // Match already-crafted boom in stash against queued shopping list first
     let remainingBoomSulfurNeeded = 0;
     const remainingToolsText = [];
     const matchedBoomCounts = {};
@@ -1180,7 +1185,6 @@
       }
     });
 
-    // Spare crafted boom that does NOT directly match queued tool types
     const spareBoomNotes = [];
     let spareBoomSulfur = 0;
     ['c4', 'rocket', 'explo_ammo', 'satchel', 'beancan', 'hv_rocket', 'incen_rocket'].forEach((tId) => {
@@ -1192,34 +1196,70 @@
       }
     });
 
-    const missingSulfurForPlan = Math.max(0, remainingBoomSulfurNeeded - withOreCraftPool);
-    const surplusCraftSulfur = Math.max(0, withOreCraftPool - remainingBoomSulfurNeeded);
+    const missingSulfurForPlan = Math.max(0, remainingBoomSulfurNeeded - activeCraftPool);
+    const surplusCraftSulfur = Math.max(0, activeCraftPool - remainingBoomSulfurNeeded);
     const pct = planSulfur > 0 ? Math.min(100, Math.round(((planSulfur - missingSulfurForPlan) / planSulfur) * 100)) : 100;
 
     const nodesNeededNormal = Math.ceil(missingSulfurForPlan / 300);
     const nodesNeededTea = Math.ceil(missingSulfurForPlan / 450);
 
-    // Charcoal needed if user still needs to craft Gun Powder from raw Sulfur + Ore
-    const rawSulfurPlusOre = stash.sulfur + stash.sulfur_ore;
-    const sulfurNeedingCharcoal = Math.min(rawSulfurPlusOre, Math.max(0, remainingBoomSulfurNeeded - stash.gunpowder * 2 - stash.explosives * 110));
-    const estCharcoalNeeded = Math.round(sulfurNeedingCharcoal * 1.5);
-    const missingCharcoal = Math.max(0, estCharcoalNeeded - stash.charcoal);
+    // Charcoal math for turning Sulfur + included Ore into Gun Powder (1 Sulfur -> 1.5 Charcoal)
+    const rawSulfurAvailable = stash.sulfur + (includeUncooked ? stash.sulfur_ore : 0);
+    const craftNeededFromRaw = planSulfur > 0 ? Math.min(rawSulfurAvailable, Math.max(0, remainingBoomSulfurNeeded - stash.gunpowder * 2 - stash.explosives * 110)) : rawSulfurAvailable;
+    const estCharcoalNeeded = Math.round(craftNeededFromRaw * 1.5);
+    const charcoalGap = Math.max(0, estCharcoalNeeded - stash.charcoal);
+
+    // Uncooked Sulfur Ore Smelting Time & Wood Calculation
+    let smeltInfoHtml = '';
+    if (stash.sulfur_ore > 0) {
+      let smeltLine = '';
+      let freeCharcoalFromSmelt = 0;
+      if (furnaceChoice.startsWith('large')) {
+        const numLarge = parseInt(furnaceChoice.replace('large', ''), 10) || 1;
+        // Large furnace: ~2.5s per ore per slot (~15 parallel ore slots -> ~360 ore/min), 1 Wood cooks ~1.5 Ore & makes ~0.75 Charcoal
+        const woodForOre = Math.ceil(stash.sulfur_ore / 1.5);
+        freeCharcoalFromSmelt = Math.round(woodForOre * 0.75);
+        const mins = Math.max(1, Math.ceil(stash.sulfur_ore / (numLarge * 360)));
+        smeltLine = `<strong>${numLarge} Large Furnace${numLarge > 1 ? 's' : ''}:</strong> ~${mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`} • Needs <strong>${woodForOre.toLocaleString()} Wood</strong> (creates <strong>+${freeCharcoalFromSmelt.toLocaleString()} free Charcoal</strong>!)`;
+      } else {
+        const numElec = parseInt(furnaceChoice, 10) || 6;
+        // Electric furnace: 1 Sulfur Ore/sec = 60 Ore/min per furnace (0 Wood, 0 Charcoal)
+        const mins = Math.max(1, Math.ceil(stash.sulfur_ore / (numElec * 60)));
+        smeltLine = `<strong>${numElec} Elec. Furnaces:</strong> ~${mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`} • <strong>0 Wood</strong> (produces 0 Charcoal)`;
+      }
+
+      const netCharcoalGap = Math.max(0, estCharcoalNeeded - stash.charcoal - freeCharcoalFromSmelt);
+      const extraWoodForCharcoal = netCharcoalGap > 0 ? Math.ceil(netCharcoalGap / 0.75) : 0;
+
+      smeltInfoHtml = `
+        <div style="margin-top:8px; padding:7px 9px; border-radius:5px; background:rgba(217,119,6,0.12); border:1px solid rgba(217,119,6,0.35); font-size:11.5px; color:#fde68a; line-height:1.45;">
+          🪨 <strong>Uncooked Ore Smelt (${stash.sulfur_ore.toLocaleString()} Ore):</strong> ${smeltLine}
+          ${estCharcoalNeeded > 0 ? `<br/>🔥 <strong>Charcoal for GP:</strong> Need ${estCharcoalNeeded.toLocaleString()} Charcoal (have ${stash.charcoal.toLocaleString()}${freeCharcoalFromSmelt > 0 ? ` + ${freeCharcoalFromSmelt.toLocaleString()} from smelting` : ''})${netCharcoalGap > 0 ? ` → <strong style="color:#fb923c;">short ${netCharcoalGap.toLocaleString()} Charcoal (~${extraWoodForCharcoal.toLocaleString()} Wood)</strong>` : ' → <strong style="color:#4ade80;">Charcoal covered!</strong>'}` : ''}
+        </div>
+      `;
+    } else if (charcoalGap > 0 && rawSulfurAvailable > 0) {
+      smeltInfoHtml = `
+        <div style="margin-top:6px; font-size:11.5px; color:#fb923c;">
+          🔥 Need <strong>${estCharcoalNeeded.toLocaleString()} Charcoal</strong> to convert your ${rawSulfurAvailable.toLocaleString()} Sulfur into GP (short <strong>${charcoalGap.toLocaleString()} Charcoal</strong> ≈ ${Math.ceil(charcoalGap / 0.75).toLocaleString()} Wood).
+        </div>
+      `;
+    }
 
     let statusClass = 'readiness-banner';
     let headline = '';
     let subDetail = '';
 
     if (planSulfur <= 0) {
-      statusClass += totalWithOreSulfurEq > 0 ? ' is-ready' : '';
-      headline = `⚡ Stash Pool: <strong style="color:var(--sulfur-yellow)">${totalWithOreSulfurEq.toLocaleString()} Sulfur Eq.</strong>`;
+      statusClass += activeTotalSulfurEq > 0 ? ' is-ready' : '';
+      headline = `⚡ Active Pool: <strong style="color:var(--sulfur-yellow)">${activeTotalSulfurEq.toLocaleString()} Sulfur Eq.</strong>`;
       subDetail = 'Queue targets in the Squad Raid Planner below to calculate your exact deficit & nodes missing.';
     } else if (missingSulfurForPlan === 0) {
       statusClass += ' is-ready';
       headline = `✅ READY FOR QUEUED RAID PLAN! <span style="color:#4ade80;">(+${surplusCraftSulfur.toLocaleString()} Surplus Craft Sulfur)</span>`;
       subDetail =
-        stash.sulfur_ore > 0 && remainingBoomSulfurNeeded > smeltedCraftPool
-          ? `Note: Smelt ${Math.min(stash.sulfur_ore, remainingBoomSulfurNeeded - smeltedCraftPool).toLocaleString()} of your Sulfur Ore first.`
-          : `You have enough Sulfur / GP / Boom to cover all queued targets (${planSulfur.toLocaleString()} Sulfur).`;
+        includeUncooked && stash.sulfur_ore > 0 && remainingBoomSulfurNeeded > smeltedCraftPool
+          ? `Includes <strong>${Math.min(stash.sulfur_ore, remainingBoomSulfurNeeded - smeltedCraftPool).toLocaleString()} Uncooked Ore</strong> — smelt first to craft the remaining boom!`
+          : `You have enough ${includeUncooked ? 'ready + uncooked' : 'cooked'} boom & sulfur for all queued targets (${planSulfur.toLocaleString()} Sulfur).`;
     } else {
       statusClass += ' is-short';
       headline = `⚠️ MISSING <span style="color:#f87171;">${missingSulfurForPlan.toLocaleString()} SULFUR</span> FOR RAID PLAN (${pct}% Funded)`;
@@ -1228,15 +1268,13 @@
         (remainingToolsText.length ? `Still to craft: <strong>${remainingToolsText.join(' + ')}</strong>.` : '');
     }
 
-    const gpSulfurEq = stash.gunpowder * 2;
-    const expSulfurEq = stash.explosives * 110;
-
     readinessEl.innerHTML = `
       <div class="${statusClass}">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; font-family:var(--font-display); font-size:13.5px; color:#fff;">
           <div>${headline}</div>
-          <div style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow); font-weight:700;">
-            ${totalReadySulfurEq.toLocaleString()} Ready${stash.sulfur_ore > 0 ? ` (+${stash.sulfur_ore.toLocaleString()} Ore = ${totalWithOreSulfurEq.toLocaleString()})` : ''}
+          <div style="font-family:var(--font-mono); font-size:11.5px; font-weight:700;">
+            <span style="color:#4ade80;">${totalReadySulfurEq.toLocaleString()} Cooked/Ready</span>
+            ${stash.sulfur_ore > 0 ? ` + <span style="color:#fbbf24;">${stash.sulfur_ore.toLocaleString()} Uncooked</span> = <span style="color:var(--sulfur-yellow);">${totalWithOreSulfurEq.toLocaleString()}S</span>` : ''}
           </div>
         </div>
         ${
@@ -1248,13 +1286,14 @@
         }
         <div class="text-xs" style="color:#e2e8f0; margin-top:4px; line-height:1.45;">${subDetail}</div>
         <div class="text-xs text-muted" style="margin-top:6px; font-family:var(--font-mono); display:flex; flex-wrap:wrap; gap:10px;">
-          <span>Sulfur+Ore: <strong>${rawSulfurPlusOre.toLocaleString()}</strong></span>
-          <span>GP (${stash.gunpowder.toLocaleString()}): <strong>${gpSulfurEq.toLocaleString()}S</strong></span>
-          <span>Explosives (${stash.explosives}): <strong>${expSulfurEq.toLocaleString()}S</strong></span>
+          <span>Cooked Sulfur: <strong>${stash.sulfur.toLocaleString()}</strong></span>
+          <span>Uncooked Ore: <strong style="color:#fbbf24;">${stash.sulfur_ore.toLocaleString()}</strong></span>
+          <span>GP (${stash.gunpowder.toLocaleString()}): <strong>${(stash.gunpowder * 2).toLocaleString()}S</strong></span>
+          <span>Explosives (${stash.explosives}): <strong>${(stash.explosives * 110).toLocaleString()}S</strong></span>
           <span>Crafted Boom: <strong>${craftedBoomSulfur.toLocaleString()}S</strong></span>
           ${spareBoomNotes.length ? `<span style="color:var(--sulfur-yellow);">Spare Boom: <strong>${spareBoomNotes.join(', ')} (${spareBoomSulfur.toLocaleString()}S)</strong></span>` : ''}
-          ${missingCharcoal > 0 && stash.charcoal > 0 ? `<span style="color:#fb923c;">Need ~${missingCharcoal.toLocaleString()} more Charcoal for GP</span>` : ''}
         </div>
+        ${smeltInfoHtml}
       </div>
     `;
 
@@ -1269,19 +1308,273 @@
 
     affordEl.innerHTML = benchmarkTargets
       .map((bt) => {
-        const count = Math.floor(totalWithOreSulfurEq / bt.cost);
-        const gap = Math.max(0, bt.cost - totalWithOreSulfurEq);
+        const readyCount = Math.floor(totalReadySulfurEq / bt.cost);
+        const totalCount = Math.floor(activeTotalSulfurEq / bt.cost);
+        const gap = Math.max(0, bt.cost - activeTotalSulfurEq);
+        const subCountNote =
+          includeUncooked && stash.sulfur_ore > 0 && totalCount > readyCount
+            ? ` <span style="color:#fbbf24; font-size:10px;">(${readyCount} now + ore)</span>`
+            : '';
         return `
-          <div class="afford-card ${count > 0 ? 'can-raid' : ''}">
+          <div class="afford-card ${totalCount > 0 ? 'can-raid' : ''}">
             <div class="afford-card-title">${bt.short}</div>
-            <div class="afford-card-val" style="color:${count > 0 ? '#4ade80' : '#fca5a5'};">
-              ${count > 0 ? `✅ Can raid ${count}×` : `Need ${gap.toLocaleString()}S (${Math.ceil(gap / 300)} nodes)`}
+            <div class="afford-card-val" style="color:${totalCount > 0 ? '#4ade80' : '#fca5a5'};">
+              ${totalCount > 0 ? `✅ Can raid ${totalCount}×${subCountNote}` : `Need ${gap.toLocaleString()}S (${Math.ceil(gap / 300)} nodes)`}
             </div>
             <div class="text-xs text-muted" style="font-size:10px;">Best: ${bt.cost.toLocaleString()}S (${bt.via})</div>
           </div>
         `;
       })
       .join('');
+  }
+
+  function classifyRustBoxSlotPixels(ctx, sx, sy, sw, sh) {
+    const d = ctx.getImageData(sx, sy, sw, sh).data;
+    let brightY = 0;
+    let medY = 0;
+    let brownOre = 0;
+    let darkN = 0;
+    let tanBrick = 0;
+    let total = 0;
+    let lumaSum = 0;
+    let lumaSqSum = 0;
+
+    for (let i = 0; i < d.length; i += 4) {
+      const rr = d[i];
+      const gg = d[i + 1];
+      const bb = d[i + 2];
+      const mx = Math.max(rr, gg, bb);
+      const mn = Math.min(rr, gg, bb);
+      const sat = mx ? (mx - mn) / mx : 0;
+      const luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
+      lumaSum += luma;
+      lumaSqSum += luma * luma;
+      total++;
+
+      if (rr >= 135 && gg >= 130 && gg - bb >= 34 && rr - bb >= 34) brightY++;
+      if (rr >= 78 && gg >= 68 && gg - bb >= 16 && rr < 170) medY++;
+      if (rr > 55 && rr < 120 && gg > 45 && gg < 105 && bb < 72 && rr - bb >= 12) brownOre++;
+      if (rr < 72 && gg < 72 && bb < 76 && sat < 0.25) darkN++;
+      if (rr > 95 && gg > 80 && bb > 68 && mx - mn < 42 && mx > 95 && bb >= 65) tanBrick++;
+    }
+
+    if (!total) return 'empty';
+    const pBY = brightY / total;
+    const pMY = medY / total;
+    const pOre = brownOre / total;
+    const pDark = darkN / total;
+    const pTan = tanBrick / total;
+    const meanLuma = lumaSum / total;
+    const stdLuma = Math.sqrt(Math.max(0, lumaSqSum / total - meanLuma * meanLuma));
+
+    if (pBY >= 0.09 && pMY >= 0.22) return 'sulfur';
+    if (pDark > 0.72 && pBY < 0.01 && pMY < 0.02) return 'charcoal';
+    if (pTan >= 0.14 && pBY < 0.012 && pOre < 0.20) return 'c4';
+    if (pOre >= 0.16 || (pBY >= 0.014 && pMY >= 0.10)) return 'sulfur_ore';
+    if (stdLuma < 12 && pBY < 0.01 && pOre < 0.08) return 'empty';
+    return 'empty';
+  }
+
+  function parseStackDigitsText(rawStr) {
+    const cleaned = String(rawStr || '').trim().replace(/^[x×]+/i, '').replace(/[,.]/g, '');
+    const m = cleaned.match(/\d{1,6}/);
+    if (!m) return null;
+    const val = parseInt(m[0], 10);
+    return val > 0 && val <= 100000 ? val : null;
+  }
+
+  async function scanWholeRaidBoxGrid(srcEl, applyMode = 'replace') {
+    const statusEl = document.getElementById('raidScannerStatusMsg');
+    const setStatus = (msg) => {
+      if (statusEl) statusEl.textContent = msg;
+    };
+
+    try {
+      const dims = getScannerSourceDimensions(srcEl);
+      if (!dims.w || !dims.h) return;
+
+      const worker = await ensureRaidOcrWorker(setStatus);
+      setStatus('📦 Analyzing all chest slots (Sulfur Ore, Sulfur, Charcoal, C4)...');
+
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = dims.w;
+      fullCanvas.height = dims.h;
+      const fctx = fullCanvas.getContext('2d');
+      fctx.drawImage(srcEl, 0, 0, dims.w, dims.h);
+
+      const boxRect =
+        raidBoxGridRect && raidBoxGridRect.w >= 24 && raidBoxGridRect.h >= 24
+          ? raidBoxGridRect
+          : { x: 0, y: 0, w: dims.w, h: dims.h };
+
+      const { rows, cols } = getRaidBoxGridDims();
+      const cw = boxRect.w / cols;
+      const ch = boxRect.h / rows;
+
+      const slots = [];
+      for (let r = 0; r < rows; r++) {
+        for (let col = 0; col < cols; col++) {
+          const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.14));
+          const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.12));
+          const sw = Math.max(4, Math.min(dims.w - sx, Math.floor(cw * 0.72)));
+          const sh = Math.max(4, Math.min(dims.h - sy, Math.floor(ch * 0.58)));
+          const key = classifyRustBoxSlotPixels(fctx, sx, sy, sw, sh);
+          if (key !== 'empty') {
+            slots.push({ row: r, col, key, qty: null });
+          }
+        }
+      }
+
+      if (!slots.length) {
+        setStatus('⚠️ No Sulfur / Ore / Boom slots detected inside box grid. Drag the green Calibrate Box Grid tightly over the 48 chest slots.');
+        return;
+      }
+
+      // Batch OCR per occupied row for fast stack-number extraction
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789x,' });
+      const scale = Math.max(3, Math.min(5, Math.round(180 / Math.max(30, cw))));
+      const subW = Math.max(10, Math.round(cw * 0.74));
+      const subH = Math.max(8, Math.round(ch * 0.34));
+      const pad = 28;
+
+      const buildDigitTile = (r, col) => {
+        const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.25));
+        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.65));
+        const rw = Math.max(4, Math.min(dims.w - sx, subW));
+        const rh = Math.max(4, Math.min(dims.h - sy, subH));
+        const tmp = document.createElement('canvas');
+        tmp.width = Math.round(rw * scale);
+        tmp.height = Math.round(rh * scale);
+        const tctx = tmp.getContext('2d');
+        tctx.imageSmoothingEnabled = true;
+        tctx.drawImage(fullCanvas, sx, sy, rw, rh, 0, 0, tmp.width, tmp.height);
+        const id = tctx.getImageData(0, 0, tmp.width, tmp.height);
+        const d = id.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          const ink = luma >= 156 ? 0 : 255;
+          d[i] = ink;
+          d[i + 1] = ink;
+          d[i + 2] = ink;
+          d[i + 3] = 255;
+        }
+        tctx.putImageData(id, 0, 0);
+        return tmp;
+      };
+
+      const rowsMap = new Map();
+      slots.forEach((s) => {
+        if (!rowsMap.has(s.row)) rowsMap.set(s.row, []);
+        rowsMap.get(s.row).push(s);
+      });
+
+      let rowIdx = 0;
+      for (const [r, rowSlots] of rowsMap.entries()) {
+        rowIdx++;
+        setStatus(`🔍 Reading stack numbers row ${rowIdx}/${rowsMap.size} (${slots.length} slots)...`);
+        const tiles = rowSlots.map((s) => buildDigitTile(r, s.col));
+        const totalW = tiles.reduce((sum, t) => sum + t.width + pad, pad);
+        const maxH = tiles.reduce((m, t) => Math.max(m, t.height), 20) + 20;
+        const strip = document.createElement('canvas');
+        strip.width = totalW;
+        strip.height = maxH;
+        const sctx = strip.getContext('2d');
+        sctx.fillStyle = '#ffffff';
+        sctx.fillRect(0, 0, strip.width, strip.height);
+
+        let curX = pad;
+        tiles.forEach((t) => {
+          sctx.drawImage(t, curX, 10);
+          curX += t.width + pad;
+        });
+
+        const res = await worker.recognize(strip);
+        const tokens = String(res?.data?.text || '')
+          .trim()
+          .split(/\s+/)
+          .map(parseStackDigitsText)
+          .filter((v) => v !== null);
+
+        if (tokens.length === rowSlots.length) {
+          rowSlots.forEach((s, i) => {
+            s.qty = tokens[i];
+          });
+        } else {
+          // Per-slot fallback for uneven spacing or tiny single-digit stacks like x2 / x3
+          for (let i = 0; i < rowSlots.length; i++) {
+            const tile = tiles[i];
+            const solo = document.createElement('canvas');
+            solo.width = tile.width + 40;
+            solo.height = tile.height + 24;
+            const octx = solo.getContext('2d');
+            octx.fillStyle = '#ffffff';
+            octx.fillRect(0, 0, solo.width, solo.height);
+            octx.drawImage(tile, 20, 12);
+            const soloRes = await worker.recognize(solo);
+            const parsed = parseStackDigitsText(soloRes?.data?.text);
+            rowSlots[i].qty = parsed !== null ? parsed : ['c4', 'rocket', 'satchel'].includes(rowSlots[i].key) ? 1 : 1000;
+          }
+        }
+      }
+
+      // Reset whitelist back to empty so single-inspect header OCR still works seamlessly
+      await worker.setParameters({ tessedit_char_whitelist: '' });
+
+      raidLastBoxSlotTags = slots.map((s) => ({ row: s.row, col: s.col, key: s.key, qty: s.qty }));
+      drawRaidScannerPreview();
+
+      // Aggregate per-item totals
+      const sums = {};
+      const slotCounts = {};
+      slots.forEach((s) => {
+        sums[s.key] = (sums[s.key] || 0) + (s.qty || 0);
+        slotCounts[s.key] = (slotCounts[s.key] || 0) + 1;
+      });
+
+      const entries = Object.entries(sums).map(([key, qty]) => {
+        const meta = STASH_ITEM_META[key];
+        return {
+          key,
+          name: meta.name,
+          qty,
+          slots: slotCounts[key],
+          sulfurEq: qty * (meta.sulfurEq || 0)
+        };
+      });
+
+      if (applyMode === 'replace') {
+        if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
+        Object.keys(DEFAULT_RAID_STASH).forEach((k) => {
+          appState.raidStash[k] = 0;
+        });
+        raidScannedHistory = [];
+      }
+
+      entries.forEach((ent, i) => {
+        const prevVal = Math.max(0, Number(appState.raidStash[ent.key]) || 0);
+        appState.raidStash[ent.key] = applyMode === 'replace' ? ent.qty : prevVal + ent.qty;
+        raidScannedHistory.unshift({
+          id: 'rbox-' + Date.now() + '-' + i,
+          key: ent.key,
+          name: `${ent.name} (${ent.slots} slots)`,
+          qty: ent.qty,
+          sulfurEq: ent.sulfurEq,
+          mode: applyMode === 'replace' ? 'set' : 'accumulate',
+          prevVal,
+          slotLabel: `Box Grid ${rows}×${cols}`
+        });
+      });
+
+      renderRaidScannedFeed();
+      renderRaidStashReadiness();
+      syncStateToServer();
+      playAlertSound('urgent');
+
+      const summaryStr = entries.map((e) => `${e.qty.toLocaleString()} ${e.name} (${e.slots} slots)`).join(' • ');
+      setStatus(`✅ Scanned ${slots.length} box slots: ${summaryStr}`);
+    } catch (err) {
+      setStatus(`❌ Box scan failed: ${err?.message || err}`);
+    }
   }
 
   function parseRaidLootFromOcrText(rawText) {
@@ -1341,7 +1634,6 @@
       const line = lines[i];
       for (const p of patterns) {
         if (!p.rx.test(line)) continue;
-        // Skip misleading description prose lines when an uppercase/short header wasn't matched cleanly
         if (line.length > 65 && !/x\s*\d+/i.test(line)) continue;
 
         let qty = extractQtyFromStr(line);
@@ -1466,39 +1758,61 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(raidScannerImg, 0, 0, dims.w, dims.h);
 
-    if (raidBoxGridRect && raidBoxGridRect.w > 12 && raidBoxGridRect.h > 12) {
+    const effectiveBox =
+      raidBoxGridRect && raidBoxGridRect.w > 12 && raidBoxGridRect.h > 12
+        ? raidBoxGridRect
+        : raidLastBoxSlotTags.length
+        ? { x: 0, y: 0, w: dims.w, h: dims.h }
+        : null;
+
+    if (effectiveBox) {
       const { rows, cols } = getRaidBoxGridDims();
-      const cw = raidBoxGridRect.w / cols;
-      const ch = raidBoxGridRect.h / rows;
+      const cw = effectiveBox.w / cols;
+      const ch = effectiveBox.h / rows;
       ctx.save();
       ctx.strokeStyle = 'rgba(74, 222, 128, 0.72)';
       ctx.lineWidth = Math.max(1.5, canvas.width / 700);
-      ctx.strokeRect(raidBoxGridRect.x, raidBoxGridRect.y, raidBoxGridRect.w, raidBoxGridRect.h);
+      ctx.strokeRect(effectiveBox.x, effectiveBox.y, effectiveBox.w, effectiveBox.h);
       for (let r = 1; r < rows; r++) {
-        const y = raidBoxGridRect.y + r * ch;
+        const y = effectiveBox.y + r * ch;
         ctx.beginPath();
-        ctx.moveTo(raidBoxGridRect.x, y);
-        ctx.lineTo(raidBoxGridRect.x + raidBoxGridRect.w, y);
+        ctx.moveTo(effectiveBox.x, y);
+        ctx.lineTo(effectiveBox.x + effectiveBox.w, y);
         ctx.stroke();
       }
       for (let c = 1; c < cols; c++) {
-        const x = raidBoxGridRect.x + c * cw;
+        const x = effectiveBox.x + c * cw;
         ctx.beginPath();
-        ctx.moveTo(x, raidBoxGridRect.y);
-        ctx.lineTo(x, raidBoxGridRect.y + raidBoxGridRect.h);
+        ctx.moveTo(x, effectiveBox.y);
+        ctx.lineTo(x, effectiveBox.y + effectiveBox.h);
         ctx.stroke();
       }
       if (raidLastBoxSlot) {
-        const hx = raidBoxGridRect.x + (raidLastBoxSlot.col - 1) * cw;
-        const hy = raidBoxGridRect.y + (raidLastBoxSlot.row - 1) * ch;
+        const hx = effectiveBox.x + (raidLastBoxSlot.col - 1) * cw;
+        const hy = effectiveBox.y + (raidLastBoxSlot.row - 1) * ch;
         ctx.fillStyle = 'rgba(74, 222, 128, 0.25)';
         ctx.fillRect(hx, hy, cw, ch);
         ctx.strokeStyle = '#4ade80';
         ctx.lineWidth = Math.max(2.5, canvas.width / 320);
         ctx.strokeRect(hx, hy, cw, ch);
       }
+      if (raidLastBoxSlotTags.length) {
+        const fontSize = Math.max(9, Math.min(13, Math.round(cw * 0.2)));
+        ctx.font = `700 ${fontSize}px monospace`;
+        raidLastBoxSlotTags.forEach((tag) => {
+          const meta = STASH_ITEM_META[tag.key] || { short: tag.key, color: '#fff' };
+          const tx = effectiveBox.x + tag.col * cw + 2;
+          const ty = effectiveBox.y + tag.row * ch + 2;
+          const label = `${meta.short}:${tag.qty}`;
+          const tw = ctx.measureText(label).width + 6;
+          ctx.fillStyle = 'rgba(0,0,0,0.78)';
+          ctx.fillRect(tx, ty, tw, fontSize + 4);
+          ctx.fillStyle = meta.color;
+          ctx.fillText(label, tx + 3, ty + fontSize);
+        });
+      }
       ctx.restore();
-      if (clearBoxBtn) clearBoxBtn.style.display = 'inline-flex';
+      if (clearBoxBtn && raidBoxGridRect) clearBoxBtn.style.display = 'inline-flex';
     } else if (clearBoxBtn) {
       clearBoxBtn.style.display = 'none';
     }
@@ -1526,7 +1840,15 @@
       const dims = getScannerSourceDimensions(srcEl);
       if (!dims.w || !dims.h) return;
 
+      // On static screenshots/drops with box-proportioned dimensions (or marked box grid without crop), run Whole-Box Grid Scanner automatically!
+      const aspect = dims.w / dims.h;
+      if (!isLive && !cropRect && (raidBoxGridRect || (aspect >= 0.50 && aspect <= 1.38))) {
+        await scanWholeRaidBoxGrid(srcEl, mode === 'accumulate' ? 'add' : 'replace');
+        return;
+      }
+
       const worker = await ensureRaidOcrWorker(setStatus);
+      await worker.setParameters({ tessedit_char_whitelist: '' });
       if (!isLive) setStatus('🔍 Scanning Rust image for Sulfur, Gun Powder & Boom...');
 
       const fullCanvas = document.createElement('canvas');
@@ -1539,7 +1861,6 @@
         : null;
       if (detectedSlot) raidLastBoxSlot = detectedSlot;
 
-      // Default inspect area on 16:9 / large Rust captures if user didn't drag a custom inspect crop
       let activeRect =
         cropRect && cropRect.w > 12 && cropRect.h > 12
           ? cropRect
@@ -1554,9 +1875,7 @@
 
       if (isLive) {
         const sig = `${detectedSlot?.label || ''}|${computeCanvasRegionSig(fullCanvas, activeRect)}`;
-        if (sig === raidLastLiveSig) {
-          return;
-        }
+        if (sig === raidLastLiveSig) return;
         raidLastLiveSig = sig;
       }
       raidPrevBoxCanvas = fullCanvas;
@@ -1566,7 +1885,6 @@
       const res1 = await worker.recognize(prep1);
       entries = parseRaidLootFromOcrText(res1?.data?.text);
 
-      // For static screenshots or cropped misses, fallback to full canvas once
       if (!entries.length && !cropRect && !isLive && (activeRect.w !== dims.w || activeRect.h !== dims.h)) {
         const wholeRect = { x: 0, y: 0, w: dims.w, h: dims.h };
         const prepFull = buildOcrPrepCanvas(fullCanvas, wholeRect, 'invGray');
@@ -1580,12 +1898,10 @@
           if (isLive) playAlertSound('urgent');
           const summary = entries.map((e) => `${e.qty.toLocaleString()} ${e.name}`).join(', ');
           const locSuffix = detectedSlot?.label ? ` at 📍 ${detectedSlot.label}` : '';
-          setStatus(
-            `${isLive ? '🟢 LIVE' : '✅'} Scanned: ${summary}${locSuffix}`
-          );
+          setStatus(`${isLive ? '🟢 LIVE' : '✅'} Scanned: ${summary}${locSuffix}`);
         }
       } else if (!isLive) {
-        setStatus('⚠️ No Sulfur / GP / Boom item text found. Drag a 🔍 yellow crop over the Rust item inspect name + stack amount and click "Scan Screen / Crop".');
+        setStatus('⚠️ No item inspect header found. If this is a full chest screenshot, mark the green Box Grid and click "📦 Scan Whole Box Grid".');
       }
     } catch (err) {
       setStatus(`❌ Stash scan failed: ${err?.message || err}`);
@@ -1634,7 +1950,7 @@
         statusEl.innerHTML = `
           <div style="padding:10px 12px; border-radius:6px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.55); color:#fecaca; font-family:var(--font-sans); font-size:12px; line-height:1.45;">
             ⚠️ <strong>Browser blocked Live Screen Capture on plain HTTP / local file!</strong> Chrome &amp; Edge require <code>https://</code> or <code>http://localhost</code>.<br/>
-            • Enable <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> with <code>${origin}</code> or use <kbd>Win+Shift+S</kbd> + <kbd>Ctrl+V</kbd> right here!
+            • Enable <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> with <code>${origin}</code> or paste a chest screenshot with <kbd>Ctrl+V</kbd>!
           </div>
         `;
       }
@@ -1643,6 +1959,7 @@
 
     stopRaidLiveScan();
     raidLastLiveSig = '';
+    raidLastBoxSlotTags = [];
 
     try {
       setStatus('🪟 Pick your Rust game window (or monitor) in the browser prompt...');
@@ -1680,7 +1997,7 @@
     raidScannerImg = video;
     raidScannerCropRect = null;
     drawRaidScannerPreview();
-    setStatus('🔴 LIVE: Click Sulfur, Gun Powder, Explosives, C4, Rockets or Explo 5.56 in your Rust boxes — each stack auto-adds with a beep!');
+    setStatus('🔴 LIVE: Click items OR mark the green Box Grid over your chest and click "📦 Scan Whole Box Grid"!');
 
     raidLiveTimer = setInterval(async () => {
       if (!raidLiveStream || raidLiveBusy || video.readyState < 2) return;
@@ -1711,6 +2028,7 @@
         img.onload = async () => {
           raidScannerImg = img;
           raidScannerCropRect = null;
+          raidLastBoxSlotTags = [];
           drawRaidScannerPreview();
           await scanRaidLootImage(img, null, { isLive: false });
           resolve();
@@ -1722,7 +2040,6 @@
   }
 
   function initRaidStashModule() {
-    // 1. Bind editable numeric stash inputs
     document.querySelectorAll('#raidStashInputs input[data-stash-key]').forEach((inp) => {
       inp.addEventListener('input', () => {
         if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
@@ -1733,15 +2050,19 @@
       });
     });
 
+    document.getElementById('raidIncludeUncookedCb')?.addEventListener('change', renderRaidStashReadiness);
+    document.getElementById('raidFurnaceCountSelect')?.addEventListener('change', renderRaidStashReadiness);
+
     document.getElementById('resetRaidStashBtn')?.addEventListener('click', () => {
       appState.raidStash = { ...DEFAULT_RAID_STASH };
       raidScannedHistory = [];
+      raidLastBoxSlotTags = [];
+      drawRaidScannerPreview();
       renderRaidScannedFeed();
       renderRaidStashReadiness();
       syncStateToServer();
     });
 
-    // 2. Bind Live Window & Screenshot Scanner controls
     const panel = document.getElementById('raidScannerPanel');
     document.getElementById('raidToggleScannerBtn')?.addEventListener('click', () => {
       if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
@@ -1804,11 +2125,13 @@
 
     document.getElementById('raidScannerBoxLayoutSelect')?.addEventListener('change', () => {
       raidLastBoxSlot = null;
+      raidLastBoxSlotTags = [];
       drawRaidScannerPreview();
     });
     document.getElementById('raidClearBoxGridBtn')?.addEventListener('click', () => {
       raidBoxGridRect = null;
       raidLastBoxSlot = null;
+      raidLastBoxSlotTags = [];
       drawRaidScannerPreview();
     });
     document.getElementById('raidClearCropBtn')?.addEventListener('click', () => {
@@ -1816,10 +2139,16 @@
       raidLastLiveSig = '';
       drawRaidScannerPreview();
     });
+    document.getElementById('raidScanBoxBtn')?.addEventListener('click', () => {
+      if (raidScannerImg) {
+        const mode = document.getElementById('raidLiveScanModeSelect')?.value || 'accumulate';
+        scanWholeRaidBoxGrid(raidScannerImg, mode === 'accumulate' ? 'add' : 'replace');
+      }
+    });
     document.getElementById('raidRescanBtn')?.addEventListener('click', () => {
       if (raidScannerImg) {
         raidLastLiveSig = '';
-        scanRaidLootImage(raidScannerImg, raidScannerCropRect, {
+        scanRaidLootImage(raidScannerImg, raidScannerCropRect || { x: 0, y: 0, w: raidScannerImg.videoWidth || raidScannerImg.naturalWidth, h: raidScannerImg.videoHeight || raidScannerImg.naturalHeight }, {
           isLive: Boolean(raidLiveStream),
           autoAddLive: Boolean(raidLiveStream && document.getElementById('raidLiveScanAutoAddCb')?.checked)
         });

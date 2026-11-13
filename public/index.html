@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261113e" />
+  <link rel="stylesheet" href="css/styles.css?v=20261113f" />
 </head>
 <body>
 
@@ -202,12 +202,13 @@
                     <option value="6x4">TC / Backpack (6×4)</option>
                     <option value="6x1">Hotbar (6×1)</option>
                   </select>
-                  <button id="raidRescanBtn" class="btn btn-sm btn-primary" type="button">Scan Screen / Crop</button>
+                  <button id="raidScanBoxBtn" class="btn btn-sm btn-primary" type="button" title="Count ALL slots in the box grid in 1 click (Sulfur Ore, Sulfur, Charcoal, C4, etc.)">📦 Scan Whole Box Grid</button>
+                  <button id="raidRescanBtn" class="btn btn-sm" type="button">🔍 Scan Inspect Crop</button>
                   <button id="raidClearBoxGridBtn" class="btn btn-sm" type="button" style="display:none;">Clear Grid</button>
                   <button id="raidClearCropBtn" class="btn btn-sm" type="button">Clear Crop</button>
                 </div>
                 <div id="raidScannerDragHint" style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono); margin-bottom:6px;">
-                  📐 Drag a <span style="color:#4ade80; font-weight:700;">green box over your chest grid</span> (so clicking identical 1000 Sulfur stacks adds each slot once), or switch to <span style="color:var(--sulfur-yellow); font-weight:700;">Lock Inspect Crop</span> over the top-right item name &amp; amount.
+                  💡 <strong>Tip:</strong> Paste/upload a chest screenshot (e.g. an 8×6 box) or draw the <span style="color:#4ade80; font-weight:700;">green grid</span> over any open chest in Live Scan, then click <strong style="color:#fff;">📦 Scan Whole Box Grid</strong> to count all uncooked Sulfur Ore, Sulfur, Charcoal &amp; C4 at once!
                 </div>
                 <canvas id="raidScannerCanvas" class="scanner-canvas"></canvas>
               </div>
@@ -264,6 +265,23 @@
               <div class="stash-field">
                 <label><span>Molotovs</span><span style="color:#4ade80">Fire</span></label>
                 <input type="number" min="0" data-stash-key="molotov" value="0" />
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; padding:6px 10px; border-radius:5px; background:rgba(0,0,0,0.28); border:1px solid var(--border-subtle);">
+              <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#e2e8f0; cursor:pointer;">
+                <input id="raidIncludeUncookedCb" type="checkbox" checked />
+                Include <strong>Uncooked Sulfur Ore</strong> in readiness &amp; raid capacity
+              </label>
+              <div style="display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-secondary);">
+                <span>Furnaces:</span>
+                <select id="raidFurnaceCountSelect" class="select" style="padding:2px 6px; font-size:11.5px;">
+                  <option value="3">3 Elec. Furnaces</option>
+                  <option value="6" selected>6 Elec. Furnaces</option>
+                  <option value="12">12 Elec. Furnaces</option>
+                  <option value="large1">1 Large Wood Furnace</option>
+                  <option value="large2">2 Large Wood Furnaces</option>
+                </select>
               </div>
             </div>
 
@@ -904,7 +922,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261113e"></script>
-  <script src="js/app.js?v=20261113e"></script>
+  <script src="js/data.js?v=20261113f"></script>
+  <script src="js/app.js?v=20261113f"></script>
 </body>
 </html>
