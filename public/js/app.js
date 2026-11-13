@@ -2706,6 +2706,24 @@
     extractPeaks('Hemp', 'hemp', '🌿', 'Hemp / Cloth Field', 'Dense wild Hemp spawns (fast early cloth & bags)');
     extractPeaks('Berries', 'berry', '🫐', 'Berry Tea Valley', 'Dense Berry spawns for Pure Ore & Scrap Teas');
 
+    // 3. Nearby Water Wells (best POI for Jackhammer, Chainsaw, Medical Syringes & Teas)
+    const nearbyWells = mons
+      .filter((m) => String(m.type || '').toLowerCase().includes('water well'))
+      .map((m) => ({
+        kind: 'waterwell',
+        icon: '🚰',
+        title: `${m.type} (Tools & Syringes)`,
+        detail: 'NPC Shopkeeper: Jackhammer (~200 Scrap), Chainsaw, Syringes, Teas & Water Pump',
+        wx: m.x,
+        wy: m.y,
+        grid: bfWorldToGrid(m.x, m.y, mapSize),
+        distBase: distFromBase(m.x, m.y)
+      }))
+      .filter((w) => w.distBase === null || w.distBase <= maxQuarryDist)
+      .sort((a, b) => (a.distBase ?? 99999) - (b.distBase ?? 99999))
+      .slice(0, 2);
+    results.push(...nearbyWells);
+
     return results;
   }
 
@@ -3071,7 +3089,7 @@
     { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
     { match: 'warehouse', icon: '📦', label: 'Mining Outpost', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'None (No Green Card)', safe: false, vend: 0 },
     { match: 'quarry', icon: '🏭', label: null, color: '#fbbf24', r: 4.5, tier: 1, rec: 0, cards: 'Diesel', safe: false, vend: 0 },
-    { match: 'water well', icon: '🚰', label: 'Well', color: '#94a3b8', r: 3.5, tier: 0, rec: 0, cards: 'None', safe: false, vend: 0 }
+    { match: 'water well', icon: '🚰', label: 'Water Well', color: '#22d3ee', r: 4.5, tier: 0, rec: 0, cards: 'None', safe: false, vend: 1 }
   ];
 
   function bfGetMonumentVisual(m, targetKey) {
@@ -3088,7 +3106,7 @@
     }
     if (matchedRule) {
       const name = matchedRule.label || raw.replace(' A', '').replace(' B', '').replace(' C', '');
-      const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0 || t.includes('oil');
+      const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0 || t.includes('oil') || t.includes('water well');
       return { color: matchedRule.color, short: `${matchedRule.icon} ${name}`, r: matchedRule.r, isMajor, meta: matchedRule };
     }
     return null;
@@ -3253,7 +3271,11 @@
         if (meta.vend > 0) fac.push(`🛒 ${meta.vend}× Vending`);
         if (fac.length) lines.push(fac.join(' • '));
       }
-      if (String(m.type || '').toLowerCase().includes('underwater lab')) {
+      const mLower = String(m.type || '').toLowerCase();
+      if (mLower.includes('water well')) {
+        lines.push('🛠️ Best for: Jackhammer, Chainsaw, Syringes & Teas');
+      }
+      if (mLower.includes('underwater lab')) {
         lines.push(
           m.hasRedKeycard === true
             ? '🔴 Red Keycard Room Confirmed'
@@ -3440,10 +3462,12 @@
       }
     }
 
-    // 5. Top Farming Hotspots (Ore Ridges, Hemp/Berry Fields, Mining Quarries)
+    // 5. Top Farming Hotspots (Ore Ridges, Hemp/Berry Fields, Mining Quarries & Water Wells)
     bfFarmingSpots.forEach((fm, fIdx) => {
       const { px, py } = toPx(fm.wx, fm.wy);
       const isSel = fIdx === bfSelectedFarmIdx;
+      // Avoid overlapping the Water Well monument pin unless actively selected from the Farming list
+      if (fm.kind === 'waterwell' && !isSel) return;
       ctx.save();
       ctx.beginPath();
       ctx.arc(px, py, isSel ? 13 : 8.5, 0, Math.PI * 2);
@@ -3632,6 +3656,11 @@
         bfSelectedFarmIdx = parseInt(card.getAttribute('data-farm-idx'), 10);
         renderBaseFinderFarming();
         renderBaseFinderMap();
+      });
+      card.addEventListener('dblclick', () => {
+        const idx = parseInt(card.getAttribute('data-farm-idx'), 10);
+        const fm = bfFarmingSpots[idx];
+        if (fm) bfFocusWorldPoint(fm.wx, fm.wy, 1.7);
       });
     });
   }

@@ -1113,6 +1113,26 @@ window.RUST_DATA = {
       ]
     },
     {
+      id: 'water_well',
+      name: 'Water Well (A–E)',
+      rusthelpUrl: 'https://rusthelp.com/monument/water-well-a',
+      tier: 0,
+      biome: 'Roadside POI',
+      defaultPos: { x: 0.45, y: 0.58, grid: 'L15' },
+      cardsNeeded: [],
+      cardsFound: [],
+      fusesNeeded: 0,
+      radRequired: '0 RAD',
+      respawnMin: 30,
+      crates: { locked: 0, elite: 0, military: 0, normal: 2, diesel: 0 },
+      utilities: ['Water Well Shopkeeper (Tools/Meds)', 'Fresh Water Pump', 'No Recycler / PvP Zone'],
+      steps: [
+        'Zero radiation, zero scientists — best early-wipe POI to buy Jackhammers (~200 Scrap), Chainsaws, and Medical Syringes.',
+        'Check the NPC Water Well Shopkeeper (rotating vendor stock: Jackhammer, Chainsaw, Syringes, Hazmat Suit, Revolver/DB, Pure & Advanced Teas).',
+        'Loot crates/food boxes and refill at the water pump, then watch your back (no Safe Zone turrets).'
+      ]
+    },
+    {
       id: 'abandoned_cabins',
       name: 'Abandoned Cabins',
       rusthelpUrl: 'https://rusthelp.com/monument/abandoned-cabins',
