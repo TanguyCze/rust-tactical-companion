@@ -1557,25 +1557,39 @@
       const bmUrlMatch = query.trim().match(/battlemetrics\.com\/servers\/(?:rust\/)?(\d+)/i);
       const directId = bmUrlMatch ? bmUrlMatch[1] : (/^\d+$/.test(query.trim()) ? query.trim() : null);
       if (directId) {
-        await loadBattleMetricsServerById(directId);
-        resultsEl.innerHTML = '';
+        const ok = await loadBattleMetricsServerById(directId);
+        if (ok) resultsEl.innerHTML = '';
         return;
       }
 
       let data = null;
+      let apiErr = '';
       try {
         const res = await fetch(`/api/battlemetrics/search?q=${encodeURIComponent(query)}`, {
           headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {}
         });
-        if (res.ok) data = await res.json();
+        const json = await res.json().catch(() => null);
+        if (res.ok) data = json;
+        else if (json?.error) apiErr = json.error;
       } catch (_) {}
 
       // Browser direct fallback if running without Node proxy
-      if (!data) {
+      if (!data && !apiErr) {
         const directRes = await fetch(
-          `https://api.battlemetrics.com/servers?filter[game]=rust&filter[search]=${encodeURIComponent(query)}&page[size]=8`
+          `https://api.battlemetrics.com/servers?filter[game]=rust&filter[search]=${encodeURIComponent(query)}&page[size]=8`,
+          { headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {} }
         );
-        data = await directRes.json();
+        const directJson = await directRes.json().catch(() => null);
+        if (directRes.ok) data = directJson;
+        else apiErr = directJson?.errors?.[0]?.detail || `HTTP ${directRes.status}`;
+      }
+
+      if (apiErr) {
+        resultsEl.innerHTML = `<div style="padding:10px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:6px; color:#fca5a5; font-size:12.5px;">
+          ⚠️ <strong>BattleMetrics API blocked:</strong> ${apiErr}<br/>
+          <span style="color:#cbd5e1;">BattleMetrics now requires a BattleMetrics API Token (add it in <strong>⚙️ Squad Settings</strong>). For map analysis without BattleMetrics, paste a <strong>RustMaps URL</strong> or <code>size_seed</code> directly into <strong>📍 Base Finder</strong>.</span>
+        </div>`;
+        return;
       }
 
       const list = data?.data || [];
@@ -1619,23 +1633,41 @@
   }
 
   async function loadBattleMetricsServerById(serverId) {
+    const resultsEl = document.getElementById('bmSearchResults');
     try {
       let payload = null;
+      let apiErr = '';
       try {
         const res = await fetch(`/api/battlemetrics/server/${serverId}`, {
           headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {}
         });
-        if (res.ok) payload = await res.json();
+        const json = await res.json().catch(() => null);
+        if (res.ok) payload = json;
+        else if (json?.error) apiErr = json.error;
       } catch (_) {}
 
-      if (!payload) {
-        const directRes = await fetch(`https://api.battlemetrics.com/servers/${serverId}`);
-        const srvJson = await directRes.json();
-        payload = { server: srvJson, history: [] };
+      if (!payload && !apiErr) {
+        const directRes = await fetch(`https://api.battlemetrics.com/servers/${serverId}`, {
+          headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {}
+        });
+        const srvJson = await directRes.json().catch(() => null);
+        if (directRes.ok && srvJson?.data) {
+          payload = { server: srvJson, history: [] };
+        } else {
+          apiErr = srvJson?.errors?.[0]?.detail || `HTTP ${directRes.status}`;
+        }
       }
 
-      const srv = payload.server?.data;
-      if (!srv) return;
+      const srv = payload?.server?.data;
+      if (!srv) {
+        if (resultsEl) {
+          resultsEl.innerHTML = `<div style="padding:10px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:6px; color:#fca5a5; font-size:12.5px;">
+            ⚠️ <strong>Could not load BattleMetrics Server #${serverId}:</strong> ${apiErr || 'No server data returned.'}<br/>
+            <span style="color:#cbd5e1;">BattleMetrics API requires a BattleMetrics API Token (add it in <strong>⚙️ Squad Settings</strong>). To analyze the map right now, paste the <strong>RustMaps URL</strong> or <code>size_seed</code> directly into <strong>📍 Base Finder</strong>.</span>
+          </div>`;
+        }
+        return false;
+      }
       const a = srv.attributes || {};
       const details = a.details || {};
 
@@ -1677,7 +1709,13 @@
 
       syncStateToServer();
       renderBattleMetricsDashboard();
-    } catch (_) {}
+      return true;
+    } catch (err) {
+      if (resultsEl) {
+        resultsEl.innerHTML = `<div style="padding:10px; color:#fca5a5;">⚠️ BattleMetrics error: ${err.message}</div>`;
+      }
+      return false;
+    }
   }
 
   function renderBattleMetricsDashboard() {
