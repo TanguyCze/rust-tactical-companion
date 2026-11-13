@@ -2160,25 +2160,30 @@
     return t.includes('god rock') || t.includes('anvil rock') || t.includes('3 wall rock') || t.includes('cave');
   }
 
-  // Weight for low-key fast-progression monuments (recycler + crates/puzzles without zerg traffic)
-  function bfFastProgWeight(typeStr) {
+  // Tier 2 progression monument weights (Blue -> Red card + Military Crates)
+  function bfTier2ProgWeight(typeStr) {
     const t = String(typeStr || '').toLowerCase();
-    if (
+    if (t.includes('water treatment') || t.includes('powerplant') || t.includes('power plant')) return 1.0;
+    if (t.includes('train yard') || t.includes('airfield')) return 0.94;
+    if (t.includes('sphere tank') || t.includes('arctic research') || t.includes('abandoned military')) return 0.88;
+    return 0;
+  }
+
+  // Tier 0/1 support monuments (Green card, early scrap/recycler, or Metro tunnel access)
+  function bfIsTier01Support(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return (
       t.includes('sewer') ||
       t.includes('satellite') ||
-      t.includes('water treatment') ||
-      t.includes('powerplant') ||
+      t.includes('supermarket') ||
+      t.includes('gas station') ||
+      t.includes('warehouse') ||
+      t.includes('junkyard') ||
       t.includes('harbor') ||
       t.includes('ferry') ||
-      t.includes('sphere tank') ||
-      t.includes('radtown')
-    ) {
-      return 1.0;
-    }
-    if (t.includes('junkyard') || t.includes('lighthouse') || t.includes('supermarket') || t.includes('gas station') || t.includes('warehouse')) {
-      return 0.72;
-    }
-    return 0;
+      t.includes('lighthouse') ||
+      t.includes('tunnel')
+    );
   }
 
   function bfIsNoBuildSource(typeStr) {
@@ -2401,9 +2406,10 @@
     const targetMons = mons.filter((m) => bfMatchesTarget(m.type, targetKey));
     const trafficMons = mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
     const allTrafficMons = mons.filter((m) => bfIsHighTraffic(m.type));
-    const progMons = mons
-      .map((m) => ({ ...m, progW: bfFastProgWeight(m.type) }))
+    const t2Mons = mons
+      .map((m) => ({ ...m, progW: bfTier2ProgWeight(m.type) }))
       .filter((m) => m.progW > 0);
+    const supportMons = mons.filter((m) => bfIsTier01Support(m.type));
     const boatHubs = mons.filter((m) => bfIsBoatHub(m.type));
     const stealthCovers = mons.filter((m) => bfIsStealthCover(m.type));
     const noBuildList = mons
@@ -2547,18 +2553,20 @@
         }
         const coverBonus = wantStealthRock && nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
 
-        // 7. Preference-independent "Under the Radar + Fast Progress" overall pick
-        let bestProgScore = 45;
+        // 7. Preference-independent "Under the Radar + Tier 2 Fast Progress" overall pick
+        // Based on Rust progression guides: 1.5–3 grids (220m–450m) from a Tier 2 monument,
+        // ideally paired with a Tier 0/1 Green-Card/Metro support stop, far from Tier 3 / Outpost zerg hubs.
+        let bestProgScore = t2Mons.length > 0 ? 0 : 50;
         let bestProgMon = null;
         let bestProgDist = Infinity;
-        for (const pm of progMons) {
+        for (const pm of t2Mons) {
           const d = Math.hypot(wx - pm.x, wy - pm.y);
           const distPts =
-            d >= 200 && d <= 520
+            d >= 220 && d <= 450
               ? 100
-              : d < 200
-                ? 65
-                : Math.max(0, 100 - ((d - 520) / (mapSize * 0.28)) * 100);
+              : d < 220
+                ? 52
+                : Math.max(0, 100 - ((d - 450) / (mapSize * 0.26)) * 100);
           const weighted = distPts * pm.progW;
           if (weighted > bestProgScore) {
             bestProgScore = weighted;
@@ -2566,6 +2574,17 @@
             bestProgDist = d;
           }
         }
+        let nearestSupport = null;
+        let supportDist = Infinity;
+        for (const sm of supportMons) {
+          const d = Math.hypot(wx - sm.x, wy - sm.y);
+          if (d < supportDist) {
+            supportDist = d;
+            nearestSupport = sm;
+          }
+        }
+        const supportBonus = nearestSupport && supportDist <= 600 ? (1 - supportDist / 600) * 8 : 0;
+
         // Separate strict low-traffic check against ALL high-traffic zerg hubs
         let stealthPenalty = 0;
         let minAllTrafficDist = Infinity;
@@ -2586,10 +2605,10 @@
         const hempDensity = hempGrid ? bfSampleDensity(hempGrid, nx, ny) : 0.5;
         const resScore = (oreDensity * 0.65 + hempDensity * 0.35) * 100;
         const edgeStealthPts = coastDist <= 460 ? 100 : Math.max(25, 100 - ((coastDist - 460) / 800) * 75);
-        const stealthCoverBonus = nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
+        const stealthCoverBonus = nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 12 : 0;
         const stealthTotal = Math.min(
           100,
-          Math.round(stealthSafety * 0.38 + bestProgScore * 0.32 + resScore * 0.20 + edgeStealthPts * 0.10 + stealthCoverBonus)
+          Math.round(stealthSafety * 0.36 + bestProgScore * 0.34 + resScore * 0.20 + edgeStealthPts * 0.10 + stealthCoverBonus + supportBonus)
         );
         if (!bestStealth || stealthTotal > bestStealth.score) {
           bestStealth = {
@@ -2602,7 +2621,9 @@
             lowTrafficScore: Math.round(stealthSafety),
             oreScore,
             targetDist: Math.round(bestProgDist),
-            targetName: bestProgMon?.type || 'Roadside / Coast',
+            targetName: bestProgMon?.type || 'No T2 on map',
+            supportDist: Math.round(supportDist),
+            supportName: nearestSupport && supportDist <= 650 ? nearestSupport.type : '',
             coastDist: Math.round(coastDist),
             boatDist: Math.round(boatDist),
             boatName: nearestBoat?.type || 'Coast',
@@ -2905,10 +2926,11 @@
               <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
             </div>
             <div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;">
-              Fast progression + low raid risk, calculated <strong>regardless of your filter preferences</strong>.
+              Tier 2 progression (1.5–3 grids off) + low raid risk, calculated <strong>regardless of your filter preferences</strong>.
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
-              <span style="color:#38bdf8;">⚡ Progress: ${s.targetName} (${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'})</span>
+              <span style="color:#38bdf8;">⚡ Tier 2: ${s.targetName} (${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'})</span>
+              ${s.supportName ? `<span style="color:#86efac;">🟢 Support: ${s.supportName} (${s.supportDist}m)</span>` : ''}
               <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
               <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
               <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
