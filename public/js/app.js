@@ -3054,7 +3054,7 @@
     // Boat Hubs & Ocean
     { match: 'fishing village', icon: '⚓', label: 'Fishing', color: '#2dd4bf', r: 5, tier: 0, rec: 0, cards: 'None (Boat Vendor)', safe: true, vend: 1 },
     { match: 'harbor', icon: '⚓', label: 'Harbor', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
-    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Spawns Free Green + (Green → Blue)', safe: false, vend: 0 },
     { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5, tier: 2, rec: 0, cards: 'Green + Blue (+ Red*)', safe: false, vend: 0 },
     // Tier 0/1 & Support Monuments
     { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
@@ -3648,9 +3648,12 @@
       return best ? { ...best, dist: Math.round(bestD), grid: bfWorldToGrid(best.x, best.y, mapSize) } : null;
     };
 
-    const greenCardMon = findNearest((t) => t.includes('supermarket') || t.includes('gas station') || t.includes('lighthouse') || t.includes('junkyard'));
+    const greenCardMon = findNearest((t) => t.includes('supermarket') || t.includes('gas station') || t.includes('lighthouse') || t.includes('junkyard') || t.includes('ferry'));
     const nearWarehouse = findNearest((t) => t.includes('warehouse'));
-    const step2 = findNearest((t) => t.includes('sewer') || t.includes('satellite') || t.includes('harbor') || t.includes('ferry') || t.includes('radtown') || t.includes('sphere tank'));
+    const usedFerryStep1 = greenCardMon && String(greenCardMon.type || '').toLowerCase().includes('ferry') && (!nearWarehouse || greenCardMon.dist <= 850 || greenCardMon.dist <= nearWarehouse.dist + 200);
+    const step2 =
+      findNearest((t) => (t.includes('sewer') || t.includes('satellite') || t.includes('harbor') || (!usedFerryStep1 && t.includes('ferry')) || t.includes('radtown') || t.includes('sphere tank'))) ||
+      findNearest((t) => t.includes('ferry'));
     const step3 =
       findNearest(
         (t) =>
@@ -3666,15 +3669,18 @@
 
     const route = [];
     if (greenCardMon && (!nearWarehouse || greenCardMon.dist <= 850 || greenCardMon.dist <= nearWarehouse.dist + 200)) {
+      const isFerryStep1 = String(greenCardMon.type || '').toLowerCase().includes('ferry');
       route.push({
-        step: '1. Green Card & Scrap',
+        step: isFerryStep1 ? '1. Green Card (+ Blue Bonus)' : '1. Green Card & Scrap',
         color: '#a3e635',
         name: greenCardMon.type,
         grid: greenCardMon.grid,
         dist: greenCardMon.dist,
         wx: greenCardMon.x,
         wy: greenCardMon.y,
-        note: 'Guaranteed Green Card desk + recycler (or farm Road Scientists along any road).'
+        note: isFerryStep1
+          ? 'Spawns FREE Green Card on-site + Green Recycler — bring 1× Fuse to immediately unlock Ferry\'s Blue Card too!'
+          : 'Guaranteed Green Card on-site + crates/recycler (or farm Road Scientists along any road).'
       });
     } else if (nearWarehouse) {
       route.push({
