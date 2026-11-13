@@ -1553,9 +1553,11 @@
     resultsEl.innerHTML = `<div style="padding:10px; font-family:var(--font-mono); color:var(--sulfur-yellow);">📡 Querying BattleMetrics API for "${query}"...</div>`;
 
     try {
-      // If numeric ID entered directly, load server telemetry
-      if (/^\d+$/.test(query.trim())) {
-        await loadBattleMetricsServerById(query.trim());
+      // Support bare Server ID OR full BattleMetrics URL (e.g. https://www.battlemetrics.com/servers/rust/28653982)
+      const bmUrlMatch = query.trim().match(/battlemetrics\.com\/servers\/(?:rust\/)?(\d+)/i);
+      const directId = bmUrlMatch ? bmUrlMatch[1] : (/^\d+$/.test(query.trim()) ? query.trim() : null);
+      if (directId) {
+        await loadBattleMetricsServerById(directId);
         resultsEl.innerHTML = '';
         return;
       }
