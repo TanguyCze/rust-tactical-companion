@@ -319,9 +319,45 @@
                   </div>
                   <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                     <button id="addCloneBtn" class="btn btn-primary btn-sm">+ Save Clones</button>
+                    <button id="toggleScannerBtn" class="btn btn-sulfur btn-sm" title="Scan Rust clone screenshots from PC or Ctrl+V">📷 Scan Screenshot</button>
                     <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
+                    <input id="scanCloneFileInput" type="file" accept="image/*" multiple style="display:none;" />
                   </div>
                 </div>
+              </div>
+
+              <!-- PC Screenshot OCR Scanner Drawer (RustBreeder-style Scan) -->
+              <div id="geneScannerPanel" class="scanner-panel" style="display:none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                  <div>
+                    <div style="font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--sulfur-yellow);">📷 RUST SCREENSHOT GENE SCANNER (IN-BROWSER OCR)</div>
+                    <div style="font-size:11.5px; color:var(--text-secondary);">Upload screenshots from your PC, drag &amp; drop, or press <kbd>Ctrl+V</kbd> after a Rust snip (<kbd>Win+Shift+S</kbd>).</div>
+                  </div>
+                  <button id="closeScannerBtn" class="btn btn-sm" type="button">✕ Close</button>
+                </div>
+
+                <div id="scannerDropZone" class="scanner-drop-zone">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center;">
+                    <button id="pickScanFilesBtn" class="btn btn-primary btn-sm" type="button">📁 Choose Image(s) from PC</button>
+                    <span style="font-size:12px; color:var(--text-secondary);">or drag &amp; drop screenshots here, or press <strong>Ctrl+V</strong> anywhere on this tab</span>
+                  </div>
+                </div>
+
+                <div id="scannerStatusMsg" style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-secondary); margin-top:8px;"></div>
+
+                <div id="scannerPreviewWrap" style="display:none; margin-top:10px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                    <span style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono);">OPTIONAL: Drag a box over clones in a large screenshot to zoom-scan that area:</span>
+                    <div style="display:flex; gap:6px;">
+                      <button id="rescanCropBtn" class="btn btn-sulfur btn-sm" type="button" style="display:none;">🔍 Scan Crop Area</button>
+                      <button id="rescanFullBtn" class="btn btn-sm" type="button">🔍 Re-Scan Full Image</button>
+                      <button id="clearCropBtn" class="btn btn-sm" type="button" style="display:none;">Clear Box</button>
+                    </div>
+                  </div>
+                  <canvas id="geneScannerCanvas" class="scanner-canvas"></canvas>
+                </div>
+
+                <div id="scanResultsContainer" style="margin-top:10px;"></div>
               </div>
 
               <!-- Solver Options Row (RustBreeder style) -->

@@ -2026,9 +2026,565 @@
     document.getElementById('runGeneticsSolverBtn')?.addEventListener('click', solveBestCrossbreed);
     document.getElementById('calcFertilizerBtn')?.addEventListener('click', calculateFertilizerScrap);
 
+    initScreenshotScanner();
     renderSavedClonesAndTeas();
     solveBestCrossbreed();
     calculateFertilizerScrap();
+  }
+
+  // =========================================================================
+  // MODULE 4B: IN-BROWSER RUST SCREENSHOT GENE SCANNER (TESSERACT OCR)
+  // =========================================================================
+  let ocrWorkerPromise = null;
+  let scannerActiveImage = null;
+  let scannerCropRect = null; // { x, y, w, h } in original image pixels
+  let scannedClonesQueue = [];
+
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      if (window.Tesseract) {
+        resolve();
+        return;
+      }
+      const existing = document.querySelector(`script[src="${src}"]`);
+      if (existing) {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error('Failed to load OCR library')), { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Tesseract.js from CDN'));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureOcrWorker(setStatus) {
+    if (!ocrWorkerPromise) {
+      ocrWorkerPromise = (async () => {
+        setStatus('⏳ Loading in-browser OCR engine (first run downloads ~2MB)...');
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+        if (!window.Tesseract) throw new Error('Tesseract failed to initialize.');
+        const worker = await window.Tesseract.createWorker('eng');
+        await worker.setParameters({ tessedit_char_whitelist: 'GYHWX' });
+        return worker;
+      })().catch((err) => {
+        ocrWorkerPromise = null;
+        throw err;
+      });
+    }
+    return ocrWorkerPromise;
+  }
+
+  function extractGenesFromOcrText(rawText, isTightStrip = false) {
+    const found = [];
+    const upper = String(rawText || '').toUpperCase();
+    const lines = upper.split(/\r?\n/);
+
+    for (const line of lines) {
+      const compact = line.replace(/[^GYHWX]/g, '');
+      if (isTightStrip && compact.length === 6) {
+        found.push(compact);
+        continue;
+      }
+      // Match 6 consecutive gene chars or 6 single spaced/hyphenated gene chars
+      const directMatches = line.match(/[GYHWX]{6}/g) || [];
+      directMatches.forEach((m) => found.push(m));
+
+      const spacedMatches = line.match(/\b[GYHWX](?:[\s\-|/]+[GYHWX]){5}\b/g) || [];
+      spacedMatches.forEach((m) => {
+        const cleaned = m.replace(/[^GYHWX]/g, '');
+        if (cleaned.length === 6) found.push(cleaned);
+      });
+    }
+    return Array.from(new Set(found));
+  }
+
+  function isRustGeneBadgePixel(r, g, b) {
+    const isGreen = g >= 72 && g > r + 12 && g - b >= 24;
+    const isRed = r >= 92 && r > g + 22 && r - b >= 22;
+    return isGreen || isRed;
+  }
+
+  function findRustBadgeStripRegions(srcCanvas) {
+    const maxSampleW = 1280;
+    const scale = srcCanvas.width > maxSampleW ? maxSampleW / srcCanvas.width : 1;
+    const sw = Math.max(1, Math.round(srcCanvas.width * scale));
+    const sh = Math.max(1, Math.round(srcCanvas.height * scale));
+
+    const work = document.createElement('canvas');
+    work.width = sw;
+    work.height = sh;
+    const wctx = work.getContext('2d');
+    wctx.drawImage(srcCanvas, 0, 0, sw, sh);
+    const data = wctx.getImageData(0, 0, sw, sh).data;
+
+    // Detect horizontal runs containing clusters of green/red badges
+    const rowRuns = [];
+    for (let y = 0; y < sh; y += 2) {
+      let runStart = -1;
+      let gap = 0;
+      let badgeHits = 0;
+      for (let x = 0; x < sw; x++) {
+        const idx = (y * sw + x) * 4;
+        const hit = isRustGeneBadgePixel(data[idx], data[idx + 1], data[idx + 2]);
+        if (hit) {
+          if (runStart < 0) runStart = x;
+          gap = 0;
+          badgeHits++;
+        } else if (runStart >= 0) {
+          gap++;
+          if (gap > Math.max(18, Math.round(sw * 0.025))) {
+            const runEnd = x - gap;
+            const runW = runEnd - runStart;
+            if (runW >= 55 && badgeHits >= 20) {
+              rowRuns.push({ y, x1: runStart, x2: runEnd });
+            }
+            runStart = -1;
+            gap = 0;
+            badgeHits = 0;
+          }
+        }
+      }
+      if (runStart >= 0) {
+        const runEnd = sw - gap;
+        const runW = runEnd - runStart;
+        if (runW >= 55 && badgeHits >= 20) {
+          rowRuns.push({ y, x1: runStart, x2: runEnd });
+        }
+      }
+    }
+
+    // Merge consecutive overlapping horizontal runs into candidate 6-circle boxes
+    const boxes = [];
+    for (const r of rowRuns) {
+      const match = boxes.find(
+        (b) => r.y - b.y2 <= 8 && Math.min(r.x2, b.x2) - Math.max(r.x1, b.x1) > Math.min(r.x2 - r.x1, b.x2 - b.x1) * 0.45
+      );
+      if (match) {
+        match.x1 = Math.min(match.x1, r.x1);
+        match.x2 = Math.max(match.x2, r.x2);
+        match.y2 = r.y;
+      } else {
+        boxes.push({ x1: r.x1, x2: r.x2, y1: r.y, y2: r.y });
+      }
+    }
+
+    const invScale = 1 / scale;
+    return boxes
+      .map((b) => {
+        const bw = b.x2 - b.x1;
+        const bh = Math.max(10, b.y2 - b.y1 + 2);
+        const aspect = bw / bh;
+        return { bw, bh, aspect, x: b.x1, y: b.y1 };
+      })
+      .filter((b) => b.bh >= 10 && b.bh <= sh * 0.18 && b.aspect >= 2.8 && b.aspect <= 12.5)
+      .sort((a, b) => b.bw * b.bh - a.bw * a.bh)
+      .slice(0, 12)
+      .map((b) => {
+        const padX = Math.round(b.bh * 0.45 * invScale);
+        const padY = Math.round(b.bh * 0.45 * invScale);
+        const rx = Math.max(0, Math.round(b.x * invScale) - padX);
+        const ry = Math.max(0, Math.round(b.y * invScale) - padY);
+        const rw = Math.min(srcCanvas.width - rx, Math.round(b.bw * invScale) + padX * 2);
+        const rh = Math.min(srcCanvas.height - ry, Math.round(b.bh * invScale) + padY * 2);
+        return { x: rx, y: ry, w: rw, h: rh };
+      });
+  }
+
+  function buildOcrPrepCanvas(srcCanvas, rect, mode = 'badgeWhite') {
+    const rw = Math.max(1, Math.round(rect.w));
+    const rh = Math.max(1, Math.round(rect.h));
+    const targetScale = Math.max(1, Math.min(3.5, Math.round(140 / Math.max(16, rh))));
+    const out = document.createElement('canvas');
+    out.width = Math.round(rw * targetScale);
+    out.height = Math.round(rh * targetScale);
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = true;
+    octx.drawImage(srcCanvas, rect.x, rect.y, rw, rh, 0, 0, out.width, out.height);
+
+    const imgData = octx.getImageData(0, 0, out.width, out.height);
+    const d = imgData.data;
+    const w = out.width;
+    const h = out.height;
+
+    if (mode === 'badgeWhite') {
+      // Keep bright white letters that sit inside green/red badge neighborhoods; paint rest white
+      const badgeMask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const p = i * 4;
+        if (isRustGeneBadgePixel(d[p], d[p + 1], d[p + 2])) badgeMask[i] = 1;
+      }
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          const p = i * 4;
+          const luma = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
+          let nearBadge = badgeMask[i] === 1;
+          if (!nearBadge && luma >= 165) {
+            const rad = Math.max(3, Math.round(h * 0.14));
+            for (let dy = -rad; dy <= rad && !nearBadge; dy += 2) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -rad; dx <= rad; dx += 2) {
+                const nx = x + dx;
+                if (nx >= 0 && nx < w && badgeMask[ny * w + nx]) {
+                  nearBadge = true;
+                  break;
+                }
+              }
+            }
+          }
+          const ink = nearBadge && luma >= 168 ? 0 : 255;
+          d[p] = ink;
+          d[p + 1] = ink;
+          d[p + 2] = ink;
+          d[p + 3] = 255;
+        }
+      }
+    } else {
+      // High-contrast inverted luminance pass for white-on-dark tooltips or black-on-white lists
+      for (let i = 0; i < d.length; i += 4) {
+        const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        const ink = luma >= 170 ? 0 : 255;
+        d[i] = ink;
+        d[i + 1] = ink;
+        d[i + 2] = ink;
+        d[i + 3] = 255;
+      }
+    }
+    octx.putImageData(imgData, 0, 0);
+    return out;
+  }
+
+  function renderScannedClonesList() {
+    const out = document.getElementById('scanResultsContainer');
+    if (!out) return;
+    if (!scannedClonesQueue.length) {
+      out.innerHTML = '';
+      return;
+    }
+
+    out.innerHTML = `
+      <div style="background:rgba(0,0,0,0.28); border:1px solid var(--border-subtle); border-radius:6px; padding:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+          <span style="font-family:var(--font-mono); font-size:11.5px; color:#4ade80; font-weight:700;">
+            ✅ DETECTED CLONES (${scannedClonesQueue.length}) — REVIEW / EDIT IF NEEDED:
+          </span>
+          <div style="display:flex; gap:6px;">
+            <button id="addAllScannedBtn" class="btn btn-primary btn-sm" type="button">+ Add All to Clones</button>
+            <button id="clearScannedQueueBtn" class="btn btn-sm" type="button">Clear List</button>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          ${scannedClonesQueue
+            .map(
+              (genes, idx) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:var(--bg-card); padding:6px 10px; border-radius:5px; border:1px solid var(--border-subtle);">
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <input type="text" maxlength="6" class="input scanned-edit-input" data-sidx="${idx}" value="${genes}" style="width:94px; font-family:var(--font-mono); font-weight:700; text-transform:uppercase; padding:4px 6px; letter-spacing:0.1em;" />
+                <span class="scanned-circles-preview">${/^[GYHWX]{6}$/.test(genes) ? formatGenesCircles(genes) : '<span style="color:#f87171; font-size:11px;">Need 6 G/Y/H/W/X genes</span>'}</span>
+              </div>
+              <button class="btn btn-sm remove-scanned-btn" data-sidx="${idx}" type="button">✕</button>
+            </div>
+          `
+            )
+            .join('')}
+        </div>
+      </div>
+    `;
+
+    out.querySelectorAll('.scanned-edit-input').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const i = parseInt(inp.getAttribute('data-sidx'), 10);
+        const val = inp.value.toUpperCase().replace(/[^GYHWX]/g, '').slice(0, 6);
+        inp.value = val;
+        scannedClonesQueue[i] = val;
+        const preview = inp.parentElement?.querySelector('.scanned-circles-preview');
+        if (preview) {
+          preview.innerHTML = /^[GYHWX]{6}$/.test(val)
+            ? formatGenesCircles(val)
+            : '<span style="color:#f87171; font-size:11px;">Need 6 G/Y/H/W/X genes</span>';
+        }
+      });
+    });
+
+    out.querySelectorAll('.remove-scanned-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const i = parseInt(btn.getAttribute('data-sidx'), 10);
+        scannedClonesQueue.splice(i, 1);
+        renderScannedClonesList();
+      });
+    });
+
+    document.getElementById('clearScannedQueueBtn')?.addEventListener('click', () => {
+      scannedClonesQueue = [];
+      renderScannedClonesList();
+    });
+
+    document.getElementById('addAllScannedBtn')?.addEventListener('click', () => {
+      const valid = scannedClonesQueue.filter((g) => /^[GYHWX]{6}$/.test(g));
+      if (!valid.length) {
+        alert('No valid 6-gene sequences in the scanned list.');
+        return;
+      }
+      const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
+      valid.forEach((genes, i) => {
+        appState.savedClones.unshift({
+          id: 'c-' + Date.now() + '-' + i,
+          crop,
+          genes
+        });
+      });
+      scannedClonesQueue = [];
+      renderScannedClonesList();
+      syncStateToServer();
+      solveBestCrossbreed();
+    });
+  }
+
+  function drawScannerCanvasPreview() {
+    const canvas = document.getElementById('geneScannerCanvas');
+    const wrap = document.getElementById('scannerPreviewWrap');
+    const rescanCropBtn = document.getElementById('rescanCropBtn');
+    const clearCropBtn = document.getElementById('clearCropBtn');
+    if (!canvas || !wrap || !scannerActiveImage) return;
+
+    wrap.style.display = 'block';
+    canvas.width = scannerActiveImage.naturalWidth || scannerActiveImage.width;
+    canvas.height = scannerActiveImage.naturalHeight || scannerActiveImage.height;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(scannerActiveImage, 0, 0);
+
+    if (scannerCropRect && scannerCropRect.w > 8 && scannerCropRect.h > 8) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(
+        scannerActiveImage,
+        scannerCropRect.x,
+        scannerCropRect.y,
+        scannerCropRect.w,
+        scannerCropRect.h,
+        scannerCropRect.x,
+        scannerCropRect.y,
+        scannerCropRect.w,
+        scannerCropRect.h
+      );
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = Math.max(2, Math.round(canvas.width / 350));
+      ctx.setLineDash([8, 5]);
+      ctx.strokeRect(scannerCropRect.x, scannerCropRect.y, scannerCropRect.w, scannerCropRect.h);
+      ctx.restore();
+      if (rescanCropBtn) rescanCropBtn.style.display = 'inline-flex';
+      if (clearCropBtn) clearCropBtn.style.display = 'inline-flex';
+    } else {
+      if (rescanCropBtn) rescanCropBtn.style.display = 'none';
+      if (clearCropBtn) clearCropBtn.style.display = 'none';
+    }
+  }
+
+  async function scanLoadedImage(imgEl, cropRect = null, appendToExisting = false) {
+    const statusEl = document.getElementById('scannerStatusMsg');
+    const setStatus = (msg) => {
+      if (statusEl) statusEl.textContent = msg;
+    };
+
+    try {
+      const worker = await ensureOcrWorker(setStatus);
+      setStatus('🔍 Scanning screenshot for Rust plant gene circles...');
+
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = imgEl.naturalWidth || imgEl.width;
+      fullCanvas.height = imgEl.naturalHeight || imgEl.height;
+      fullCanvas.getContext('2d').drawImage(imgEl, 0, 0);
+
+      const activeRect = cropRect && cropRect.w > 12 && cropRect.h > 12
+        ? cropRect
+        : { x: 0, y: 0, w: fullCanvas.width, h: fullCanvas.height };
+
+      const targetCanvas = document.createElement('canvas');
+      targetCanvas.width = Math.round(activeRect.w);
+      targetCanvas.height = Math.round(activeRect.h);
+      targetCanvas
+        .getContext('2d')
+        .drawImage(fullCanvas, activeRect.x, activeRect.y, activeRect.w, activeRect.h, 0, 0, targetCanvas.width, targetCanvas.height);
+
+      const detected = new Set(appendToExisting ? scannedClonesQueue : []);
+
+      // 1. Scan detected green/red Rust gene circle strips first (fast & clean)
+      const stripBoxes = findRustBadgeStripRegions(targetCanvas);
+      for (let i = 0; i < stripBoxes.length; i++) {
+        setStatus(`🔍 Scanning badge row ${i + 1}/${stripBoxes.length}...`);
+        const prep = buildOcrPrepCanvas(targetCanvas, stripBoxes[i], 'badgeWhite');
+        const res = await worker.recognize(prep);
+        extractGenesFromOcrText(res?.data?.text, true).forEach((g) => detected.add(g));
+      }
+
+      // 2. Fallback / broad scan on cropped or whole image (handles plain text tables or faint badges)
+      if (detected.size === 0 || cropRect) {
+        setStatus('🔍 Running full-area gene OCR pass...');
+        const wholeRect = { x: 0, y: 0, w: targetCanvas.width, h: targetCanvas.height };
+        const badgeFull = buildOcrPrepCanvas(targetCanvas, wholeRect, 'badgeWhite');
+        const res1 = await worker.recognize(badgeFull);
+        extractGenesFromOcrText(res1?.data?.text, false).forEach((g) => detected.add(g));
+
+        if (detected.size === 0) {
+          const grayFull = buildOcrPrepCanvas(targetCanvas, wholeRect, 'invGray');
+          const res2 = await worker.recognize(grayFull);
+          extractGenesFromOcrText(res2?.data?.text, false).forEach((g) => detected.add(g));
+        }
+      }
+
+      scannedClonesQueue = Array.from(detected);
+      renderScannedClonesList();
+
+      if (scannedClonesQueue.length > 0) {
+        setStatus(`✅ Found ${scannedClonesQueue.length} clone sequence(s)! Review below and click "+ Add All to Clones".`);
+      } else {
+        setStatus('⚠️ No 6-gene code detected cleanly. Drag a tight yellow box right over the 6 gene circles above and click "Scan Crop Area".');
+      }
+    } catch (err) {
+      setStatus(`❌ Scan failed: ${err?.message || err}. Make sure internet access can load Tesseract OCR or drag a smaller crop.`);
+    }
+  }
+
+  function loadImageFileToScanner(file, appendQueue = false) {
+    return new Promise((resolve) => {
+      if (!file || !file.type.startsWith('image/')) {
+        resolve();
+        return;
+      }
+      const panel = document.getElementById('geneScannerPanel');
+      if (panel) panel.style.display = 'block';
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = async () => {
+          scannerActiveImage = img;
+          scannerCropRect = null;
+          drawScannerCanvasPreview();
+          await scanLoadedImage(img, null, appendQueue);
+          resolve();
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function initScreenshotScanner() {
+    const panel = document.getElementById('geneScannerPanel');
+    const toggleBtn = document.getElementById('toggleScannerBtn');
+    const closeBtn = document.getElementById('closeScannerBtn');
+    const fileInput = document.getElementById('scanCloneFileInput');
+    const pickBtn = document.getElementById('pickScanFilesBtn');
+    const dropZone = document.getElementById('scannerDropZone');
+    const canvas = document.getElementById('geneScannerCanvas');
+
+    toggleBtn?.addEventListener('click', () => {
+      if (!panel) return;
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+    closeBtn?.addEventListener('click', () => {
+      if (panel) panel.style.display = 'none';
+    });
+    pickBtn?.addEventListener('click', () => fileInput?.click());
+
+    const handleFiles = async (fileList) => {
+      const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'));
+      if (!files.length) return;
+      for (let i = 0; i < files.length; i++) {
+        await loadImageFileToScanner(files[i], i > 0);
+      }
+    };
+
+    fileInput?.addEventListener('change', async (e) => {
+      await handleFiles(e.target.files);
+      fileInput.value = '';
+    });
+
+    if (dropZone) {
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        await handleFiles(e.dataTransfer?.files);
+      });
+    }
+
+    // Paste Rust Win+Shift+S screenshot directly anywhere while on Genetics tab
+    document.addEventListener('paste', async (e) => {
+      if (!document.getElementById('tab-genetics')?.classList.contains('active')) return;
+      const items = Array.from(e.clipboardData?.items || []);
+      const imgItem = items.find((it) => it.type.startsWith('image/'));
+      if (!imgItem) return;
+      e.preventDefault();
+      const file = imgItem.getAsFile();
+      if (file) await loadImageFileToScanner(file, scannedClonesQueue.length > 0);
+    });
+
+    // Interactive drag-crop on scanner canvas
+    if (canvas) {
+      let dragging = false;
+      let startPt = null;
+      const toCanvasCoords = (evt) => {
+        const r = canvas.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(canvas.width, ((evt.clientX - r.left) / r.width) * canvas.width)),
+          y: Math.max(0, Math.min(canvas.height, ((evt.clientY - r.top) / r.height) * canvas.height))
+        };
+      };
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!scannerActiveImage) return;
+        dragging = true;
+        startPt = toCanvasCoords(e);
+        canvas.setPointerCapture?.(e.pointerId);
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!dragging || !startPt) return;
+        const cur = toCanvasCoords(e);
+        scannerCropRect = {
+          x: Math.min(startPt.x, cur.x),
+          y: Math.min(startPt.y, cur.y),
+          w: Math.abs(cur.x - startPt.x),
+          h: Math.abs(cur.y - startPt.y)
+        };
+        drawScannerCanvasPreview();
+      });
+      canvas.addEventListener('pointerup', () => {
+        dragging = false;
+        if (scannerCropRect && (scannerCropRect.w < 12 || scannerCropRect.h < 12)) {
+          scannerCropRect = null;
+          drawScannerCanvasPreview();
+        }
+      });
+    }
+
+    document.getElementById('rescanCropBtn')?.addEventListener('click', () => {
+      if (scannerActiveImage && scannerCropRect) {
+        scanLoadedImage(scannerActiveImage, scannerCropRect, true);
+      }
+    });
+    document.getElementById('rescanFullBtn')?.addEventListener('click', () => {
+      if (scannerActiveImage) {
+        scannerCropRect = null;
+        drawScannerCanvasPreview();
+        scanLoadedImage(scannerActiveImage, null, false);
+      }
+    });
+    document.getElementById('clearCropBtn')?.addEventListener('click', () => {
+      scannerCropRect = null;
+      drawScannerCanvasPreview();
+    });
   }
 
   // =========================================================================

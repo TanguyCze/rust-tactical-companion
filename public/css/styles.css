@@ -951,6 +951,39 @@ body::before {
   background: rgba(234, 179, 8, 0.10) !important;
 }
 
+.scanner-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(234, 179, 8, 0.45);
+}
+
+.scanner-drop-zone {
+  padding: 14px;
+  border: 2px dashed rgba(234, 179, 8, 0.45);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.scanner-drop-zone.drag-over {
+  border-color: #4ade80;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.scanner-canvas {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  cursor: crosshair;
+  display: block;
+  margin: 0 auto;
+  background: #000;
+}
+
 /* ==========================================================================
    TAB 5: BATTLEMETRICS RAID INTEL & 24H HEATMAP
    ========================================================================== */
