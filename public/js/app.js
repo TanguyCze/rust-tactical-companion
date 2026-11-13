@@ -2345,19 +2345,34 @@
     });
   }
 
+  let liveMediaStream = null;
+  let liveScanTimer = null;
+  let liveScanBusy = false;
+  let lastLiveFrameSig = '';
+  let liveAddedTotal = 0;
+
+  function getScannerSourceDimensions(src) {
+    if (!src) return { w: 0, h: 0 };
+    return {
+      w: src.videoWidth || src.naturalWidth || src.width || 0,
+      h: src.videoHeight || src.naturalHeight || src.height || 0
+    };
+  }
+
   function drawScannerCanvasPreview() {
     const canvas = document.getElementById('geneScannerCanvas');
     const wrap = document.getElementById('scannerPreviewWrap');
     const rescanCropBtn = document.getElementById('rescanCropBtn');
     const clearCropBtn = document.getElementById('clearCropBtn');
-    if (!canvas || !wrap || !scannerActiveImage) return;
+    const dims = getScannerSourceDimensions(scannerActiveImage);
+    if (!canvas || !wrap || !scannerActiveImage || !dims.w || !dims.h) return;
 
     wrap.style.display = 'block';
-    canvas.width = scannerActiveImage.naturalWidth || scannerActiveImage.width;
-    canvas.height = scannerActiveImage.naturalHeight || scannerActiveImage.height;
+    canvas.width = dims.w;
+    canvas.height = dims.h;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(scannerActiveImage, 0, 0);
+    ctx.drawImage(scannerActiveImage, 0, 0, dims.w, dims.h);
 
     if (scannerCropRect && scannerCropRect.w > 8 && scannerCropRect.h > 8) {
       ctx.save();
@@ -2387,20 +2402,42 @@
     }
   }
 
-  async function scanLoadedImage(imgEl, cropRect = null, appendToExisting = false) {
+  function computeCanvasRegionSig(canvas, rect) {
+    const ctx = canvas.getContext('2d');
+    const rx = Math.max(0, Math.round(rect.x));
+    const ry = Math.max(0, Math.round(rect.y));
+    const rw = Math.max(1, Math.min(canvas.width - rx, Math.round(rect.w)));
+    const rh = Math.max(1, Math.min(canvas.height - ry, Math.round(rect.h)));
+    const data = ctx.getImageData(rx, ry, rw, rh).data;
+    const step = Math.max(1, Math.floor((rw * rh) / 260));
+    let hash = 2166136261;
+    for (let i = 0; i < rw * rh; i += step) {
+      const p = i * 4;
+      hash ^= ((data[p] >> 4) << 8) | ((data[p + 1] >> 4) << 4) | (data[p + 2] >> 4);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${rw}x${rh}:${hash >>> 0}`;
+  }
+
+  async function scanLoadedImage(srcEl, cropRect = null, appendToExisting = false, opts = {}) {
     const statusEl = document.getElementById('scannerStatusMsg');
     const setStatus = (msg) => {
       if (statusEl) statusEl.textContent = msg;
     };
+    const isLive = Boolean(opts.isLive);
+    const autoAddLive = Boolean(opts.autoAddLive);
 
     try {
+      const dims = getScannerSourceDimensions(srcEl);
+      if (!dims.w || !dims.h) return;
+
       const worker = await ensureOcrWorker(setStatus);
-      setStatus('🔍 Scanning screenshot for Rust plant gene circles...');
+      if (!isLive) setStatus('🔍 Scanning screenshot for Rust plant gene circles...');
 
       const fullCanvas = document.createElement('canvas');
-      fullCanvas.width = imgEl.naturalWidth || imgEl.width;
-      fullCanvas.height = imgEl.naturalHeight || imgEl.height;
-      fullCanvas.getContext('2d').drawImage(imgEl, 0, 0);
+      fullCanvas.width = dims.w;
+      fullCanvas.height = dims.h;
+      fullCanvas.getContext('2d').drawImage(srcEl, 0, 0, dims.w, dims.h);
 
       const activeRect = cropRect && cropRect.w > 12 && cropRect.h > 12
         ? cropRect
@@ -2413,43 +2450,186 @@
         .getContext('2d')
         .drawImage(fullCanvas, activeRect.x, activeRect.y, activeRect.w, activeRect.h, 0, 0, targetCanvas.width, targetCanvas.height);
 
-      const detected = new Set(appendToExisting ? scannedClonesQueue : []);
-
-      // 1. Scan detected green/red Rust gene circle strips first (fast & clean)
+      // 1. Locate green/red Rust gene circle rows
       const stripBoxes = findRustBadgeStripRegions(targetCanvas);
-      for (let i = 0; i < stripBoxes.length; i++) {
-        setStatus(`🔍 Scanning badge row ${i + 1}/${stripBoxes.length}...`);
-        const prep = buildOcrPrepCanvas(targetCanvas, stripBoxes[i], 'badgeWhite');
-        const res = await worker.recognize(prep);
-        extractGenesFromOcrText(res?.data?.text, true).forEach((g) => detected.add(g));
+      if (isLive) {
+        if (!stripBoxes.length && !cropRect) {
+          return;
+        }
+        const sigTarget = stripBoxes.length ? stripBoxes[0] : { x: 0, y: 0, w: targetCanvas.width, h: targetCanvas.height };
+        const sig = `${stripBoxes.length}|${computeCanvasRegionSig(targetCanvas, sigTarget)}`;
+        if (sig === lastLiveFrameSig) {
+          return;
+        }
+        lastLiveFrameSig = sig;
       }
 
-      // 2. Fallback / broad scan on cropped or whole image (handles plain text tables or faint badges)
-      if (detected.size === 0 || cropRect) {
-        setStatus('🔍 Running full-area gene OCR pass...');
+      const newlyFound = [];
+
+      for (let i = 0; i < stripBoxes.length; i++) {
+        if (!isLive) setStatus(`🔍 Scanning badge row ${i + 1}/${stripBoxes.length}...`);
+        const prep = buildOcrPrepCanvas(targetCanvas, stripBoxes[i], 'badgeWhite');
+        const res = await worker.recognize(prep);
+        extractGenesFromOcrText(res?.data?.text, true).forEach((g) => newlyFound.push(g));
+      }
+
+      // 2. Fallback / broad scan on cropped region or static screenshot
+      if (newlyFound.length === 0 && (cropRect || !isLive)) {
+        if (!isLive) setStatus('🔍 Running full-area gene OCR pass...');
         const wholeRect = { x: 0, y: 0, w: targetCanvas.width, h: targetCanvas.height };
         const badgeFull = buildOcrPrepCanvas(targetCanvas, wholeRect, 'badgeWhite');
         const res1 = await worker.recognize(badgeFull);
-        extractGenesFromOcrText(res1?.data?.text, false).forEach((g) => detected.add(g));
+        extractGenesFromOcrText(res1?.data?.text, false).forEach((g) => newlyFound.push(g));
 
-        if (detected.size === 0) {
+        if (newlyFound.length === 0 && !isLive) {
           const grayFull = buildOcrPrepCanvas(targetCanvas, wholeRect, 'invGray');
           const res2 = await worker.recognize(grayFull);
-          extractGenesFromOcrText(res2?.data?.text, false).forEach((g) => detected.add(g));
+          extractGenesFromOcrText(res2?.data?.text, false).forEach((g) => newlyFound.push(g));
         }
       }
 
+      const uniqueNew = Array.from(new Set(newlyFound)).filter((g) => /^[GYHWX]{6}$/.test(g));
+
+      if (isLive && autoAddLive) {
+        if (uniqueNew.length > 0) {
+          const crop = document.getElementById('cloneCropSelect')?.value || 'Hemp';
+          let addedNow = 0;
+          uniqueNew.forEach((genes, i) => {
+            if (!appState.savedClones.some((c) => c.crop === crop && c.genes === genes)) {
+              appState.savedClones.unshift({
+                id: 'c-' + Date.now() + '-' + i,
+                crop,
+                genes
+              });
+              addedNow++;
+              liveAddedTotal++;
+            }
+          });
+          if (addedNow > 0) {
+            playAlertSound('urgent');
+            syncStateToServer();
+            solveBestCrossbreed();
+            setStatus(`🟢 LIVE: Added ${uniqueNew.join(', ')} (${liveAddedTotal} new clone${liveAddedTotal > 1 ? 's' : ''} scanned this session)! Keep clicking clones in Rust...`);
+          }
+        }
+        return;
+      }
+
+      const detected = new Set(appendToExisting ? scannedClonesQueue : []);
+      uniqueNew.forEach((g) => detected.add(g));
       scannedClonesQueue = Array.from(detected);
       renderScannedClonesList();
 
-      if (scannedClonesQueue.length > 0) {
-        setStatus(`✅ Found ${scannedClonesQueue.length} clone sequence(s)! Review below and click "+ Add All to Clones".`);
-      } else {
-        setStatus('⚠️ No 6-gene code detected cleanly. Drag a tight yellow box right over the 6 gene circles above and click "Scan Crop Area".');
+      if (!isLive) {
+        if (scannedClonesQueue.length > 0) {
+          setStatus(`✅ Found ${scannedClonesQueue.length} clone sequence(s)! Review below and click "+ Add All to Clones".`);
+        } else {
+          setStatus('⚠️ No 6-gene code detected cleanly. Drag a tight yellow box right over the 6 gene circles above and click "Scan Box Now".');
+        }
       }
     } catch (err) {
       setStatus(`❌ Scan failed: ${err?.message || err}. Make sure internet access can load Tesseract OCR or drag a smaller crop.`);
     }
+  }
+
+  function stopLiveRustScan() {
+    if (liveScanTimer) {
+      clearInterval(liveScanTimer);
+      liveScanTimer = null;
+    }
+    if (liveMediaStream) {
+      liveMediaStream.getTracks().forEach((t) => t.stop());
+      liveMediaStream = null;
+    }
+    liveScanBusy = false;
+    const video = document.getElementById('liveScanVideo');
+    if (video) video.srcObject = null;
+
+    const startBtn = document.getElementById('liveScanStartBtn');
+    const stopBtn = document.getElementById('liveScanStopBtn');
+    const badge = document.getElementById('liveScanBadge');
+    const statusEl = document.getElementById('scannerStatusMsg');
+    if (startBtn) startBtn.style.display = 'inline-flex';
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+    if (statusEl && statusEl.textContent.includes('LIVE')) {
+      statusEl.textContent = `⏹ Live Rust scan stopped (${liveAddedTotal} new clone${liveAddedTotal === 1 ? '' : 's'} imported this session).`;
+    }
+  }
+
+  async function startLiveRustScan() {
+    const panel = document.getElementById('geneScannerPanel');
+    if (panel) panel.style.display = 'block';
+    const statusEl = document.getElementById('scannerStatusMsg');
+    const setStatus = (msg) => {
+      if (statusEl) statusEl.textContent = msg;
+    };
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      setStatus('❌ Screen Capture API is unavailable here. Open via HTTPS or http://localhost (Chrome / Edge / Firefox).');
+      return;
+    }
+
+    stopLiveRustScan();
+    liveAddedTotal = 0;
+    lastLiveFrameSig = '';
+
+    try {
+      setStatus('🪟 Pick your Rust game window (or monitor) in the browser prompt...');
+      liveMediaStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'never', frameRate: { ideal: 10, max: 15 } },
+        audio: false
+      });
+    } catch (err) {
+      setStatus(`⚠️ Window share cancelled: ${err?.message || 'Permission declined'}`);
+      return;
+    }
+
+    const video = document.getElementById('liveScanVideo');
+    if (!video) return;
+    video.srcObject = liveMediaStream;
+    try {
+      await video.play();
+    } catch (_) {}
+
+    const videoTrack = liveMediaStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.addEventListener('ended', stopLiveRustScan, { once: true });
+    }
+
+    // Show controls & warm up OCR worker
+    const startBtn = document.getElementById('liveScanStartBtn');
+    const stopBtn = document.getElementById('liveScanStopBtn');
+    const badge = document.getElementById('liveScanBadge');
+    if (startBtn) startBtn.style.display = 'none';
+    if (stopBtn) stopBtn.style.display = 'inline-flex';
+    if (badge) badge.style.display = 'inline-flex';
+
+    try {
+      await ensureOcrWorker(setStatus);
+    } catch (err) {
+      stopLiveRustScan();
+      setStatus(`❌ Failed to load OCR engine: ${err?.message || err}`);
+      return;
+    }
+
+    scannerActiveImage = video;
+    scannerCropRect = null;
+    drawScannerCanvasPreview();
+    setStatus('🔴 LIVE: Tab into Rust and click through your clones in your inventory/box — new clones auto-import with a beep!');
+
+    liveScanTimer = setInterval(async () => {
+      if (!liveMediaStream || liveScanBusy || video.readyState < 2) return;
+      liveScanBusy = true;
+      try {
+        scannerActiveImage = video;
+        drawScannerCanvasPreview();
+        const autoAddLive = Boolean(document.getElementById('liveScanAutoAddCb')?.checked ?? true);
+        await scanLoadedImage(video, scannerCropRect, true, { isLive: true, autoAddLive });
+      } finally {
+        liveScanBusy = false;
+      }
+    }, 700);
   }
 
   function loadImageFileToScanner(file, appendQueue = false) {
@@ -2458,6 +2638,7 @@
         resolve();
         return;
       }
+      stopLiveRustScan();
       const panel = document.getElementById('geneScannerPanel');
       if (panel) panel.style.display = 'block';
 
@@ -2480,6 +2661,9 @@
   function initScreenshotScanner() {
     const panel = document.getElementById('geneScannerPanel');
     const toggleBtn = document.getElementById('toggleScannerBtn');
+    const liveToggleBtn = document.getElementById('liveScanToggleBtn');
+    const liveStartBtn = document.getElementById('liveScanStartBtn');
+    const liveStopBtn = document.getElementById('liveScanStopBtn');
     const closeBtn = document.getElementById('closeScannerBtn');
     const fileInput = document.getElementById('scanCloneFileInput');
     const pickBtn = document.getElementById('pickScanFilesBtn');
@@ -2490,7 +2674,14 @@
       if (!panel) return;
       panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     });
+    liveToggleBtn?.addEventListener('click', () => {
+      if (panel) panel.style.display = 'block';
+      startLiveRustScan();
+    });
+    liveStartBtn?.addEventListener('click', startLiveRustScan);
+    liveStopBtn?.addEventListener('click', stopLiveRustScan);
     closeBtn?.addEventListener('click', () => {
+      stopLiveRustScan();
       if (panel) panel.style.display = 'none';
     });
     pickBtn?.addEventListener('click', () => fileInput?.click());
@@ -2571,18 +2762,27 @@
 
     document.getElementById('rescanCropBtn')?.addEventListener('click', () => {
       if (scannerActiveImage && scannerCropRect) {
-        scanLoadedImage(scannerActiveImage, scannerCropRect, true);
+        lastLiveFrameSig = '';
+        scanLoadedImage(scannerActiveImage, scannerCropRect, true, {
+          isLive: Boolean(liveMediaStream),
+          autoAddLive: Boolean(liveMediaStream && document.getElementById('liveScanAutoAddCb')?.checked)
+        });
       }
     });
     document.getElementById('rescanFullBtn')?.addEventListener('click', () => {
       if (scannerActiveImage) {
         scannerCropRect = null;
+        lastLiveFrameSig = '';
         drawScannerCanvasPreview();
-        scanLoadedImage(scannerActiveImage, null, false);
+        scanLoadedImage(scannerActiveImage, null, false, {
+          isLive: Boolean(liveMediaStream),
+          autoAddLive: Boolean(liveMediaStream && document.getElementById('liveScanAutoAddCb')?.checked)
+        });
       }
     });
     document.getElementById('clearCropBtn')?.addEventListener('click', () => {
       scannerCropRect = null;
+      lastLiveFrameSig = '';
       drawScannerCanvasPreview();
     });
   }

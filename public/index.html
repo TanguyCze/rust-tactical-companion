@@ -319,22 +319,37 @@
                   </div>
                   <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                     <button id="addCloneBtn" class="btn btn-primary btn-sm">+ Save Clones</button>
-                    <button id="toggleScannerBtn" class="btn btn-sulfur btn-sm" title="Scan Rust clone screenshots from PC or Ctrl+V">📷 Scan Screenshot</button>
+                    <button id="liveScanToggleBtn" class="btn btn-sulfur btn-sm" title="Share your Rust game window to scan clones live as you click them">🎥 Live Scan Rust</button>
+                    <button id="toggleScannerBtn" class="btn btn-sm" title="Scan screenshot files from PC or paste with Ctrl+V">📷 Image / Ctrl+V</button>
                     <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
                     <input id="scanCloneFileInput" type="file" accept="image/*" multiple style="display:none;" />
                   </div>
                 </div>
               </div>
 
-              <!-- PC Screenshot OCR Scanner Drawer (RustBreeder-style Scan) -->
+              <!-- Live Game Window + Screenshot OCR Scanner Drawer (RustBreeder-style Scan) -->
               <div id="geneScannerPanel" class="scanner-panel" style="display:none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
                   <div>
-                    <div style="font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--sulfur-yellow);">📷 RUST SCREENSHOT GENE SCANNER (IN-BROWSER OCR)</div>
-                    <div style="font-size:11.5px; color:var(--text-secondary);">Upload screenshots from your PC, drag &amp; drop, or press <kbd>Ctrl+V</kbd> after a Rust snip (<kbd>Win+Shift+S</kbd>).</div>
+                    <div style="font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--sulfur-yellow);">🎥 LIVE RUST WINDOW &amp; SCREENSHOT GENE SCANNER</div>
+                    <div style="font-size:11.5px; color:var(--text-secondary);">Share your Rust game window once — then click through clones in-game and they auto-import live with an audio beep!</div>
                   </div>
                   <button id="closeScannerBtn" class="btn btn-sm" type="button">✕ Close</button>
                 </div>
+
+                <!-- Live Window Capture Controls -->
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.32); padding:10px 12px; border-radius:6px; border:1px solid var(--border-subtle); margin-bottom:10px;">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <button id="liveScanStartBtn" class="btn btn-sulfur btn-sm" type="button">▶ Start Live Rust Window Scan</button>
+                    <button id="liveScanStopBtn" class="btn btn-danger btn-sm" type="button" style="display:none;">⏹ Stop Live Scan</button>
+                    <span id="liveScanBadge" class="keycard-tag" style="display:none; background:rgba(239,68,68,0.22); color:#fca5a5; border:1px solid rgba(239,68,68,0.55);">🔴 LIVE SCANNING</span>
+                  </div>
+                  <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-secondary); cursor:pointer;" title="Automatically add every new scanned clone to your Saved Clones & re-solve while tabbed into Rust">
+                    <input id="liveScanAutoAddCb" type="checkbox" checked />
+                    <span>⚡ Auto-Save &amp; Beep Live</span>
+                  </label>
+                </div>
+                <video id="liveScanVideo" autoplay muted playsinline style="display:none;"></video>
 
                 <div id="scannerDropZone" class="scanner-drop-zone">
                   <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center;">
@@ -347,10 +362,10 @@
 
                 <div id="scannerPreviewWrap" style="display:none; margin-top:10px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                    <span style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono);">OPTIONAL: Drag a box over clones in a large screenshot to zoom-scan that area:</span>
+                    <span style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono);">TIP: Drag a yellow box over your Rust inventory/clone area to lock live scanning onto just that spot:</span>
                     <div style="display:flex; gap:6px;">
-                      <button id="rescanCropBtn" class="btn btn-sulfur btn-sm" type="button" style="display:none;">🔍 Scan Crop Area</button>
-                      <button id="rescanFullBtn" class="btn btn-sm" type="button">🔍 Re-Scan Full Image</button>
+                      <button id="rescanCropBtn" class="btn btn-sulfur btn-sm" type="button" style="display:none;">🔍 Scan Box Now</button>
+                      <button id="rescanFullBtn" class="btn btn-sm" type="button">🔍 Re-Scan Full Frame</button>
                       <button id="clearCropBtn" class="btn btn-sm" type="button" style="display:none;">Clear Box</button>
                     </div>
                   </div>
