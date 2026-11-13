@@ -2684,6 +2684,61 @@
     return picked;
   }
 
+  const BF_MONUMENT_STYLE_RULES = [
+    // Tier 3 & Zerg Hubs
+    { match: 'launch site', icon: '🚀', label: 'Launch Site', color: '#ef4444', r: 6 },
+    { match: 'missile silo', icon: '☢️', label: 'Missile Silo', color: '#ef4444', r: 6 },
+    { match: 'military tunnel', icon: '🪖', label: 'Mil. Tunnels', color: '#ef4444', r: 6 },
+    { match: 'excavator', icon: '🏗️', label: 'Excavator', color: '#ef4444', r: 6 },
+    { match: 'oil rig', icon: '🛢️', label: null, color: '#ef4444', r: 5.5 },
+    { match: 'outpost', icon: '🛡️', label: 'Outpost', color: '#22c55e', r: 6 },
+    { match: 'bandit', icon: '🏴‍☠️', label: 'Bandit Camp', color: '#22c55e', r: 6 },
+    // Tier 2 Monuments
+    { match: 'water treatment', icon: '💧', label: 'Water Treat.', color: '#fb923c', r: 5.5 },
+    { match: 'powerplant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5 },
+    { match: 'power plant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5 },
+    { match: 'train yard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5 },
+    { match: 'airfield', icon: '✈️', label: 'Airfield', color: '#fb923c', r: 5.5 },
+    { match: 'sphere tank', icon: '🔵', label: 'The Dome', color: '#fb923c', r: 5 },
+    { match: 'arctic research', icon: '❄️', label: 'Arctic Base', color: '#fb923c', r: 5.5 },
+    { match: 'abandoned military', icon: '🪖', label: 'Aband. Mil.', color: '#fb923c', r: 5 },
+    // Boat Hubs & Ocean
+    { match: 'fishing village', icon: '⚓', label: 'Fishing', color: '#2dd4bf', r: 5 },
+    { match: 'harbor', icon: '⚓', label: 'Harbor', color: '#2dd4bf', r: 5 },
+    { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5 },
+    { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5 },
+    // Tier 0/1 & Support Monuments
+    { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5 },
+    { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5 },
+    { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5 },
+    { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5 },
+    { match: 'lighthouse', icon: '🗼', label: 'Lighthouse', color: '#94a3b8', r: 4 },
+    { match: 'supermarket', icon: '🛒', label: 'Market', color: '#94a3b8', r: 4 },
+    { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4 },
+    { match: 'warehouse', icon: '📦', label: 'Mining Outpost', color: '#94a3b8', r: 4 },
+    { match: 'quarry', icon: '🏭', label: null, color: '#fbbf24', r: 4.5 },
+    { match: 'water well', icon: '🚰', label: 'Well', color: '#94a3b8', r: 3.5 }
+  ];
+
+  function bfGetMonumentVisual(typeStr, targetKey) {
+    const raw = String(typeStr || '');
+    const t = raw.toLowerCase();
+    if (bfMatchesTarget(raw, targetKey)) {
+      return { color: '#38bdf8', short: `⚡ ${raw}`, r: 6.5, isMajor: true };
+    }
+    if (bfIsStealthCover(raw) && (t.includes('cave') || t.includes('large god'))) {
+      return { color: '#c084fc', short: t.includes('cave') ? '🕳️' : '', r: 3.5, isMajor: false };
+    }
+    for (const rule of BF_MONUMENT_STYLE_RULES) {
+      if (t.includes(rule.match)) {
+        const name = rule.label || raw.replace(' A', '').replace(' B', '').replace(' C', '');
+        const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0;
+        return { color: rule.color, short: `${rule.icon} ${name}`, r: rule.r, isMajor };
+      }
+    }
+    return null;
+  }
+
   function renderBaseFinderMap() {
     const canvas = document.getElementById('bfMapCanvas');
     if (!canvas) return;
@@ -2774,42 +2829,30 @@
       });
     }
 
-    // 3. Key monument pins
+    // 3. Monument pins (all monuments when Show All Monuments is checked, or key hubs only)
+    const showAllMons = Boolean(document.getElementById('bfShowMonumentsCb')?.checked ?? true);
     mons.forEach((m) => {
-      const { px, py } = toPx(m.x, m.y);
-      let color = '';
-      let short = '';
-      if (bfMatchesTarget(m.type, targetKey)) {
-        color = '#38bdf8';
-        short = `⚡ ${m.type}`;
-      } else if (bfIsBoatHub(m.type)) {
-        color = '#2dd4bf';
-        short = m.type.replace(' A', '').replace(' B', '').replace(' C', '');
-      } else if (bfIsHighTraffic(m.type)) {
-        color = '#ef4444';
-        short = m.type;
-      } else if (bfIsStealthCover(m.type) && (m.type.includes('Cave') || m.type.includes('Large God'))) {
-        color = '#c084fc';
-        short = '';
-      }
-      if (!color) return;
+      const vis = bfGetMonumentVisual(m.type, targetKey);
+      if (!vis) return;
+      if (!showAllMons && !vis.isMajor && vis.color !== '#c084fc') return;
 
+      const { px, py } = toPx(m.x, m.y);
       ctx.save();
       ctx.beginPath();
-      ctx.arc(px, py, short ? 5.5 : 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = color;
+      ctx.arc(px, py, vis.r, 0, Math.PI * 2);
+      ctx.fillStyle = vis.color;
       ctx.fill();
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#090b0e';
       ctx.stroke();
-      if (short) {
-        ctx.font = '700 10px "Inter", sans-serif';
+      if (vis.short) {
+        ctx.font = vis.isMajor ? '700 10px "Inter", sans-serif' : '600 9px "Inter", sans-serif';
         ctx.textAlign = 'center';
-        ctx.strokeStyle = 'rgba(0,0,0,0.88)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
         ctx.lineWidth = 3;
-        ctx.strokeText(short, px, py - 9);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(short, px, py - 9);
+        ctx.strokeText(vis.short, px, py - (vis.r + 4));
+        ctx.fillStyle = vis.isMajor ? '#ffffff' : '#e2e8f0';
+        ctx.fillText(vis.short, px, py - (vis.r + 4));
       }
       ctx.restore();
     });
@@ -3146,6 +3189,7 @@
     ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfStealthRockCb', 'bfFarmOreCb', 'bfShowHeatmapCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
+    document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
 
     document.querySelectorAll('#bfHeatmapPills .filter-pill').forEach((btn) => {
       btn.addEventListener('click', () => {

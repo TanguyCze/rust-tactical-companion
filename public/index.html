@@ -572,10 +572,16 @@
               <div class="panel-title">🗺️ Map Overlay &amp; Recommended Build Zones</div>
               <div class="panel-subtitle" id="bfMapMetaLabel">Paste a RustMaps URL above to render the procedural map + grid</div>
             </div>
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
-              <input id="bfShowHeatmapCb" type="checkbox" checked />
-              <span>Show Traffic / Safe Zones</span>
-            </label>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+                <input id="bfShowMonumentsCb" type="checkbox" checked />
+                <span>Show All Monuments</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+                <input id="bfShowHeatmapCb" type="checkbox" checked />
+                <span>Show Traffic / Safe Zones</span>
+              </label>
+            </div>
           </div>
           <div id="bfHeatmapPills" class="filter-pills" style="margin-bottom: 10px;">
             <button class="filter-pill active" data-hm="none">🗺️ Clean Map</button>
@@ -593,6 +599,8 @@
             <span><strong style="color:#a855f7;">🥷</strong> Best Under-Radar Overall</span>
             <span><strong style="color:#f59e0b;">⛏️</strong> Top Farm Zones</span>
             <span><strong style="color:#38bdf8;">⚡</strong> Target Monument</span>
+            <span><strong style="color:#fb923c;">💧</strong> Tier 2 Monument</span>
+            <span><strong style="color:#a3e635;">🟢</strong> Tier 0–1 / Support</span>
             <span><strong style="color:#2dd4bf;">⚓</strong> Boat / Deep Sea Launch</span>
             <span><strong style="color:#ef4444;">🔴</strong> High-Traffic / Zerg Hub</span>
             <span><strong style="color:#c084fc;">🪨</strong> Cave / God Rock</span>
