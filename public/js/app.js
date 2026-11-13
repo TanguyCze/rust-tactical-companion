@@ -1352,14 +1352,21 @@
     bgG /= 4;
     bgB /= 4;
 
+    // Rust active cyan-teal highlight when user clicked/selected this slot in-game
+    const isCyanSelected = bgG - bgR >= 32 && bgB - bgR >= 28 && bgB >= 100;
+
     const sx = Math.max(0, Math.floor(bx0 + cw * 0.16));
-    const sy = Math.max(0, Math.floor(by0 + ch * 0.22));
+    const sy = Math.max(0, Math.floor(by0 + ch * 0.24));
     const sw = Math.max(4, Math.min(maxW - sx, Math.floor(cw * 0.68)));
-    const sh = Math.max(4, Math.min(maxH - sy, Math.floor(ch * 0.50)));
+    const sh = Math.max(4, Math.min(maxH - sy, Math.floor(ch * 0.48)));
     const d = ctx.getImageData(sx, sy, sw, sh).data;
+
+    // Scale-invariant gradient step (~1px per 26px cell width so 1080p/1440p live frames match snips)
+    const step = Math.max(1, Math.min(4, Math.round(cw / 26)));
 
     let tot = 0;
     let edgeSum = 0;
+    let edgeN = 0;
     let edgeHi = 0;
     let lumaSum = 0;
     let lumaSq = 0;
@@ -1367,14 +1374,17 @@
     let diagN = 0;
     let offEdge = 0;
     let offN = 0;
-    let bri = 0;
+    let bri145 = 0;
+    let bri125 = 0;
     let wVDark = 0;
     let fgCount = 0;
+    let cyanShadeCount = 0;
     let fgBrightY = 0;
     let fgMedY = 0;
     let fgOre = 0;
     let fgDark = 0;
-    let fgVDark = 0;
+    let fgVDark44 = 0;
+    let fgVDark50 = 0;
     let fgWarm = 0;
     let fgWhiteGrey = 0;
     let allBrightY = 0;
@@ -1387,9 +1397,18 @@
     for (let py = 0; py < sh; py++) {
       for (let px = 0; px < sw; px++) {
         const i = (py * sw + px) * 4;
-        const rr = d[i];
-        const gg = d[i + 1];
-        const bb = d[i + 2];
+        let rr = d[i];
+        let gg = d[i + 1];
+        let bb = d[i + 2];
+        const rawLuma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
+        const bgDist = Math.abs(rr - bgR) + Math.abs(gg - bgG) + Math.abs(bb - bgB);
+        if (isCyanSelected && (bgG - gg >= 14 || bgB - bb >= 14)) cyanShadeCount++;
+
+        if (isCyanSelected) {
+          gg = Math.max(0, gg - Math.max(0, bgG - bgR) * 0.72);
+          bb = Math.max(0, bb - Math.max(0, bgB - bgR) * 0.72);
+        }
+
         const mx = Math.max(rr, gg, bb);
         const mn = Math.min(rr, gg, bb);
         const sat = mx ? (mx - mn) / mx : 0;
@@ -1398,11 +1417,12 @@
         lumaSq += luma * luma;
         tot++;
 
-        if (px > 0) {
-          const j = (py * sw + px - 1) * 4;
+        if (px >= step) {
+          const j = (py * sw + px - step) * 4;
           const lL = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
-          const diff = Math.abs(luma - lL);
+          const diff = Math.abs(rawLuma - lL);
           edgeSum += diff;
+          edgeN++;
           if (diff >= 14) edgeHi++;
           const u = px / sw;
           const v = py / sh;
@@ -1414,20 +1434,22 @@
             offN++;
           }
         }
-        if (py > 0) {
-          const idxU = ((py - 1) * sw + px) * 4;
-          const lU = 0.299 * d[idxU] + 0.587 * d[idxU + 1] + 0.114 * d[idxU + 2];
-          if (Math.abs(luma - lU) >= 14) edgeHi++;
+        if (py >= step) {
+          const j = ((py - step) * sw + px) * 4;
+          const lU = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+          if (Math.abs(rawLuma - lU) >= 14) edgeHi++;
         }
 
-        if (luma >= 145) bri++;
-        if (luma < 42) wVDark++;
+        if (luma >= 145) bri145++;
+        if (luma >= 125) bri125++;
+        if (luma < 44) wVDark++;
 
         const isBY = rr >= 135 && gg >= 130 && gg - bb >= 34 && rr - bb >= 34;
         const isMY = rr >= 78 && gg >= 68 && gg - bb >= 16 && rr < 170;
         const isOre = rr > 55 && rr < 120 && gg > 45 && gg < 105 && bb < 72 && rr - bb >= 12;
-        const isDark = luma < 85 && sat < 0.28;
-        const isVDark = luma < 44;
+        const isDark = luma < 92 && sat < 0.28;
+        const isVD44 = luma < 44;
+        const isVD50 = luma < 50;
         const isWarm = rr > gg + 6 && gg > bb + 5 && rr > 90;
         const isWG = luma >= 120 && sat < 0.22;
 
@@ -1438,14 +1460,14 @@
         if (isWarm) allWarm++;
         if (isWG) allWhiteGrey++;
 
-        const bgDist = Math.abs(rr - bgR) + Math.abs(gg - bgG) + Math.abs(bb - bgB);
         if (bgDist >= 22) {
           fgCount++;
           if (isBY) fgBrightY++;
           if (isMY) fgMedY++;
           if (isOre) fgOre++;
           if (isDark) fgDark++;
-          if (isVDark) fgVDark++;
+          if (isVD44) fgVDark44++;
+          if (isVD50) fgVDark50++;
           if (isWarm) fgWarm++;
           if (isWG) fgWhiteGrey++;
         }
@@ -1470,16 +1492,18 @@
     dScores.sort((a, b) => a - b);
     const digDiff = (dScores[Math.floor(dScores.length * 0.985)] || 0) - (dScores[Math.floor(dScores.length * 0.45)] || 0);
 
-    const edgeAvg = edgeSum / tot;
-    const hiE = edgeHi / (tot * 2);
+    const edgeAvg = edgeSum / Math.max(1, edgeN);
+    const hiE = edgeHi / Math.max(1, tot * 2);
     const meanLuma = lumaSum / tot;
     const stdLuma = Math.sqrt(Math.max(0, lumaSq / tot - meanLuma * meanLuma));
     const fgFrac = fgCount / tot;
     const diagAvg = diagEdge / Math.max(1, diagN);
     const offAvg = offEdge / Math.max(1, offN);
     const diagRatio = diagAvg / Math.max(0.5, offAvg);
-    const pBri = bri / tot;
+    const pBri145 = bri145 / tot;
+    const pBri125 = bri125 / tot;
     const pWVD = wVDark / tot;
+    const pCyanShade = cyanShadeCount / tot;
 
     const useFg = fgFrac >= 0.22;
     const den = useFg ? fgCount : tot;
@@ -1487,28 +1511,51 @@
     const fMY = (useFg ? fgMedY : allMedY) / den;
     const fOre = (useFg ? fgOre : allOre) / den;
     const fDk = (useFg ? fgDark : allDark) / den;
-    const fVDk = (useFg ? fgVDark : wVDark) / den;
+    const fVDk44 = (useFg ? fgVDark44 : wVDark) / den;
+    const fVDk50 = (useFg ? fgVDark50 : wVDark) / den;
     const fWm = (useFg ? fgWarm : allWarm) / den;
     const fWG = (useFg ? fgWhiteGrey : allWhiteGrey) / den;
 
+    // Handle cyan active-selection slot highlight without dropping the selected stack
+    if (isCyanSelected && pCyanShade >= 0.22 && (digDiff >= 26 || stdLuma >= 11)) {
+      if (fBY >= 0.18) return 'sulfur';
+      if (fWm >= 0.35) return 'satchel';
+      if (diagRatio >= 2.05 && diagAvg >= 12.5) return pBri125 >= 0.025 ? 'explo_ammo' : 'rocket';
+      if (fOre >= 0.25 && fMY >= 0.25) return 'sulfur_ore';
+      return 'gunpowder';
+    }
+
     // Empty gate: reject semi-transparent background scenery without sharp item icon edges
     const looksDarkMound =
-      stdLuma >= 13.5 && fgFrac >= 0.40 && fDk >= 0.80 && (hiE >= 0.08 || digDiff >= 34 || (fDk >= 0.90 && edgeAvg >= 3.8));
+      stdLuma >= 13.0 && fgFrac >= 0.38 && fDk >= 0.72 && (hiE >= 0.08 || digDiff >= 32 || (fDk >= 0.88 && edgeAvg >= 3.8));
     const hasStackDigits = digDiff >= 38 && edgeAvg >= 3.8;
     if (hiE < 0.15 && edgeAvg < 6.0 && !looksDarkMound && !hasStackDigits) {
       return 'empty';
     }
 
     if (fBY >= 0.20 && fMY >= 0.48) return 'sulfur';
-    if (fWm >= 0.45 && fVDk < 0.12 && fBY < 0.05 && stdLuma >= 20) return 'satchel';
-    if (fWG >= 0.22 && fWm < 0.20 && fBY < 0.05 && fDk < 0.35 && stdLuma >= 28) return 'explosives';
-    if (diagRatio >= 2.15 && diagAvg >= 18 && pBri <= 0.025) return 'rocket';
-    if (diagAvg >= 26.5 && stdLuma >= 26 && fVDk < 0.42 && pBri >= 0.02) return 'explo_ammo';
-    if (fVDk >= 0.46 && edgeAvg >= 17.5 && stdLuma >= 25 && fWm < 0.12) return 'c4';
-    if (fDk >= 0.54 && fBY < 0.05 && fWm < 0.10) {
-      return pWVD < 0.22 || edgeAvg < 15.5 ? 'gunpowder' : 'charcoal';
+    if (fWm >= 0.45 && fVDk50 < 0.18 && fBY < 0.05 && stdLuma >= 19) return 'satchel';
+    if (fWG >= 0.22 && fWm < 0.20 && fBY < 0.05 && fDk < 0.45 && stdLuma >= 26) return 'explosives';
+
+    if (diagRatio >= 2.0 && diagAvg >= 20.0 && stdLuma >= 20 && fVDk50 < 0.40 && pBri125 >= 0.025 && pBri145 >= 0.005) {
+      return 'explo_ammo';
     }
-    if ((fOre >= 0.20 || (fMY >= 0.26 && edgeAvg >= 6.5)) && stdLuma >= 18 && (edgeAvg >= 6.5 || hiE >= 0.16)) {
+    if (diagRatio >= 2.10 && diagAvg >= 12.5 && pBri125 <= 0.02 && fMY < 0.25) {
+      return 'rocket';
+    }
+
+    const minC4Edge = step > 1 ? 11.8 : 17.5;
+    const minC4VDk = step > 1 ? 0.54 : 0.48;
+    if ((step > 1 ? fVDk50 : fVDk44) >= minC4VDk && edgeAvg >= minC4Edge && hiE >= 0.28 && stdLuma >= 23 && fWm < 0.14 && fMY < 0.12) {
+      return 'c4';
+    }
+
+    if (fDk >= 0.50 && fMY < 0.22 && fBY < 0.05 && fWm < 0.12) {
+      const charcoalEdge = step > 1 ? 15.0 : 18.0;
+      return pWVD < 0.26 || edgeAvg < charcoalEdge ? 'gunpowder' : 'charcoal';
+    }
+
+    if ((fOre >= 0.20 || (fMY >= 0.24 && edgeAvg >= 6.0)) && stdLuma >= 17 && (edgeAvg >= 6.0 || hiE >= 0.16)) {
       return 'sulfur_ore';
     }
     return 'empty';
@@ -1522,11 +1569,11 @@
     return val > 0 && val <= 100000 ? val : null;
   }
 
-  function buildAdaptiveDigitTile(srcCanvas, sx, sy, rw, rh, scale) {
+  function buildAdaptiveDigitTile(srcCanvas, sx, sy, rw, rh, scale, threshFrac = 0.48) {
     const rawC = document.createElement('canvas');
     rawC.width = rw;
     rawC.height = rh;
-    const rctx = rawC.getContext('2d');
+    const rctx = rawC.getContext('2d', { willReadFrequently: true });
     rctx.drawImage(srcCanvas, sx, sy, rw, rh, 0, 0, rw, rh);
     const rData = rctx.getImageData(0, 0, rw, rh).data;
     const scores = [];
@@ -1542,7 +1589,19 @@
     const bg = sorted[Math.floor(sorted.length * 0.45)] || 55;
     const hi = sorted[Math.floor(sorted.length * 0.985)] || 145;
     const diff = hi - bg;
-    const thresh = Math.max(88, Math.min(162, Math.round(bg + diff * 0.48)));
+    const thresh = Math.max(82, Math.min(162, Math.round(bg + diff * threshFrac)));
+
+    let minInkCol = rw;
+    let maxInkCol = -1;
+    for (let py = 0; py < rh; py++) {
+      for (let px = 0; px < rw; px++) {
+        if (scores[py * rw + px] >= thresh) {
+          if (px < minInkCol) minInkCol = px;
+          if (px > maxInkCol) maxInkCol = px;
+        }
+      }
+    }
+    const inkSpanFrac = maxInkCol >= minInkCol ? (maxInkCol - minInkCol + 1) / rw : 0;
 
     const padPx = 14;
     const upW = Math.round(rw * scale);
@@ -1557,7 +1616,7 @@
     const tmp = document.createElement('canvas');
     tmp.width = upW;
     tmp.height = upH;
-    const tctx = tmp.getContext('2d');
+    const tctx = tmp.getContext('2d', { willReadFrequently: true });
     tctx.imageSmoothingEnabled = true;
     tctx.imageSmoothingQuality = 'high';
     tctx.drawImage(rawC, 0, 0, rw, rh, 0, 0, upW, upH);
@@ -1577,6 +1636,7 @@
     }
     octx.putImageData(mId, padPx, padPx);
     out._digDiff = diff;
+    out._inkSpanFrac = inkSpanFrac;
     return out;
   }
 
@@ -1703,12 +1763,12 @@
       const scale = Math.max(3.5, Math.min(6.0, Math.round(190 / Math.max(22, cw))));
       const subH = Math.max(7, Math.round(ch * 0.27));
 
-      const cropDigitTile = (r, col, xStartFrac) => {
+      const cropDigitTile = (r, col, xStartFrac, threshFrac = 0.48) => {
         const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * xStartFrac));
         const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.72));
         const rw = Math.max(4, Math.min(dims.w - sx, Math.round(cw * (0.98 - xStartFrac))));
         const rh = Math.max(4, Math.min(dims.h - sy, subH));
-        return buildAdaptiveDigitTile(fullCanvas, sx, sy, rw, rh, scale);
+        return buildAdaptiveDigitTile(fullCanvas, sx, sy, rw, rh, scale, threshFrac);
       };
 
       const maxReasonableByKey = {
@@ -1728,7 +1788,7 @@
         if (i === 0 || (i + 1) % 4 === 0 || i === slots.length - 1) {
           setStatus(`🔍 Reading stack numbers ${i + 1}/${slots.length}...`);
         }
-        const tile = cropDigitTile(s.row, s.col, 0.32);
+        const tile = cropDigitTile(s.row, s.col, 0.32, 0.48);
         if ((tile._digDiff || 0) < 30) {
           s.qty = 1;
           continue;
@@ -1738,11 +1798,17 @@
         let parsed = parseStackDigitsText(res?.data?.text);
         const cap = maxReasonableByKey[s.key];
 
-        // Retry tighter right-aligned crop if sprite corner bled into x10 / x128 / x3 or hit an impossible outlier
+        // Retry tighter right-aligned softer threshold crop if sprite bled into x10/x128 or digit was dim
         if (parsed === null || (cap && parsed > cap)) {
-          const tightTile = cropDigitTile(s.row, s.col, 0.45);
+          const tightTile = cropDigitTile(s.row, s.col, 0.44, 0.40);
           const tightRes = await worker.recognize(tightTile);
-          const tightParsed = parseStackDigitsText(tightRes?.data?.text);
+          let tightParsed = parseStackDigitsText(tightRes?.data?.text);
+          if (tightParsed === null || (cap && tightParsed > cap)) {
+            await worker.setParameters({ tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '8' });
+            const wordRes = await worker.recognize(tightTile);
+            await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
+            tightParsed = parseStackDigitsText(wordRes?.data?.text);
+          }
           if (tightParsed !== null && (!cap || tightParsed <= cap)) {
             parsed = tightParsed;
           } else if (cap && parsed > cap) {
@@ -1752,7 +1818,7 @@
 
         if (parsed !== null) {
           s.qty = parsed;
-        } else if (bulkStackKeys.has(s.key) && (tile._digDiff || 0) >= 38) {
+        } else if (bulkStackKeys.has(s.key) && (tile._digDiff || 0) >= 36 && (tile._inkSpanFrac || 0) >= 0.70) {
           s.qty = 1000;
         } else {
           s.qty = 1;
