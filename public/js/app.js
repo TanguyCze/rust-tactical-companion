@@ -3178,37 +3178,9 @@
     ctx.restore();
 
     const targetKey = document.getElementById('bfTargetMonumentSelect')?.value || 'powerplant';
-    const showZones = Boolean(document.getElementById('bfShowHeatmapCb')?.checked);
     const mons = bfMapData.monuments || [];
 
-    // 2. Traffic danger zones + target sweet-spot ring
-    if (showZones) {
-      mons.forEach((m) => {
-        const { px, py } = toPx(m.x, m.y);
-        if (bfMatchesTarget(m.type, targetKey)) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(px, py, 450 * scale, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([6, 4]);
-          ctx.stroke();
-          ctx.restore();
-        } else if (bfIsHighTraffic(m.type)) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(px, py, 650 * scale, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.14)';
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
-          ctx.lineWidth = 1.2;
-          ctx.stroke();
-          ctx.restore();
-        }
-      });
-    }
-
-    // 2B. Exact Rust No-Build Zones overlay (from RustMaps building_block.json or monument fallback)
+    // 2. Exact Rust No-Build Zones overlay (from RustMaps building_block.json or monument fallback)
     const showNoBuild = Boolean(document.getElementById('bfShowNoBuildCb')?.checked ?? true);
     if (showNoBuild) {
       const hasExact = bfNoBuildColliders.spheres.length > 0 || bfNoBuildColliders.boxes.length > 0;
@@ -4009,7 +3981,7 @@
       if (e.key === 'Enter') runAnalyze();
     });
 
-    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb', 'bfShowHeatmapCb'].forEach((id) => {
+    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
