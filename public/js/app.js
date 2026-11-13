@@ -883,12 +883,32 @@
             </div>`
           : '';
 
+      const realMatches =
+        bfMapData && Array.isArray(bfMapData.monuments)
+          ? bfMapData.monuments.filter((rm) => {
+              const rt = String(rm.type || '').toLowerCase();
+              const mn = String(m.name || '').toLowerCase();
+              return rt.includes(mn) || mn.includes(rt) || (m.id === 'powerplant' && rt.includes('powerplant')) || (m.id === 'dome' && rt.includes('sphere tank')) || (m.id === 'water_treatment' && rt.includes('water treatment'));
+            })
+          : [];
+      const selSpot = getSelectedBuildSpot();
+      const gridBadgeText =
+        realMatches.length > 0
+          ? realMatches
+              .map((rm) => {
+                const g = bfWorldToGrid(rm.x, rm.y, bfMapData.size);
+                const d = selSpot ? ` (${Math.round(Math.hypot(rm.x - selSpot.wx, rm.y - selSpot.wy))}m)` : '';
+                return `[${g}]${d}`;
+              })
+              .join(' • ')
+          : `[${m.defaultPos.grid}]`;
+
       detailEl.innerHTML = `
         <div style="background:linear-gradient(155deg, rgba(205,65,43,0.14), var(--bg-card)); border:1px solid var(--rust-orange); border-radius:8px; padding:14px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
             <div>
               <div style="font-family:var(--font-display); font-size:18px; font-weight:700; color:#fff;">
-                🏛️ ${m.name} <span style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow);">[${m.defaultPos.grid}]</span>
+                🏛️ ${m.name} <span style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow);">${gridBadgeText}</span>
               </div>
               <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">
                 Tier ${m.tier} Monument • Radiation: <strong style="color:#fff;">${m.radRequired}</strong>
@@ -1680,9 +1700,12 @@
                 BattleMetrics ID: ${s.id} • Rank #${s.rank} • Last Wipe: ${s.lastWipe}
               </div>
             </div>
-            <span class="keycard-tag ${popPct > 75 ? 'keycard-Red' : popPct > 40 ? 'keycard-Fuse' : 'keycard-Green'}">
-              ${popPct}% CAPACITY (${s.players}/${s.maxPlayers})
-            </span>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button id="bmAnalyzeInBaseFinderBtn" class="btn btn-sm btn-primary" style="font-size:11.5px;">📍 Analyze Map in Base Finder</button>
+              <span class="keycard-tag ${popPct > 75 ? 'keycard-Red' : popPct > 40 ? 'keycard-Fuse' : 'keycard-Green'}">
+                ${popPct}% CAPACITY (${s.players}/${s.maxPlayers})
+              </span>
+            </div>
           </div>
 
           <div class="resource-grid" style="margin-top:12px;">
@@ -1701,6 +1724,16 @@
           </div>
         </div>
       `;
+      document.getElementById('bmAnalyzeInBaseFinderBtn')?.addEventListener('click', () => {
+        const bfTabBtn = document.querySelector('.nav-tab[data-tab="tab-basefinder"]');
+        const bfInput = document.getElementById('bfMapUrlInput');
+        const bfBtn = document.getElementById('bfAnalyzeBtn');
+        if (bfInput) {
+          bfInput.value = s.id ? `https://www.battlemetrics.com/servers/rust/${s.id}` : `${s.size}_${s.seed}`;
+        }
+        bfTabBtn?.click();
+        bfBtn?.click();
+      });
     }
 
     // Find lowest 4-hour raid window & peak window
@@ -3137,6 +3170,7 @@
         renderBaseFinderFarming();
         renderBaseFinderRoute();
         renderBaseFinderMap();
+        renderMonumentAtlas();
       });
     });
   }
