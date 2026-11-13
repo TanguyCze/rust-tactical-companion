@@ -2559,14 +2559,26 @@
 
   async function startLiveRustScan() {
     const panel = document.getElementById('geneScannerPanel');
-    if (panel) panel.style.display = 'block';
+    if (panel) {
+      panel.style.display = 'block';
+      panel.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
     const statusEl = document.getElementById('scannerStatusMsg');
     const setStatus = (msg) => {
       if (statusEl) statusEl.textContent = msg;
     };
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      setStatus('❌ Screen Capture API is unavailable here. Open via HTTPS or http://localhost (Chrome / Edge / Firefox).');
+      const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : window.location.href;
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="padding:10px 12px; border-radius:6px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.55); color:#fecaca; font-family:var(--font-sans); font-size:12.5px; line-height:1.45;">
+            ⚠️ <strong>Browser blocked Live Screen Capture on plain HTTP / local file!</strong> Chrome &amp; Edge only allow live window sharing on <code>https://</code> or <code>http://localhost</code>.<br/>
+            • <strong>Quick 10s Chrome/Edge Fix for your server:</strong> open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> (or <code>edge://flags/#unsafely-treat-insecure-origin-as-secure</code>), set it to <strong>Enabled</strong>, paste <code>${origin}</code>, and click <strong>Relaunch</strong>.<br/>
+            • <strong>Or instant workaround right now:</strong> use <kbd>Win+Shift+S</kbd> in Rust and press <kbd>Ctrl+V</kbd> here — image pasting works even on plain HTTP!
+          </div>
+        `;
+      }
       return;
     }
 
@@ -5523,14 +5535,21 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
-    initNavigation();
-    initRaidModule();
-    initMonumentsModule();
-    initTimerModule();
-    initGeneticsModule();
-    initRecyclerDieselDecayModule();
-    initBaseFinderModule();
-    renderAll();
-    initSquadSSE();
+    const safeRun = (fn) => {
+      try {
+        fn();
+      } catch (err) {
+        console.error('[Init Error]', fn.name, err);
+      }
+    };
+    safeRun(initNavigation);
+    safeRun(initRaidModule);
+    safeRun(initMonumentsModule);
+    safeRun(initTimerModule);
+    safeRun(initGeneticsModule);
+    safeRun(initRecyclerDieselDecayModule);
+    safeRun(initBaseFinderModule);
+    safeRun(renderAll);
+    safeRun(initSquadSSE);
   });
 })();
