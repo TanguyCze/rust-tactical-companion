@@ -1179,6 +1179,11 @@ body::before {
   background: #000;
 }
 
+.scanner-canvas.zoomed {
+  max-height: 480px;
+  border-color: rgba(74, 222, 128, 0.55);
+}
+
 /* ==========================================================================
    TAB 5: BATTLEMETRICS RAID INTEL & 24H HEATMAP
    ========================================================================== */

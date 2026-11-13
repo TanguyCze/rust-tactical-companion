@@ -1068,6 +1068,9 @@
   let raidLiveTimer = null;
   let raidLiveBusy = false;
   let raidLiveAutoLoadedGrid = false;
+  let raidScannerZoomToBox = false;
+  let raidGridFromPreset = false;
+  let raidDragLockedViewRect = null;
   let raidLastLiveSig = '';
   let raidPrevBoxCanvas = null;
   let raidLastBoxSlot = null;
@@ -1182,18 +1185,133 @@
           w,
           h
         };
+        raidGridFromPreset = false;
         return { source: 'saved', layout: layoutVal };
       }
     }
     if (isWidescreenGameFrame(dims) || opts.isLive) {
       raidBoxGridRect = computeRustDefaultBoxRect(dims, layoutVal);
+      raidGridFromPreset = true;
       return { source: 'preset', layout: layoutVal };
     }
     if (opts.forcePreset) {
       raidBoxGridRect = { x: 0, y: 0, w: dims.w, h: dims.h };
+      raidGridFromPreset = true;
       return { source: 'preset', layout: layoutVal };
     }
+    raidGridFromPreset = false;
     return null;
+  }
+
+  /** Compute active preview viewport in source pixels (zooms tightly into box when enabled). */
+  function getRaidScannerViewRect(dims) {
+    if (!dims || !dims.w || !dims.h) return { x: 0, y: 0, w: 0, h: 0, zoomed: false };
+    if (raidDragLockedViewRect) return raidDragLockedViewRect;
+    const box = raidBoxGridRect;
+    const canZoom =
+      box &&
+      box.w >= 24 &&
+      box.h >= 24 &&
+      (box.w < dims.w * 0.72 || box.h < dims.h * 0.72);
+    if (!raidScannerZoomToBox || !canZoom) {
+      return { x: 0, y: 0, w: dims.w, h: dims.h, zoomed: false };
+    }
+    const padX = Math.max(20, Math.round(box.w * 0.16));
+    const padTop = Math.max(24, Math.round(box.h * 0.14));
+    const padBot = Math.max(16, Math.round(box.h * 0.08));
+    const x0 = Math.max(0, Math.floor(box.x - padX));
+    const y0 = Math.max(0, Math.floor(box.y - padTop));
+    const x1 = Math.min(dims.w, Math.ceil(box.x + box.w + padX));
+    const y1 = Math.min(dims.h, Math.ceil(box.y + box.h + padBot));
+    return {
+      x: x0,
+      y: y0,
+      w: Math.max(24, x1 - x0),
+      h: Math.max(24, y1 - y0),
+      zoomed: true
+    };
+  }
+
+  /** Snap preset/rough container bounds locally to Rust dark slot-divider seams. */
+  function snapRaidBoxGridToSlotSeams(srcCanvas, roughBox, rows, cols) {
+    if (!srcCanvas || !roughBox || roughBox.w < 40 || roughBox.h < 40 || cols < 2) {
+      return { rect: roughBox, snapped: false };
+    }
+    const W = srcCanvas.width;
+    const H = srcCanvas.height;
+    const cw = roughBox.w / cols;
+    const ch = roughBox.h / rows;
+    const maxShiftX = Math.max(4, Math.round(cw * 0.28));
+    const maxShiftY = rows >= 2 ? Math.max(4, Math.round(ch * 0.28)) : 0;
+    const padX = maxShiftX + 6;
+    const padY = maxShiftY + 6;
+    const sx0 = Math.max(0, Math.floor(roughBox.x - padX));
+    const sy0 = Math.max(0, Math.floor(roughBox.y - padY));
+    const sx1 = Math.min(W, Math.ceil(roughBox.x + roughBox.w + padX));
+    const sy1 = Math.min(H, Math.ceil(roughBox.y + roughBox.h + padY));
+    const rw = sx1 - sx0;
+    const rh = sy1 - sy0;
+    if (rw < 16 || rh < 16) return { rect: roughBox, snapped: false };
+
+    const data = srcCanvas.getContext('2d', { willReadFrequently: true }).getImageData(sx0, sy0, rw, rh).data;
+    const luma = new Float32Array(rw * rh);
+    for (let i = 0; i < rw * rh; i++) {
+      luma[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+    }
+
+    const scoreAxisShift = (isX, lineCount, baseCoord, stepPx, ortho0, ortho1) => {
+      let score = 0;
+      for (let k = 0; k <= lineCount; k++) {
+        const pos = Math.round(baseCoord + k * stepPx - (isX ? sx0 : sy0));
+        if (pos < 2 || pos >= (isX ? rw : rh) - 2) continue;
+        let seamDark = 0;
+        let samples = 0;
+        for (let t = ortho0; t <= ortho1; t += 2) {
+          const cur = isX ? luma[t * rw + pos] : luma[pos * rw + t];
+          const prev = isX ? luma[t * rw + pos - 2] : luma[(pos - 2) * rw + t];
+          const next = isX ? luma[t * rw + pos + 2] : luma[(pos + 2) * rw + t];
+          const trough = (prev + next) * 0.5 - cur;
+          if (trough > 2) seamDark += Math.min(18, trough);
+          samples++;
+        }
+        score += seamDark / Math.max(1, samples);
+      }
+      return score / (lineCount + 1);
+    };
+
+    const bestAxisShift = (isX, lineCount, baseCoord, stepPx, ortho0, ortho1, maxShift) => {
+      const baseScore = scoreAxisShift(isX, lineCount, baseCoord, stepPx, ortho0, ortho1);
+      let bestDelta = 0;
+      let bestScore = baseScore;
+      for (let d = -maxShift; d <= maxShift; d++) {
+        const s = scoreAxisShift(isX, lineCount, baseCoord + d, stepPx, ortho0, ortho1);
+        if (s > bestScore) {
+          bestScore = s;
+          bestDelta = d;
+        }
+      }
+      const delta = bestScore >= 2.2 && bestScore >= baseScore * 1.15 ? bestDelta : 0;
+      return delta;
+    };
+
+    const y0 = Math.max(2, Math.round(roughBox.y - sy0));
+    const y1 = Math.min(rh - 3, Math.round(roughBox.y + roughBox.h - sy0));
+    const dx = bestAxisShift(true, cols, roughBox.x, cw, y0, y1, maxShiftX);
+
+    const x0 = Math.max(2, Math.round(roughBox.x + dx - sx0));
+    const x1 = Math.min(rw - 3, Math.round(roughBox.x + dx + roughBox.w - sx0));
+    const dy = maxShiftY > 0 ? bestAxisShift(false, rows, roughBox.y, ch, x0, x1, maxShiftY) : 0;
+
+    if (dx === 0 && dy === 0) return { rect: roughBox, snapped: false };
+    return {
+      snapped: true,
+      rect: {
+        x: Math.max(0, Math.min(W - roughBox.w, roughBox.x + dx)),
+        y: Math.max(0, Math.min(H - roughBox.h, roughBox.y + dy)),
+        w: roughBox.w,
+        h: roughBox.h
+      }
+    };
   }
 
   function syncStashInputsFromState() {
@@ -1965,12 +2083,22 @@
       const fctx = fullCanvas.getContext('2d', { willReadFrequently: true });
       fctx.drawImage(srcEl, 0, 0, dims.w, dims.h);
 
-      const boxRect =
+      const { rows, cols } = getRaidBoxGridDims();
+      let boxRect =
         raidBoxGridRect && raidBoxGridRect.w >= 24 && raidBoxGridRect.h >= 24
-          ? raidBoxGridRect
+          ? { ...raidBoxGridRect }
           : { x: 0, y: 0, w: dims.w, h: dims.h };
 
-      const { rows, cols } = getRaidBoxGridDims();
+      if (raidBoxGridRect && (isWidescreenGameFrame(dims) || raidLiveStream)) {
+        const snapRes = snapRaidBoxGridToSlotSeams(fullCanvas, boxRect, rows, cols);
+        if (snapRes.snapped) {
+          boxRect = snapRes.rect;
+          if (raidGridFromPreset) {
+            raidBoxGridRect = { ...boxRect };
+          }
+        }
+      }
+
       const cw = boxRect.w / cols;
       const ch = boxRect.h / rows;
 
@@ -1989,13 +2117,14 @@
       if (!slots.length) {
         raidLastBoxSlotTags = [];
         drawRaidScannerPreview();
-        setStatus('⚠️ No Sulfur / Ore / Boom slots detected inside box grid. Drag the green Calibrate Box Grid tightly over the chest slots.');
+        setStatus('⚠️ No Sulfur / Ore / Boom slots detected inside box grid. Click "🖥️ Show Full Screen" or drag the green box tightly over the chest slots.');
         return;
       }
 
       await worker.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '7' });
       const subH = Math.max(7, Math.round(ch * 0.25));
-      const scale = Math.max(1.8, Math.min(4.8, 34 / subH));
+      const targetUpH = cw >= 42 ? 48 : 34;
+      const scale = Math.max(1.8, Math.min(5.6, targetUpH / subH));
 
       const cropDigitTile = (r, col, xStartFrac, threshFrac = 0.52, options = {}) => {
         const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * xStartFrac));
@@ -2032,7 +2161,7 @@
         let parsed = parseStackDigitsText(res?.data?.text);
         const cap = maxReasonableByKey[s.key];
 
-        // Retry sharper and softer thresholds, then raw x-included right crop if missing or out-of-range
+        // Retry sharper and softer thresholds, PSM 8 single-word, then raw x-included right crop
         if (parsed === null || parsed === 1 || (cap && parsed > cap)) {
           const retryPasses = [
             { xStart: 0.36, tf: 0.57, opts: {} },
@@ -2050,10 +2179,17 @@
             }
           }
           if (parsed === null || (cap && parsed > cap)) {
+            await worker.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '8' });
+            const wordRes = await worker.recognize(tile);
+            const wordParsed = parseStackDigitsText(wordRes?.data?.text);
+            if (wordParsed !== null && (!cap || wordParsed <= cap)) {
+              parsed = wordParsed;
+            }
+          }
+          if (parsed === null || (cap && parsed > cap)) {
             await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
             const rawTile = cropDigitTile(s.row, s.col, 0.46, 0.52, { stripShortLeft: false });
             const rawRes = await worker.recognize(rawTile);
-            await worker.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '7' });
             const rawParsed = parseStackDigitsText(rawRes?.data?.text);
             if (rawParsed !== null && (!cap || rawParsed <= cap)) {
               parsed = rawParsed;
@@ -2061,6 +2197,7 @@
               parsed = null;
             }
           }
+          await worker.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '7' });
         }
 
         if (parsed !== null) {
@@ -2073,6 +2210,10 @@
       }
 
       await worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: '3' });
+
+      if (boxRect.w < dims.w * 0.72 || boxRect.h < dims.h * 0.72) {
+        raidScannerZoomToBox = true;
+      }
 
       raidLastBoxSlotTags = slots.map((s) => ({ row: s.row, col: s.col, key: s.key, qty: s.qty }));
       // Clear any stale prior batch history before applying newly scanned box
@@ -2285,14 +2426,26 @@
     const canvas = document.getElementById('raidScannerCanvas');
     const wrap = document.getElementById('raidScannerPreviewWrap');
     const clearBoxBtn = document.getElementById('raidClearBoxGridBtn');
+    const zoomBtn = document.getElementById('raidZoomBoxBtn');
     const dims = getScannerSourceDimensions(raidScannerImg);
     if (!canvas || !wrap || !raidScannerImg || !dims.w || !dims.h) return;
 
+    const viewRect = getRaidScannerViewRect(dims);
+    const zoomUpscale = viewRect.zoomed ? Math.max(1, Math.min(3, 560 / Math.max(24, viewRect.h))) : 1;
+
     wrap.style.display = 'block';
-    canvas.width = dims.w;
-    canvas.height = dims.h;
+    canvas.width = Math.max(1, Math.round(viewRect.w * zoomUpscale));
+    canvas.height = Math.max(1, Math.round(viewRect.h * zoomUpscale));
+    canvas.classList.toggle('zoomed', Boolean(viewRect.zoomed));
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(raidScannerImg, 0, 0, dims.w, dims.h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(raidScannerImg, viewRect.x, viewRect.y, viewRect.w, viewRect.h, 0, 0, canvas.width, canvas.height);
+
+    const scaleX = canvas.width / Math.max(1, viewRect.w);
+    const scaleY = canvas.height / Math.max(1, viewRect.h);
+    const toCx = (sx) => (sx - viewRect.x) * scaleX;
+    const toCy = (sy) => (sy - viewRect.y) * scaleY;
 
     const effectiveBox =
       raidBoxGridRect && raidBoxGridRect.w > 12 && raidBoxGridRect.h > 12
@@ -2303,29 +2456,33 @@
 
     if (effectiveBox) {
       const { rows, cols } = getRaidBoxGridDims();
-      const cw = effectiveBox.w / cols;
-      const ch = effectiveBox.h / rows;
+      const bx = toCx(effectiveBox.x);
+      const by = toCy(effectiveBox.y);
+      const bw = effectiveBox.w * scaleX;
+      const bh = effectiveBox.h * scaleY;
+      const cw = bw / cols;
+      const ch = bh / rows;
       ctx.save();
       ctx.strokeStyle = 'rgba(74, 222, 128, 0.72)';
-      ctx.lineWidth = Math.max(1.5, canvas.width / 700);
-      ctx.strokeRect(effectiveBox.x, effectiveBox.y, effectiveBox.w, effectiveBox.h);
+      ctx.lineWidth = viewRect.zoomed ? Math.max(1.5, canvas.width / 340) : Math.max(1.5, canvas.width / 700);
+      ctx.strokeRect(bx, by, bw, bh);
       for (let r = 1; r < rows; r++) {
-        const y = effectiveBox.y + r * ch;
+        const y = by + r * ch;
         ctx.beginPath();
-        ctx.moveTo(effectiveBox.x, y);
-        ctx.lineTo(effectiveBox.x + effectiveBox.w, y);
+        ctx.moveTo(bx, y);
+        ctx.lineTo(bx + bw, y);
         ctx.stroke();
       }
       for (let c = 1; c < cols; c++) {
-        const x = effectiveBox.x + c * cw;
+        const x = bx + c * cw;
         ctx.beginPath();
-        ctx.moveTo(x, effectiveBox.y);
-        ctx.lineTo(x, effectiveBox.y + effectiveBox.h);
+        ctx.moveTo(x, by);
+        ctx.lineTo(x, by + bh);
         ctx.stroke();
       }
       if (raidLastBoxSlot) {
-        const hx = effectiveBox.x + (raidLastBoxSlot.col - 1) * cw;
-        const hy = effectiveBox.y + (raidLastBoxSlot.row - 1) * ch;
+        const hx = bx + (raidLastBoxSlot.col - 1) * cw;
+        const hy = by + (raidLastBoxSlot.row - 1) * ch;
         ctx.fillStyle = 'rgba(74, 222, 128, 0.25)';
         ctx.fillRect(hx, hy, cw, ch);
         ctx.strokeStyle = '#4ade80';
@@ -2333,13 +2490,15 @@
         ctx.strokeRect(hx, hy, cw, ch);
       }
       if (raidLastBoxSlotTags.length) {
-        const fontSize = Math.max(9, Math.min(13, Math.round(cw * 0.2)));
+        const fontSize = viewRect.zoomed
+          ? Math.max(11, Math.min(18, Math.round(cw * 0.22)))
+          : Math.max(9, Math.min(13, Math.round(cw * 0.2)));
         ctx.font = `700 ${fontSize}px monospace`;
         raidLastBoxSlotTags.forEach((tag) => {
           if (!tag.key || tag.key === 'empty') return;
           const meta = STASH_ITEM_META[tag.key] || { short: tag.key, color: '#fff' };
-          const tx = effectiveBox.x + tag.col * cw + 2;
-          const ty = effectiveBox.y + tag.row * ch + 2;
+          const tx = bx + tag.col * cw + 2;
+          const ty = by + tag.row * ch + 2;
           const label = `${meta.short}:${tag.qty}`;
           const tw = ctx.measureText(label).width + 6;
           ctx.fillStyle = 'rgba(0,0,0,0.78)';
@@ -2354,12 +2513,26 @@
       clearBoxBtn.style.display = 'none';
     }
 
+    if (zoomBtn) {
+      const boxForZoom = raidBoxGridRect && raidBoxGridRect.w >= 24 && raidBoxGridRect.h >= 24 ? raidBoxGridRect : null;
+      const canShowZoom = Boolean(boxForZoom && (boxForZoom.w < dims.w * 0.72 || boxForZoom.h < dims.h * 0.72));
+      zoomBtn.style.display = canShowZoom ? 'inline-flex' : 'none';
+      if (canShowZoom) {
+        zoomBtn.textContent = viewRect.zoomed ? '🖥️ Show Full Screen' : '🔎 Zoom In on Box';
+      }
+    }
+
     if (raidScannerCropRect && raidScannerCropRect.w > 6 && raidScannerCropRect.h > 6) {
       ctx.save();
       ctx.strokeStyle = '#eab308';
       ctx.lineWidth = Math.max(2, canvas.width / 420);
       ctx.setLineDash([8, 5]);
-      ctx.strokeRect(raidScannerCropRect.x, raidScannerCropRect.y, raidScannerCropRect.w, raidScannerCropRect.h);
+      ctx.strokeRect(
+        toCx(raidScannerCropRect.x),
+        toCy(raidScannerCropRect.y),
+        raidScannerCropRect.w * scaleX,
+        raidScannerCropRect.h * scaleY
+      );
       ctx.restore();
     }
   }
@@ -2457,6 +2630,7 @@
     }
     raidLiveBusy = false;
     raidLiveAutoLoadedGrid = false;
+    raidDragLockedViewRect = null;
     raidPrevBoxCanvas = null;
     raidLastBoxSlot = null;
     const video = document.getElementById('raidLiveScanVideo');
@@ -2537,6 +2711,8 @@
     raidScannerCropRect = null;
     raidBoxGridRect = null;
     raidLiveAutoLoadedGrid = false;
+    raidScannerZoomToBox = false;
+    raidDragLockedViewRect = null;
     const initDims = getScannerSourceDimensions(video);
     if (initDims.w > 0 && initDims.h > 0) {
       const loaded = applyPreloadedRaidBoxGrid(initDims, { isLive: true });
@@ -2591,11 +2767,14 @@
           raidScannerImg = img;
           raidScannerCropRect = null;
           raidLastBoxSlotTags = [];
+          raidScannerZoomToBox = false;
+          raidDragLockedViewRect = null;
           const dims = getScannerSourceDimensions(img);
           if (isWidescreenGameFrame(dims)) {
             applyPreloadedRaidBoxGrid(dims);
           } else {
             raidBoxGridRect = null;
+            raidGridFromPreset = false;
           }
           drawRaidScannerPreview();
           await scanRaidLootImage(img, null, { isLive: false });
@@ -2728,10 +2907,24 @@
         statusEl.textContent = `🎯 Cleared any saved ${layoutVal} override — load a screenshot or start Live Scan to preview the Rust preset grid.`;
       }
     });
+    document.getElementById('raidZoomBoxBtn')?.addEventListener('click', () => {
+      raidScannerZoomToBox = !raidScannerZoomToBox;
+      raidDragLockedViewRect = null;
+      drawRaidScannerPreview();
+      const statusEl = document.getElementById('raidScannerStatusMsg');
+      if (statusEl) {
+        statusEl.textContent = raidScannerZoomToBox
+          ? '🔎 Zoomed in on chest grid — click any slot to re-tag or drag to fine-tune at high precision.'
+          : '🖥️ Full screen view — drag the green grid over any chest/hotbar or click "🔎 Zoom In on Box".';
+      }
+    });
     document.getElementById('raidClearBoxGridBtn')?.addEventListener('click', () => {
       const layoutVal = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
       clearSavedRaidBoxGridNorm(layoutVal);
       raidBoxGridRect = null;
+      raidGridFromPreset = false;
+      raidScannerZoomToBox = false;
+      raidDragLockedViewRect = null;
       raidLastBoxSlot = null;
       raidLastBoxSlotTags = [];
       drawRaidScannerPreview();
@@ -2765,21 +2958,34 @@
     if (canvas) {
       let dragging = false;
       let startPt = null;
+      let downClient = null;
+      let didDrag = false;
+      const getViewRect = () => getRaidScannerViewRect(getScannerSourceDimensions(raidScannerImg));
       const toCoords = (evt) => {
         const r = canvas.getBoundingClientRect();
+        const vr = raidDragLockedViewRect || getViewRect();
+        const u = Math.max(0, Math.min(1, (evt.clientX - r.left) / Math.max(1, r.width)));
+        const v = Math.max(0, Math.min(1, (evt.clientY - r.top) / Math.max(1, r.height)));
         return {
-          x: Math.max(0, Math.min(canvas.width, ((evt.clientX - r.left) / r.width) * canvas.width)),
-          y: Math.max(0, Math.min(canvas.height, ((evt.clientY - r.top) / r.height) * canvas.height))
+          x: vr.x + u * vr.w,
+          y: vr.y + v * vr.h
         };
       };
       canvas.addEventListener('pointerdown', (e) => {
         if (!raidScannerImg) return;
         dragging = true;
+        didDrag = false;
+        downClient = { x: e.clientX, y: e.clientY };
+        raidDragLockedViewRect = getViewRect();
         startPt = toCoords(e);
         canvas.setPointerCapture?.(e.pointerId);
       });
       canvas.addEventListener('pointermove', (e) => {
         if (!dragging || !startPt) return;
+        if (!didDrag && downClient && Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) <= 4) {
+          return;
+        }
+        didDrag = true;
         const cur = toCoords(e);
         const rect = {
           x: Math.min(startPt.x, cur.x),
@@ -2787,15 +2993,22 @@
           w: Math.abs(cur.x - startPt.x),
           h: Math.abs(cur.y - startPt.y)
         };
-        if (raidDragMode === 'box') raidBoxGridRect = rect;
-        else raidScannerCropRect = rect;
+        if (raidDragMode === 'box') {
+          raidBoxGridRect = rect;
+          raidGridFromPreset = false;
+        } else {
+          raidScannerCropRect = rect;
+        }
         drawRaidScannerPreview();
       });
       canvas.addEventListener('pointerup', (e) => {
         const endPt = toCoords(e);
-        const moveDist = startPt ? Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y) : 99;
+        const screenDist = downClient ? Math.hypot(e.clientX - downClient.x, e.clientY - downClient.y) : 99;
+        const isClick = !didDrag && screenDist <= 5;
         dragging = false;
-        if (moveDist <= 5 && raidLastBoxSlotTags.length) {
+        downClient = null;
+        raidDragLockedViewRect = null;
+        if (isClick && raidLastBoxSlotTags.length) {
           const dims = getScannerSourceDimensions(raidScannerImg);
           const effBox =
             raidBoxGridRect && raidBoxGridRect.w >= 24 && raidBoxGridRect.h >= 24
@@ -2812,10 +3025,13 @@
             applyBoxSlotTagsToStash(raidLastScanApplyMode);
             return;
           }
+          drawRaidScannerPreview();
+          return;
         }
-        if (raidDragMode === 'box' && raidBoxGridRect && (raidBoxGridRect.w < 20 || raidBoxGridRect.h < 20)) {
+        if (didDrag && raidDragMode === 'box' && raidBoxGridRect && (raidBoxGridRect.w < 20 || raidBoxGridRect.h < 20)) {
           raidBoxGridRect = null;
-        } else if (raidDragMode === 'box' && raidBoxGridRect && moveDist > 5) {
+          raidGridFromPreset = false;
+        } else if (didDrag && raidDragMode === 'box' && raidBoxGridRect) {
           const dims = getScannerSourceDimensions(raidScannerImg);
           const layoutVal = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
           if (raidLiveStream || isWidescreenGameFrame(dims)) {
@@ -2826,7 +3042,7 @@
             }
           }
         }
-        if (raidDragMode === 'inspect' && raidScannerCropRect && (raidScannerCropRect.w < 12 || raidScannerCropRect.h < 12)) {
+        if (didDrag && raidDragMode === 'inspect' && raidScannerCropRect && (raidScannerCropRect.w < 12 || raidScannerCropRect.h < 12)) {
           raidScannerCropRect = null;
         }
         drawRaidScannerPreview();
