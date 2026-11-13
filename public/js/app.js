@@ -2089,6 +2089,7 @@
   // =========================================================================
   let bfMapData = null;
   let bfLoadedImage = null;
+  let bfLandMask = null;
   let bfTopSpots = [];
   let bfSelectedIdx = 0;
   let bfActiveHeatmap = 'none';
@@ -2273,19 +2274,24 @@
     return gridObj.grid[gy * gridObj.N + gx] || 0;
   }
 
-  function computeFarmingSpots(mask) {
+  function computeFarmingSpots(mask, selectedSpot) {
     if (!bfMapData || !bfMapData.size) return [];
     const mapSize = bfMapData.size;
     const mons = bfMapData.monuments || [];
     const results = [];
-    const baseSpot = bfTopSpots[0] || null;
+    const baseSpot = selectedSpot || bfTopSpots[bfSelectedIdx] || bfTopSpots[0] || null;
     const distFromBase = (wx, wy) => (baseSpot ? Math.round(Math.hypot(wx - baseSpot.wx, wy - baseSpot.wy)) : null);
+    const maxQuarryDist = Math.max(1000, Math.round(mapSize * 0.30));
+    const maxFarmDist = Math.max(750, Math.round(mapSize * 0.24));
 
-    // 1. Mining Quarries & Safe Caves from monuments
+    // 1. Mining Quarries nearby the selected spot
+    const nearbyQuarries = [];
     mons.forEach((m) => {
       const t = m.type.toLowerCase();
       if (t.includes('quarry')) {
-        results.push({
+        const d = distFromBase(m.x, m.y);
+        if (d !== null && d > maxQuarryDist) return;
+        nearbyQuarries.push({
           kind: 'quarry',
           icon: '🏭',
           title: m.type,
@@ -2293,12 +2299,14 @@
           wx: m.x,
           wy: m.y,
           grid: bfWorldToGrid(m.x, m.y, mapSize),
-          distBase: distFromBase(m.x, m.y)
+          distBase: d
         });
       }
     });
+    nearbyQuarries.sort((a, b) => (a.distBase ?? 99999) - (b.distBase ?? 99999));
+    results.push(...nearbyQuarries);
 
-    // 2. Peak hotspots from RustMaps heatmaps (Nodes, Hemp, Berries)
+    // 2. Nearby hotspots from RustMaps heatmaps (Nodes, Hemp, Berries)
     const extractPeaks = (gridKey, kind, icon, title, detail) => {
       const g = bfHeatmapGrids[gridKey];
       if (!g) return;
@@ -2306,7 +2314,7 @@
       for (let y = 3; y < g.N - 3; y++) {
         for (let x = 3; x < g.N - 3; x++) {
           const val = g.grid[y * g.N + x];
-          if (val < 0.45) continue;
+          if (val < 0.30) continue;
           const nx = (x + 0.5) / g.N;
           const ny = (y + 0.5) / g.N;
           if (mask) {
@@ -2316,12 +2324,15 @@
           }
           const wx = (nx - 0.5) * mapSize;
           const wy = (0.5 - ny) * mapSize;
-          pts.push({ wx, wy, val });
+          const dist = distFromBase(wx, wy);
+          if (baseSpot && dist > maxFarmDist) continue;
+          const score = baseSpot ? val * (1 - 0.35 * (dist / maxFarmDist)) : val;
+          pts.push({ wx, wy, val, dist, score });
         }
       }
-      pts.sort((a, b) => b.val - a.val);
+      pts.sort((a, b) => b.score - a.score);
       const chosen = [];
-      const minSep = Math.max(320, mapSize * 0.11);
+      const minSep = Math.max(220, mapSize * 0.07);
       for (const p of pts) {
         if (chosen.every((c) => Math.hypot(c.wx - p.wx, c.wy - p.wy) >= minSep)) {
           chosen.push(p);
@@ -2333,7 +2344,7 @@
             wx: p.wx,
             wy: p.wy,
             grid: bfWorldToGrid(p.wx, p.wy, mapSize),
-            distBase: distFromBase(p.wx, p.wy)
+            distBase: p.dist
           });
           if (chosen.length >= 2) break;
         }
@@ -2784,7 +2795,10 @@
     listEl.querySelectorAll('.bf-spot-card').forEach((card) => {
       card.addEventListener('click', () => {
         bfSelectedIdx = parseInt(card.getAttribute('data-bf-idx'), 10) || 0;
+        bfSelectedFarmIdx = -1;
+        bfFarmingSpots = computeFarmingSpots(bfLandMask, bfTopSpots[bfSelectedIdx]);
         renderBaseFinderResults();
+        renderBaseFinderFarming();
         renderBaseFinderMap();
       });
     });
@@ -2793,27 +2807,32 @@
   function renderBaseFinderFarming() {
     const farmEl = document.getElementById('bfFarmingList');
     if (!farmEl) return;
+    const selSpot = bfTopSpots[bfSelectedIdx] || null;
+    const selLabel = selSpot ? `#${bfSelectedIdx + 1} [${selSpot.grid}]` : 'selected spot';
+
     if (!bfFarmingSpots || bfFarmingSpots.length === 0) {
-      farmEl.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px;">Loading resource heatmaps or no quarries/hotspots detected.</div>`;
+      farmEl.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px;">No quarries or resource hotspots detected near ${selLabel} (or heatmaps still loading).</div>`;
       return;
     }
 
-    farmEl.innerHTML = bfFarmingSpots
-      .map((fm, idx) => {
-        const isSel = idx === bfSelectedFarmIdx;
-        return `
-          <div class="monument-item bf-farm-card ${isSel ? 'active' : ''}" data-farm-idx="${idx}" style="padding:10px 12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-              <div style="font-family:var(--font-display); font-weight:700; font-size:13.5px; color:#fff;">
-                ${fm.icon} ${fm.title}
+    farmEl.innerHTML =
+      `<div style="font-size:11px; color:var(--text-muted); padding:0 2px 6px 2px;">Showing farming spots nearby <strong style="color:#fff;">${selLabel}</strong></div>` +
+      bfFarmingSpots
+        .map((fm, idx) => {
+          const isSel = idx === bfSelectedFarmIdx;
+          return `
+            <div class="monument-item bf-farm-card ${isSel ? 'active' : ''}" data-farm-idx="${idx}" style="padding:10px 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <div style="font-family:var(--font-display); font-weight:700; font-size:13.5px; color:#fff;">
+                  ${fm.icon} ${fm.title}
+                </div>
+                <span class="keycard-tag keycard-Fuse">[${fm.grid}]${fm.distBase !== null ? ` • ${fm.distBase}m from ${selLabel}` : ''}</span>
               </div>
-              <span class="keycard-tag keycard-Fuse">[${fm.grid}]${fm.distBase !== null ? ` • ${fm.distBase}m from #1` : ''}</span>
+              <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${fm.detail}</div>
             </div>
-            <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${fm.detail}</div>
-          </div>
-        `;
-      })
-      .join('');
+          `;
+        })
+        .join('');
 
     farmEl.querySelectorAll('.bf-farm-card').forEach((card) => {
       card.addEventListener('click', () => {
@@ -2826,11 +2845,11 @@
 
   function rerunBaseFinderScoring() {
     if (!bfMapData) return;
-    const mask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, bfMapData.size) : null;
+    bfLandMask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, bfMapData.size) : null;
     bfTopSpots = computeRecommendedBuildSpots();
-    bfFarmingSpots = computeFarmingSpots(mask);
     bfSelectedIdx = 0;
     bfSelectedFarmIdx = -1;
+    bfFarmingSpots = computeFarmingSpots(bfLandMask, bfTopSpots[0]);
     renderBaseFinderResults();
     renderBaseFinderFarming();
     renderBaseFinderMap();
