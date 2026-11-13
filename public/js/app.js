@@ -2261,11 +2261,16 @@
     return 0;
   }
 
+  function bfIsSewerBranch(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return !t.includes('cave') && (t.includes('sewer branch') || t.includes('sewer_branch'));
+  }
+
   // Tier 0/1 support monuments (Green card, early scrap/recycler, or Metro tunnel access)
   function bfIsTier01Support(typeStr) {
     const t = String(typeStr || '').toLowerCase();
     return (
-      t.includes('sewer') ||
+      bfIsSewerBranch(t) ||
       t.includes('satellite') ||
       t.includes('supermarket') ||
       t.includes('gas station') ||
@@ -2304,7 +2309,7 @@
     if (t.includes('abandoned military') || t.includes('fishing village') || t.includes('radtown') || t.includes('ziggurat') || t.includes('jungle')) {
       return 195;
     }
-    if (t.includes('sphere tank') || t.includes('satellite') || t.includes('sewer') || t.includes('junkyard') || t.includes('oil rig') || t.includes('oilrig') || t.includes('underwater lab')) {
+    if (t.includes('sphere tank') || t.includes('satellite') || bfIsSewerBranch(t) || t.includes('junkyard') || t.includes('oil rig') || t.includes('oilrig') || t.includes('underwater lab')) {
       return 185;
     }
     if (t.includes('quarry')) return 150;
@@ -3057,7 +3062,7 @@
     { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Spawns Free Green + (Green → Blue)', safe: false, vend: 0 },
     { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5, tier: 2, rec: 0, cards: 'Green + Blue (+ Red*)', safe: false, vend: 0 },
     // Tier 0/1 & Support Monuments
-    { match: 'sewer', icon: '🟢', label: 'Sewer', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'sewer branch', icon: '🟢', label: 'Sewer Branch', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
@@ -3072,6 +3077,7 @@
   function bfGetMonumentVisual(m, targetKey) {
     const raw = String(m?.type || m || '');
     const t = raw.toLowerCase();
+    if (t.includes('cave')) return null;
     const matchedRule = BF_MONUMENT_STYLE_RULES.find((rule) => t.includes(rule.match)) || null;
     if (bfMatchesTarget(raw, targetKey)) {
       return { color: '#38bdf8', short: `⚡ ${raw}`, r: 6.5, isMajor: true, meta: matchedRule };
@@ -3652,7 +3658,7 @@
     const nearWarehouse = findNearest((t) => t.includes('warehouse'));
     const usedFerryStep1 = greenCardMon && String(greenCardMon.type || '').toLowerCase().includes('ferry') && (!nearWarehouse || greenCardMon.dist <= 850 || greenCardMon.dist <= nearWarehouse.dist + 200);
     const step2 =
-      findNearest((t) => (t.includes('sewer') || t.includes('satellite') || t.includes('harbor') || (!usedFerryStep1 && t.includes('ferry')) || t.includes('radtown') || t.includes('sphere tank'))) ||
+      findNearest((t) => (bfIsSewerBranch(t) || t.includes('satellite') || t.includes('harbor') || (!usedFerryStep1 && t.includes('ferry')) || t.includes('radtown') || t.includes('sphere tank'))) ||
       findNearest((t) => t.includes('ferry'));
     const step3 =
       findNearest(
