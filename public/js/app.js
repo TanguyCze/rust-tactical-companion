@@ -2132,6 +2132,9 @@
     if (targetKey === 'missile_silo') return t.includes('missile silo');
     if (targetKey === 'military_tunnels') return t.includes('military tunnel');
     if (targetKey === 'sewer_branch') return t.includes('sewer branch');
+    if (targetKey === 'underwater_lab') return t.includes('underwater lab');
+    if (targetKey === 'large_oil_rig') return t.includes('large oil') || t.includes('oilrig_large');
+    if (targetKey === 'small_oil_rig') return t.includes('small oil') || t.includes('oilrig_small') || (t.includes('oil rig') && !t.includes('large'));
     return false;
   }
 
@@ -2398,7 +2401,7 @@
     const targetKey = document.getElementById('bfTargetMonumentSelect')?.value || 'powerplant';
     const wantDeepSea = Boolean(document.getElementById('bfDeepSeaCb')?.checked);
     const wantLowTraffic = Boolean(document.getElementById('bfLowTrafficCb')?.checked);
-    const wantStealthRock = Boolean(document.getElementById('bfStealthRockCb')?.checked);
+    const wantUnderwaterLab = Boolean(document.getElementById('bfUnderwaterLabCb')?.checked);
     const wantFarmOre = Boolean(document.getElementById('bfFarmOreCb')?.checked);
     const oreGrid = bfHeatmapGrids.Nodes || null;
     const spawnGrid = bfHeatmapGrids.PlayerSpawns || null;
@@ -2411,7 +2414,15 @@
       .filter((m) => m.progW > 0);
     const supportMons = mons.filter((m) => bfIsTier01Support(m.type));
     const boatHubs = mons.filter((m) => bfIsBoatHub(m.type));
-    const stealthCovers = mons.filter((m) => bfIsStealthCover(m.type));
+    const underwaterLabs = mons.filter((m) => String(m.type || '').toLowerCase().includes('underwater lab'));
+    const largeOils = mons.filter((m) => {
+      const t = String(m.type || '').toLowerCase();
+      return t.includes('large oil') || t.includes('oilrig_large');
+    });
+    const smallOils = mons.filter((m) => {
+      const t = String(m.type || '').toLowerCase();
+      return t.includes('small oil') || t.includes('oilrig_small') || (t.includes('oil rig') && !t.includes('large'));
+    });
     const noBuildList = mons
       .map((m) => ({ ...m, blockR: bfIsNoBuildSource(m.type) }))
       .filter((m) => m.blockR > 0);
@@ -2541,17 +2552,27 @@
         const oreDensity = oreGrid ? bfSampleDensity(oreGrid, nx, ny) : 0.5;
         const oreScore = Math.round(oreDensity * 100);
 
-        // 6. Stealth Cover (Cave / God Rock) Bonus
-        let nearestCover = null;
-        let coverDist = Infinity;
-        for (const sc of stealthCovers) {
-          const d = Math.hypot(wx - sc.x, wy - sc.y);
-          if (d < coverDist) {
-            coverDist = d;
-            nearestCover = sc;
+        // 6. Offshore Monuments: Underwater Labs + Large/Small Oil Rig
+        let nearestLab = null;
+        let labDist = Infinity;
+        for (const ul of underwaterLabs) {
+          const d = Math.hypot(wx - ul.x, wy - ul.y);
+          if (d < labDist) {
+            labDist = d;
+            nearestLab = ul;
           }
         }
-        const coverBonus = wantStealthRock && nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 14 : 0;
+        let largeOilDist = Infinity;
+        for (const lo of largeOils) {
+          const d = Math.hypot(wx - lo.x, wy - lo.y);
+          if (d < largeOilDist) largeOilDist = d;
+        }
+        let smallOilDist = Infinity;
+        for (const so of smallOils) {
+          const d = Math.hypot(wx - so.x, wy - so.y);
+          if (d < smallOilDist) smallOilDist = d;
+        }
+        const labBonus = wantUnderwaterLab && nearestLab && labDist <= 1400 ? (1 - labDist / 1400) * 12 : 0;
 
         // 7. Preference-independent "Under the Radar + Tier 2 Fast Progress" overall pick
         // Based on Rust progression guides: 1.5–3 grids (220m–450m) from a Tier 2 monument,
@@ -2605,10 +2626,10 @@
         const hempDensity = hempGrid ? bfSampleDensity(hempGrid, nx, ny) : 0.5;
         const resScore = (oreDensity * 0.65 + hempDensity * 0.35) * 100;
         const edgeStealthPts = coastDist <= 460 ? 100 : Math.max(25, 100 - ((coastDist - 460) / 800) * 75);
-        const stealthCoverBonus = nearestCover && coverDist <= 280 ? (1 - coverDist / 280) * 12 : 0;
+        const stealthLabBonus = nearestLab && labDist <= 1200 ? (1 - labDist / 1200) * 5 : 0;
         const stealthTotal = Math.min(
           100,
-          Math.round(stealthSafety * 0.36 + bestProgScore * 0.34 + resScore * 0.20 + edgeStealthPts * 0.10 + stealthCoverBonus + supportBonus)
+          Math.round(stealthSafety * 0.36 + bestProgScore * 0.34 + resScore * 0.20 + edgeStealthPts * 0.10 + supportBonus + stealthLabBonus)
         );
         if (!bestStealth || stealthTotal > bestStealth.score) {
           bestStealth = {
@@ -2629,8 +2650,11 @@
             boatName: nearestBoat?.type || 'Coast',
             minTrafficDist: Math.round(minAllTrafficDist),
             nearestTrafficName: nearestAllTraffic?.type || 'None',
-            coverDist: Math.round(coverDist),
-            coverName: nearestCover && coverDist <= 320 ? nearestCover.type : ''
+            labDist: Math.round(labDist),
+            labName: nearestLab?.type || '',
+            labRedCard: nearestLab ? nearestLab.hasRedKeycard : null,
+            largeOilDist: Math.round(largeOilDist),
+            smallOilDist: Math.round(smallOilDist)
           };
         }
 
@@ -2642,7 +2666,7 @@
         const wSum = wTarget + wDeep + wTraffic + wOre || 1;
         const total = Math.min(
           100,
-          Math.round((targetScore * wTarget + deepSeaScore * wDeep + lowTrafficScore * wTraffic + oreScore * wOre) / wSum + coverBonus)
+          Math.round((targetScore * wTarget + deepSeaScore * wDeep + lowTrafficScore * wTraffic + oreScore * wOre) / wSum + labBonus)
         );
 
         candidates.push({
@@ -2663,8 +2687,11 @@
           boatName: nearestBoat?.type || 'Coast',
           minTrafficDist: Math.round(minTrafficDist),
           nearestTrafficName: nearestTraffic?.type || 'None',
-          coverDist: Math.round(coverDist),
-          coverName: nearestCover && coverDist <= 320 ? nearestCover.type : ''
+          labDist: Math.round(labDist),
+          labName: nearestLab?.type || '',
+          labRedCard: nearestLab ? nearestLab.hasRedKeycard : null,
+          largeOilDist: Math.round(largeOilDist),
+          smallOilDist: Math.round(smallOilDist)
         });
       }
     }
@@ -2690,7 +2717,11 @@
     { match: 'missile silo', icon: '☢️', label: 'Missile Silo', color: '#ef4444', r: 6 },
     { match: 'military tunnel', icon: '🪖', label: 'Mil. Tunnels', color: '#ef4444', r: 6 },
     { match: 'excavator', icon: '🏗️', label: 'Excavator', color: '#ef4444', r: 6 },
-    { match: 'oil rig', icon: '🛢️', label: null, color: '#ef4444', r: 5.5 },
+    { match: 'large oil', icon: '🛢️', label: 'Large Oil', color: '#ef4444', r: 6 },
+    { match: 'oilrig_large', icon: '🛢️', label: 'Large Oil', color: '#ef4444', r: 6 },
+    { match: 'small oil', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5 },
+    { match: 'oil rig', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5 },
+    { match: 'oilrig', icon: '🛢️', label: 'Small Oil', color: '#f97316', r: 5.5 },
     { match: 'outpost', icon: '🛡️', label: 'Outpost', color: '#22c55e', r: 6 },
     { match: 'bandit', icon: '🏴‍☠️', label: 'Bandit Camp', color: '#22c55e', r: 6 },
     // Tier 2 Monuments
@@ -2720,19 +2751,20 @@
     { match: 'water well', icon: '🚰', label: 'Well', color: '#94a3b8', r: 3.5 }
   ];
 
-  function bfGetMonumentVisual(typeStr, targetKey) {
-    const raw = String(typeStr || '');
+  function bfGetMonumentVisual(m, targetKey) {
+    const raw = String(m?.type || m || '');
     const t = raw.toLowerCase();
     if (bfMatchesTarget(raw, targetKey)) {
       return { color: '#38bdf8', short: `⚡ ${raw}`, r: 6.5, isMajor: true };
     }
-    if (bfIsStealthCover(raw) && (t.includes('cave') || t.includes('large god'))) {
-      return { color: '#c084fc', short: t.includes('cave') ? '🕳️' : '', r: 3.5, isMajor: false };
+    if (t.includes('underwater lab')) {
+      const redTag = m?.hasRedKeycard === true ? ' 🔴' : m?.hasRedKeycard === false ? ' (No Red)' : '';
+      return { color: '#38bdf8', short: `🔬 Lab${redTag}`, r: 5.5, isMajor: true };
     }
     for (const rule of BF_MONUMENT_STYLE_RULES) {
       if (t.includes(rule.match)) {
         const name = rule.label || raw.replace(' A', '').replace(' B', '').replace(' C', '');
-        const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0;
+        const isMajor = bfIsHighTraffic(raw) || bfIsBoatHub(raw) || bfTier2ProgWeight(raw) > 0 || t.includes('oil');
         return { color: rule.color, short: `${rule.icon} ${name}`, r: rule.r, isMajor };
       }
     }
@@ -2832,9 +2864,9 @@
     // 3. Monument pins (all monuments when Show All Monuments is checked, or key hubs only)
     const showAllMons = Boolean(document.getElementById('bfShowMonumentsCb')?.checked ?? true);
     mons.forEach((m) => {
-      const vis = bfGetMonumentVisual(m.type, targetKey);
+      const vis = bfGetMonumentVisual(m, targetKey);
       if (!vis) return;
-      if (!showAllMons && !vis.isMajor && vis.color !== '#c084fc') return;
+      if (!showAllMons && !vis.isMajor) return;
 
       const { px, py } = toPx(m.x, m.y);
       ctx.save();
@@ -2951,6 +2983,22 @@
     });
   }
 
+  function bfFormatOffshoreInfo(s) {
+    const parts = [];
+    if (s.labName && s.labDist < 99999) {
+      const redStatus =
+        s.labRedCard === true
+          ? '<span style="color:#f87171;">🔴 Red Card Room</span>'
+          : s.labRedCard === false
+            ? '<span style="color:#94a3b8;">No Red Card Room</span>'
+            : '<span style="color:#fbbf24;">⚠️ Red Card depends on lab layout</span>';
+      parts.push(`<span style="color:#38bdf8;">🔬 Lab: ${s.labDist}m</span> (${redStatus})`);
+    }
+    if (s.largeOilDist < 99999) parts.push(`<span style="color:#f87171;">🛢️ Large Oil: ${s.largeOilDist}m</span>`);
+    if (s.smallOilDist < 99999) parts.push(`<span style="color:#fb923c;">🛢️ Small Oil: ${s.smallOilDist}m</span>`);
+    return parts.length ? `<div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap;">${parts.join(' • ')}</div>` : '';
+  }
+
   function renderBaseFinderResults() {
     const stealthSlot = document.getElementById('bfStealthBestSlot');
     const listEl = document.getElementById('bfResultsList');
@@ -2980,8 +3028,8 @@
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">
               Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
-              ${s.coverName ? ` • <span style="color:#c084fc;">🪨 Cover nearby: ${s.coverName} (${s.coverDist}m)</span>` : ''}
             </div>
+            ${bfFormatOffshoreInfo(s)}
           </div>
         `;
       } else {
@@ -3016,8 +3064,8 @@
               </div>
               <div style="font-size:12px; color:var(--text-secondary);">
                 Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
-                ${s.coverName ? ` • <span style="color:#c084fc;">🪨 Cover nearby: ${s.coverName} (${s.coverDist}m)</span>` : ''}
               </div>
+              ${bfFormatOffshoreInfo(s)}
             </div>
           `;
         })
@@ -3186,7 +3234,7 @@
       if (e.key === 'Enter') runAnalyze();
     });
 
-    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfStealthRockCb', 'bfFarmOreCb', 'bfShowHeatmapCb'].forEach((id) => {
+    ['bfTargetMonumentSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb', 'bfShowHeatmapCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);

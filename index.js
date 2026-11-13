@@ -469,11 +469,21 @@ const server = http.createServer(async (req, res) => {
             }
             return acc;
           }, {}),
-          monuments: (mapData.monuments || []).map((m) => ({
-            type: m.type || '',
-            x: Number(m.coordinates?.x || 0),
-            y: Number(m.coordinates?.y || 0)
-          }))
+          monuments: (mapData.monuments || []).map((m) => {
+            let hasRedKeycard = null;
+            if (typeof m.hasRedKeycard === 'boolean') hasRedKeycard = m.hasRedKeycard;
+            else if (typeof m.redKeycard === 'boolean') hasRedKeycard = m.redKeycard;
+            else if (Array.isArray(m.modules)) {
+              hasRedKeycard = m.modules.some((mod) => String(mod?.name || mod || '').toLowerCase().includes('red'));
+            }
+            return {
+              type: m.type || '',
+              nameOverride: m.nameOverride || '',
+              hasRedKeycard,
+              x: Number(m.coordinates?.x || 0),
+              y: Number(m.coordinates?.y || 0)
+            };
+          })
         });
       } catch (err) {
         return sendJson(res, 502, { error: `Failed to analyze RustMaps URL: ${err.message}` });
