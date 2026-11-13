@@ -3048,6 +3048,18 @@
       ctx.fillStyle = idx === 0 ? '#facc15' : '#4ade80';
       ctx.fillText(lbl, px, py + 22);
       ctx.restore();
+
+      bfRenderedPins.push({
+        px,
+        py,
+        r: isSel ? 18 : 13,
+        wx: spot.wx,
+        wy: spot.wy,
+        title: `#${idx + 1} Recommended Spot [${spot.grid}]`,
+        color: idx === 0 ? '#facc15' : '#4ade80',
+        lines: [`Score: ${spot.score}/100 • Click pin to select`],
+        selectAction: { type: 'spot', idx }
+      });
     });
 
     // 4B. Best Overall "Under the Radar" Fast-Progress Spot (regardless of preferences)
@@ -3082,6 +3094,72 @@
       ctx.fillStyle = '#e9d5ff';
       ctx.fillText(lbl, px, py - 18);
       ctx.restore();
+
+      bfRenderedPins.push({
+        px,
+        py,
+        r: isSel ? 20 : 14,
+        wx: bfStealthBest.wx,
+        wy: bfStealthBest.wy,
+        title: `🥷 Best Under-Radar [${bfStealthBest.grid}]`,
+        color: '#c084fc',
+        lines: [`Score: ${bfStealthBest.score}/100 • Click pin to select`],
+        selectAction: { type: 'spot', idx: -1 }
+      });
+    }
+
+    // 4C. Selected Spot Progression Route & Nearby Farming Radius
+    const selSpot = getSelectedBuildSpot();
+    const showRoute = Boolean(document.getElementById('bfShowRouteCb')?.checked ?? true);
+    if (selSpot) {
+      const selPx = toPx(selSpot.wx, selSpot.wy);
+      const maxFarmR = Math.max(750, Math.round(mapSize * 0.24)) * scale;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(selPx.px, selPx.py, maxFarmR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.28)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+      ctx.restore();
+
+      if (showRoute) {
+        const steps = computeProgressionRoute(selSpot);
+        let prev = selPx;
+        steps.forEach((st, sIdx) => {
+          if (st.wx === undefined || st.wy === undefined) return;
+          const next = toPx(st.wx, st.wy);
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(prev.px, prev.py);
+          ctx.lineTo(next.px, next.py);
+          ctx.strokeStyle = st.color;
+          ctx.globalAlpha = 0.72;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.stroke();
+
+          // Step number pill midpoint
+          const mx = (prev.px + next.px) / 2;
+          const my = (prev.py + next.py) / 2;
+          ctx.globalAlpha = 1;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(mx, my, 8, 0, Math.PI * 2);
+          ctx.fillStyle = '#0f172a';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = st.color;
+          ctx.stroke();
+          ctx.font = '800 9.5px "JetBrains Mono", monospace';
+          ctx.fillStyle = st.color;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(sIdx + 1), mx, my + 0.5);
+          ctx.restore();
+          prev = next;
+        });
+      }
     }
 
     // 5. Top Farming Hotspots (Ore Ridges, Hemp/Berry Fields, Mining Quarries)
@@ -3106,6 +3184,18 @@
       ctx.fillStyle = '#fde047';
       ctx.fillText(tag, px, py - 11);
       ctx.restore();
+
+      bfRenderedPins.push({
+        px,
+        py,
+        r: isSel ? 13 : 9,
+        wx: fm.wx,
+        wy: fm.wy,
+        title: `${fm.icon} ${fm.title} [${fm.grid}]`,
+        color: '#fde047',
+        lines: [fm.detail],
+        selectAction: { type: 'farm', idx: fIdx }
+      });
     });
   }
 
@@ -3201,16 +3291,24 @@
     document.querySelectorAll('#tab-basefinder .bf-spot-card').forEach((card) => {
       card.addEventListener('click', () => {
         const parsed = parseInt(card.getAttribute('data-bf-idx'), 10);
-        bfSelectedIdx = Number.isNaN(parsed) ? 0 : parsed;
-        bfSelectedFarmIdx = -1;
-        bfFarmingSpots = computeFarmingSpots(bfLandMask, getSelectedBuildSpot());
-        renderBaseFinderResults();
-        renderBaseFinderFarming();
-        renderBaseFinderRoute();
-        renderBaseFinderMap();
-        renderMonumentAtlas();
+        bfSelectBuildSpot(Number.isNaN(parsed) ? 0 : parsed);
+      });
+      card.addEventListener('dblclick', () => {
+        const spot = getSelectedBuildSpot();
+        if (spot) bfFocusWorldPoint(spot.wx, spot.wy, 1.7);
       });
     });
+  }
+
+  function bfSelectBuildSpot(idx) {
+    bfSelectedIdx = idx;
+    bfSelectedFarmIdx = -1;
+    bfFarmingSpots = computeFarmingSpots(bfLandMask, getSelectedBuildSpot());
+    renderBaseFinderResults();
+    renderBaseFinderFarming();
+    renderBaseFinderRoute();
+    renderBaseFinderMap();
+    renderMonumentAtlas();
   }
 
   function renderBaseFinderFarming() {
@@ -3289,6 +3387,8 @@
         name: step1.type,
         grid: step1.grid,
         dist: step1.dist,
+        wx: step1.x,
+        wy: step1.y,
         note: 'Grab Green Card + early scrap/recycle (~250 scrap for WB1/tools).'
       });
     }
@@ -3299,6 +3399,8 @@
         name: step2.type,
         grid: step2.grid,
         dist: step2.dist,
+        wx: step2.x,
+        wy: step2.y,
         note: 'Bring 1× Green Card + 1× Fuse → loot Blue Card + components.'
       });
     }
@@ -3311,6 +3413,8 @@
         name: step3.type,
         grid: step3.grid,
         dist: step3.dist,
+        wx: step3.x,
+        wy: step3.y,
         note: `Bring 1× Blue Card + 1× Fuse → Red Card + Mil Crates${recText}.`
       });
     }
@@ -3328,10 +3432,20 @@
         name: step4.type,
         grid: step4.grid,
         dist: step4.dist,
+        wx: step4.x,
+        wy: step4.y,
         note: labNote
       });
     }
     return route;
+  }
+
+  function bfFocusWorldPoint(wx, wy, zoomTarget = 1.65) {
+    if (!bfMapData || wx === undefined || wy === undefined) return;
+    bfPanX = wx;
+    bfPanY = wy;
+    bfZoom = Math.max(bfZoom, zoomTarget);
+    renderBaseFinderMap();
   }
 
   function renderBaseFinderRoute() {
@@ -3346,8 +3460,8 @@
     }
     routeEl.innerHTML = steps
       .map(
-        (st) => `
-        <div class="monument-item" style="padding:9px 12px; border-left:3px solid ${st.color};">
+        (st, idx) => `
+        <div class="monument-item bf-route-step-card" data-route-idx="${idx}" style="padding:9px 12px; border-left:3px solid ${st.color}; cursor:pointer;" title="Click to focus map on ${st.name}">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:${st.color};">${st.step}: <span style="color:#fff;">${st.name}</span></div>
             <span class="keycard-tag keycard-Fuse">[${st.grid}] • ${st.dist}m</span>
@@ -3357,6 +3471,14 @@
       `
       )
       .join('');
+
+    routeEl.querySelectorAll('.bf-route-step-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.getAttribute('data-route-idx'), 10);
+        const st = steps[idx];
+        if (st) bfFocusWorldPoint(st.wx, st.wy, 1.55);
+      });
+    });
   }
 
   function rerunBaseFinderScoring() {
@@ -3377,14 +3499,57 @@
     const urlInput = document.getElementById('bfMapUrlInput');
     const statusEl = document.getElementById('bfStatusBar');
     const metaEl = document.getElementById('bfMapMetaLabel');
+    const recentBar = document.getElementById('bfRecentMapsBar');
+    const RECENT_MAPS_KEY = 'rust_companion_recent_maps_v1';
+
+    function bfGetRecentMaps() {
+      try {
+        const raw = localStorage.getItem(RECENT_MAPS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function bfSaveRecentMap(entry) {
+      const next = [entry, ...bfGetRecentMaps().filter((m) => m.id !== entry.id)].slice(0, 5);
+      try {
+        localStorage.setItem(RECENT_MAPS_KEY, JSON.stringify(next));
+      } catch (_) {}
+      bfRenderRecentMaps();
+    }
+
+    function bfRenderRecentMaps() {
+      if (!recentBar) return;
+      const list = bfGetRecentMaps();
+      if (!list.length) {
+        recentBar.innerHTML = '';
+        return;
+      }
+      recentBar.innerHTML =
+        `<span style="font-size:11px; color:var(--text-muted); font-weight:700;">RECENT MAPS:</span>` +
+        list
+          .map(
+            (m) =>
+              `<button class="filter-pill bf-recent-pill" data-map-url="${m.url}" style="padding:3px 9px; font-size:11px;">🗺️ ${m.id}</button>`
+          )
+          .join('');
+      recentBar.querySelectorAll('.bf-recent-pill').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (urlInput) urlInput.value = btn.getAttribute('data-map-url') || '';
+          runAnalyze();
+        });
+      });
+    }
 
     async function runAnalyze() {
       const url = urlInput?.value.trim();
       if (!url) {
-        alert('Paste a RustMaps.com URL (e.g. https://rustmaps.com/map/4250_1337420) or BattleMetrics server URL first!');
+        alert('Paste a RustMaps.com URL (e.g. https://rustmaps.com/map/4250_1337420) or size_seed first!');
         return;
       }
-      if (!isServerConnected) {
+      if (window.location.protocol === 'file:') {
         alert('Backend server required to fetch RustMaps data.');
         return;
       }
@@ -3411,6 +3576,10 @@
         bfPanY = 0;
         bfHeatmapImages = {};
         bfHeatmapGrids = {};
+        bfSaveRecentMap({
+          id: `${data.size}_${data.seed}`,
+          url: data.rustmapsUrl || `${data.size}_${data.seed}`
+        });
         if (metaEl) {
           metaEl.textContent = `Size: ${data.size} • Seed: ${data.seed} • ${data.monuments.length} map features detected`;
         }
@@ -3475,6 +3644,7 @@
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
+    document.getElementById('bfShowRouteCb')?.addEventListener('change', renderBaseFinderMap);
 
     // Zoom, Fit All, Island 100%, Full-Width Expand, and Drag-to-Pan controls
     const setZoomClamped = (nextZoom) => {
@@ -3503,10 +3673,12 @@
     const bfCanvas = document.getElementById('bfMapCanvas');
     if (bfCanvas) {
       let dragging = false;
+      let dragMoved = 0;
       let lastX = 0;
       let lastY = 0;
       bfCanvas.addEventListener('mousedown', (e) => {
         dragging = true;
+        dragMoved = 0;
         lastX = e.clientX;
         lastY = e.clientY;
         bfCanvas.style.cursor = 'grabbing';
@@ -3518,6 +3690,7 @@
       });
       window.addEventListener('mousemove', (e) => {
         if (!dragging || !bfMapData) return;
+        dragMoved += Math.hypot(e.clientX - lastX, e.clientY - lastY);
         const rect = bfCanvas.getBoundingClientRect();
         const mapSize = bfMapData.size || 4000;
         const scale = (bfCanvas.width / mapSize) * bfZoom;
@@ -3528,6 +3701,32 @@
         bfPanX -= dx / scale;
         bfPanY += dy / scale;
         renderBaseFinderMap();
+      });
+      bfCanvas.addEventListener('click', (e) => {
+        if (dragMoved >= 6 || !bfMapData || !bfRenderedPins.length) return;
+        const rect = bfCanvas.getBoundingClientRect();
+        const cx = ((e.clientX - rect.left) * bfCanvas.width) / Math.max(1, rect.width);
+        const cy = ((e.clientY - rect.top) * bfCanvas.height) / Math.max(1, rect.height);
+
+        let nearestActionPin = null;
+        let minDist = Infinity;
+        for (const pin of bfRenderedPins) {
+          if (!pin.selectAction) continue;
+          const dist = Math.hypot(cx - pin.px, cy - pin.py);
+          if (dist <= pin.r + 10 && dist < minDist) {
+            minDist = dist;
+            nearestActionPin = pin;
+          }
+        }
+        if (!nearestActionPin) return;
+
+        if (nearestActionPin.selectAction.type === 'spot') {
+          bfSelectBuildSpot(nearestActionPin.selectAction.idx);
+        } else if (nearestActionPin.selectAction.type === 'farm') {
+          bfSelectedFarmIdx = nearestActionPin.selectAction.idx;
+          renderBaseFinderFarming();
+          renderBaseFinderMap();
+        }
       });
       const tooltipEl = document.getElementById('bfMapTooltip');
       const hudEl = document.getElementById('bfMapHudReadout');
@@ -3611,6 +3810,15 @@
         document.getElementById(map[target])?.classList.add('active');
       });
     });
+
+    bfRenderRecentMaps();
+    const recentMaps = bfGetRecentMaps();
+    if (urlInput && !urlInput.value.trim() && recentMaps.length > 0) {
+      urlInput.value = recentMaps[0].url;
+      if (window.location.protocol !== 'file:') {
+        runAnalyze();
+      }
+    }
 
     renderBaseFinderMap();
   }

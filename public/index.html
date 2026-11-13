@@ -446,10 +446,11 @@
           </div>
         </div>
 
-        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;">
           <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: 280px;" placeholder="https://rustmaps.com/map/4250_1337420  or  4250_1337420" />
           <button id="bfAnalyzeBtn" class="btn btn-primary" style="font-weight: 700;">🔍 Analyze Map &amp; Find Best Spots</button>
         </div>
+        <div id="bfRecentMapsBar" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;"></div>
 
         <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px 14px;">
           <div style="display: flex; align-items: center; gap: 6px;">
@@ -509,6 +510,10 @@
               <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
                 <input id="bfShowHeatmapCb" type="checkbox" checked />
                 <span>Show Traffic / Safe Zones</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+                <input id="bfShowRouteCb" type="checkbox" checked />
+                <span>🛤️ Route Lines</span>
               </label>
               <button id="bfExpandMapBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11.5px;">⤢ Full Width</button>
             </div>
