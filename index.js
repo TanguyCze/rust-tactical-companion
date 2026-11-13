@@ -34,6 +34,22 @@ const DEFAULT_STATE = {
     { targetId: 'garage_door', qty: 3, mode: 'combo' },
     { targetId: 'stone_wall', qty: 1, mode: 'combo' }
   ],
+  raidStash: {
+    sulfur: 0,
+    sulfur_ore: 0,
+    gunpowder: 0,
+    explosives: 0,
+    c4: 0,
+    rocket: 0,
+    explo_ammo: 0,
+    satchel: 0,
+    beancan: 0,
+    hv_rocket: 0,
+    incen_rocket: 0,
+    molotov: 0,
+    charcoal: 0,
+    lgf: 0
+  },
   savedClones: [
     { id: 'c1', crop: 'Hemp', genes: 'YGYWGG', notes: 'Gen 1 Starter' },
     { id: 'c2', crop: 'Hemp', genes: 'GGYYXW', notes: 'Gen 1 Donor A' },

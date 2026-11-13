@@ -17,6 +17,23 @@
   const PIN_STORAGE_KEY = 'rust_tactical_companion_pin';
   const BM_TOKEN_KEY = 'rust_tactical_companion_bm_token';
 
+  const DEFAULT_RAID_STASH = {
+    sulfur: 0,
+    sulfur_ore: 0,
+    gunpowder: 0,
+    explosives: 0,
+    c4: 0,
+    rocket: 0,
+    explo_ammo: 0,
+    satchel: 0,
+    beancan: 0,
+    hv_rocket: 0,
+    incen_rocket: 0,
+    molotov: 0,
+    charcoal: 0,
+    lgf: 0
+  };
+
   let appState = {
     squadName: 'RUST SQUAD ALPHA',
     activeTimers: [],
@@ -25,6 +42,7 @@
       { targetId: 'garage_door', qty: 3, mode: 'combo' },
       { targetId: 'stone_wall', qty: 1, mode: 'combo' }
     ],
+    raidStash: { ...DEFAULT_RAID_STASH },
     savedClones: [
       { id: 'c1', crop: 'Hemp', genes: 'YGYWGG' },
       { id: 'c2', crop: 'Hemp', genes: 'GGYYXW' },
@@ -68,7 +86,8 @@
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
-      appState = { ...appState, ...JSON.parse(saved) };
+      const parsedSaved = JSON.parse(saved);
+      appState = { ...appState, ...parsedSaved, raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) } };
     }
   } catch (_) {}
 
@@ -116,7 +135,7 @@
         try {
           const msg = JSON.parse(evt.data);
           if (msg.state) {
-            appState = { ...appState, ...msg.state };
+            appState = { ...appState, ...msg.state, raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) } };
             saveLocalFallback();
             renderAll();
           }
@@ -528,7 +547,8 @@
       appState.raidQueue.push({ targetId, qty: cleanQty, mode });
     }
     renderRaidPlanner();
-    saveState();
+    renderRaidStashReadiness();
+    syncStateToServer();
   }
 
   function changeRaidQueueQty(idx, delta) {
@@ -541,7 +561,8 @@
       item.qty = Math.min(99, next);
     }
     renderRaidPlanner();
-    saveState();
+    renderRaidStashReadiness();
+    syncStateToServer();
   }
 
   function resolveQueueItemLoadout(item) {
@@ -661,6 +682,7 @@
         '<div class="text-muted text-sm" style="padding:14px; text-align:center; border:1px dashed var(--border-subtle); border-radius:6px;">No targets queued. Click any structure on the left or use + Add above.</div>';
       summaryContainer.innerHTML = '';
       nodeContainer.innerHTML = '';
+      if (typeof renderRaidStashReadiness === 'function') renderRaidStashReadiness();
       return;
     }
 
@@ -733,7 +755,8 @@
         const idx = Number(btn.getAttribute('data-idx'));
         appState.raidQueue.splice(idx, 1);
         renderRaidPlanner();
-        saveState();
+    renderRaidStashReadiness();
+        syncStateToServer();
       });
     });
 
@@ -795,6 +818,7 @@
         </div>
       </div>
     `;
+    if (typeof renderRaidStashReadiness === 'function') renderRaidStashReadiness();
   }
 
   function solveCustomRemainingHp() {
@@ -954,7 +978,8 @@
     document.getElementById('clearRaidQueueBtn')?.addEventListener('click', () => {
       appState.raidQueue = [];
       renderRaidPlanner();
-      saveState();
+    renderRaidStashReadiness();
+      syncStateToServer();
     });
 
     document.getElementById('discordRaidPlanBtn')?.addEventListener('click', () => {
@@ -1012,6 +1037,838 @@
       solveCustomRemainingHp();
     });
     solveCustomRemainingHp();
+  }
+  // =========================================================================
+  // MODULE 1B: STASH & BOOM LIVE WINDOW/OCR SCANNER + READINESS ENGINE
+  // =========================================================================
+  const STASH_ITEM_META = {
+    sulfur: { name: 'Sulfur', sulfurEq: 1 },
+    sulfur_ore: { name: 'Sulfur Ore', sulfurEq: 1 },
+    gunpowder: { name: 'Gun Powder', sulfurEq: 2 },
+    explosives: { name: 'Explosives', sulfurEq: 110 },
+    c4: { name: 'C4', sulfurEq: 2200 },
+    rocket: { name: 'Rocket', sulfurEq: 1400 },
+    explo_ammo: { name: 'Explosive 5.56', sulfurEq: 25 },
+    satchel: { name: 'Satchel Charge', sulfurEq: 480 },
+    beancan: { name: 'Beancan Grenade', sulfurEq: 120 },
+    hv_rocket: { name: 'HV Rocket', sulfurEq: 200 },
+    incen_rocket: { name: 'Incen Rocket', sulfurEq: 610 },
+    molotov: { name: 'Molotov', sulfurEq: 0 },
+    charcoal: { name: 'Charcoal', sulfurEq: 0 },
+    lgf: { name: 'Low Grade Fuel', sulfurEq: 0 }
+  };
+
+  let raidOcrWorkerPromise = null;
+  let raidScannerImg = null;
+  let raidScannerCropRect = null;
+  let raidBoxGridRect = null;
+  let raidDragMode = 'box'; // 'box' | 'inspect'
+  let raidLiveStream = null;
+  let raidLiveTimer = null;
+  let raidLiveBusy = false;
+  let raidLastLiveSig = '';
+  let raidPrevBoxCanvas = null;
+  let raidLastBoxSlot = null;
+  let raidScannedHistory = []; // { id, key, name, qty, sulfurEq, mode, prevVal, slotLabel }
+
+  async function ensureRaidOcrWorker(setStatus) {
+    if (!raidOcrWorkerPromise) {
+      raidOcrWorkerPromise = (async () => {
+        setStatus('⏳ Loading in-browser Raid Stash OCR engine (first run downloads ~2MB)...');
+        await loadScriptOnce('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+        if (!window.Tesseract) throw new Error('Tesseract failed to initialize.');
+        const worker = await window.Tesseract.createWorker('eng');
+        return worker;
+      })().catch((err) => {
+        raidOcrWorkerPromise = null;
+        throw err;
+      });
+    }
+    return raidOcrWorkerPromise;
+  }
+
+  function getRaidBoxGridDims() {
+    const val = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
+    const [rStr, cStr] = val.split('x');
+    return {
+      rows: Math.max(1, parseInt(rStr, 10) || 8),
+      cols: Math.max(1, parseInt(cStr, 10) || 6)
+    };
+  }
+
+  function syncStashInputsFromState() {
+    const stash = appState.raidStash || DEFAULT_RAID_STASH;
+    document.querySelectorAll('#raidStashInputs input[data-stash-key]').forEach((inp) => {
+      const k = inp.getAttribute('data-stash-key');
+      if (document.activeElement !== inp) {
+        inp.value = Math.max(0, Math.floor(Number(stash[k]) || 0));
+      }
+    });
+  }
+
+  function getStashTotals() {
+    const raw = appState.raidStash || DEFAULT_RAID_STASH;
+    const s = {};
+    Object.keys(DEFAULT_RAID_STASH).forEach((k) => {
+      s[k] = Math.max(0, Math.floor(Number(raw[k]) || 0));
+    });
+    const smeltedCraftPool = s.sulfur + s.gunpowder * 2 + s.explosives * 110;
+    const withOreCraftPool = smeltedCraftPool + s.sulfur_ore;
+    const craftedBoomSulfur =
+      s.c4 * 2200 +
+      s.rocket * 1400 +
+      s.explo_ammo * 25 +
+      s.satchel * 480 +
+      s.beancan * 120 +
+      s.hv_rocket * 200 +
+      s.incen_rocket * 610;
+
+    return {
+      stash: s,
+      smeltedCraftPool,
+      withOreCraftPool,
+      craftedBoomSulfur,
+      totalReadySulfurEq: smeltedCraftPool + craftedBoomSulfur,
+      totalWithOreSulfurEq: withOreCraftPool + craftedBoomSulfur
+    };
+  }
+
+  function getQueuedShoppingRequirements() {
+    const queue = appState.raidQueue || [];
+    const reqTools = {};
+    let planSulfur = 0;
+    let planCharcoal = 0;
+    let planLgf = 0;
+
+    queue.forEach((item) => {
+      const res = resolveQueueItemLoadout(item);
+      if (!res) return;
+      planSulfur += res.totalSulfur;
+      planCharcoal += res.totalCharcoal;
+      planLgf += res.totalLgf;
+      Object.entries(res.toolCounts).forEach(([tId, count]) => {
+        if (count > 0) reqTools[tId] = (reqTools[tId] || 0) + count;
+      });
+    });
+
+    return { reqTools, planSulfur, planCharcoal, planLgf };
+  }
+
+  function renderRaidStashReadiness() {
+    syncStashInputsFromState();
+    const readinessEl = document.getElementById('raidStashReadiness');
+    const affordEl = document.getElementById('raidAffordabilityGrid');
+    if (!readinessEl || !affordEl) return;
+
+    const metrics = getStashTotals();
+    const { stash, smeltedCraftPool, withOreCraftPool, craftedBoomSulfur, totalReadySulfurEq, totalWithOreSulfurEq } = metrics;
+    const { reqTools, planSulfur } = getQueuedShoppingRequirements();
+
+    // Compute exact plan gap accounting for crafted matching boom in stash first
+    let remainingBoomSulfurNeeded = 0;
+    const remainingToolsText = [];
+    const matchedBoomCounts = {};
+
+    Object.entries(reqTools).forEach(([toolId, needQty]) => {
+      const haveQty = Math.min(needQty, stash[toolId] || 0);
+      matchedBoomCounts[toolId] = haveQty;
+      const stillNeed = Math.max(0, needQty - haveQty);
+      if (stillNeed > 0) {
+        const tMeta = DATA.raidTools[toolId] || { sulfur: 0, shortName: toolId };
+        remainingBoomSulfurNeeded += stillNeed * (tMeta.sulfur || 0);
+        remainingToolsText.push(`${stillNeed}x ${tMeta.shortName || toolId}`);
+      }
+    });
+
+    // Spare crafted boom that does NOT directly match queued tool types
+    const spareBoomNotes = [];
+    let spareBoomSulfur = 0;
+    ['c4', 'rocket', 'explo_ammo', 'satchel', 'beancan', 'hv_rocket', 'incen_rocket'].forEach((tId) => {
+      const extraQty = Math.max(0, (stash[tId] || 0) - (matchedBoomCounts[tId] || 0));
+      if (extraQty > 0) {
+        const tMeta = STASH_ITEM_META[tId];
+        spareBoomSulfur += extraQty * tMeta.sulfurEq;
+        spareBoomNotes.push(`${extraQty}x ${tMeta.name}`);
+      }
+    });
+
+    const missingSulfurForPlan = Math.max(0, remainingBoomSulfurNeeded - withOreCraftPool);
+    const surplusCraftSulfur = Math.max(0, withOreCraftPool - remainingBoomSulfurNeeded);
+    const pct = planSulfur > 0 ? Math.min(100, Math.round(((planSulfur - missingSulfurForPlan) / planSulfur) * 100)) : 100;
+
+    const nodesNeededNormal = Math.ceil(missingSulfurForPlan / 300);
+    const nodesNeededTea = Math.ceil(missingSulfurForPlan / 450);
+
+    // Charcoal needed if user still needs to craft Gun Powder from raw Sulfur + Ore
+    const rawSulfurPlusOre = stash.sulfur + stash.sulfur_ore;
+    const sulfurNeedingCharcoal = Math.min(rawSulfurPlusOre, Math.max(0, remainingBoomSulfurNeeded - stash.gunpowder * 2 - stash.explosives * 110));
+    const estCharcoalNeeded = Math.round(sulfurNeedingCharcoal * 1.5);
+    const missingCharcoal = Math.max(0, estCharcoalNeeded - stash.charcoal);
+
+    let statusClass = 'readiness-banner';
+    let headline = '';
+    let subDetail = '';
+
+    if (planSulfur <= 0) {
+      statusClass += totalWithOreSulfurEq > 0 ? ' is-ready' : '';
+      headline = `⚡ Stash Pool: <strong style="color:var(--sulfur-yellow)">${totalWithOreSulfurEq.toLocaleString()} Sulfur Eq.</strong>`;
+      subDetail = 'Queue targets in the Squad Raid Planner below to calculate your exact deficit & nodes missing.';
+    } else if (missingSulfurForPlan === 0) {
+      statusClass += ' is-ready';
+      headline = `✅ READY FOR QUEUED RAID PLAN! <span style="color:#4ade80;">(+${surplusCraftSulfur.toLocaleString()} Surplus Craft Sulfur)</span>`;
+      subDetail =
+        stash.sulfur_ore > 0 && remainingBoomSulfurNeeded > smeltedCraftPool
+          ? `Note: Smelt ${Math.min(stash.sulfur_ore, remainingBoomSulfurNeeded - smeltedCraftPool).toLocaleString()} of your Sulfur Ore first.`
+          : `You have enough Sulfur / GP / Boom to cover all queued targets (${planSulfur.toLocaleString()} Sulfur).`;
+    } else {
+      statusClass += ' is-short';
+      headline = `⚠️ MISSING <span style="color:#f87171;">${missingSulfurForPlan.toLocaleString()} SULFUR</span> FOR RAID PLAN (${pct}% Funded)`;
+      subDetail =
+        `⛏️ Farm <strong>${nodesNeededNormal} Sulfur Nodes</strong> (or <strong>${nodesNeededTea} w/ Pure Ore Tea</strong>). ` +
+        (remainingToolsText.length ? `Still to craft: <strong>${remainingToolsText.join(' + ')}</strong>.` : '');
+    }
+
+    const gpSulfurEq = stash.gunpowder * 2;
+    const expSulfurEq = stash.explosives * 110;
+
+    readinessEl.innerHTML = `
+      <div class="${statusClass}">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; font-family:var(--font-display); font-size:13.5px; color:#fff;">
+          <div>${headline}</div>
+          <div style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow); font-weight:700;">
+            ${totalReadySulfurEq.toLocaleString()} Ready${stash.sulfur_ore > 0 ? ` (+${stash.sulfur_ore.toLocaleString()} Ore = ${totalWithOreSulfurEq.toLocaleString()})` : ''}
+          </div>
+        </div>
+        ${
+          planSulfur > 0
+            ? `<div class="readiness-bar-track">
+                 <div class="readiness-bar-fill" style="width:${pct}%; background:${missingSulfurForPlan === 0 ? '#22c55e' : 'linear-gradient(90deg, #eab308, #ef4444)'};"></div>
+               </div>`
+            : ''
+        }
+        <div class="text-xs" style="color:#e2e8f0; margin-top:4px; line-height:1.45;">${subDetail}</div>
+        <div class="text-xs text-muted" style="margin-top:6px; font-family:var(--font-mono); display:flex; flex-wrap:wrap; gap:10px;">
+          <span>Sulfur+Ore: <strong>${rawSulfurPlusOre.toLocaleString()}</strong></span>
+          <span>GP (${stash.gunpowder.toLocaleString()}): <strong>${gpSulfurEq.toLocaleString()}S</strong></span>
+          <span>Explosives (${stash.explosives}): <strong>${expSulfurEq.toLocaleString()}S</strong></span>
+          <span>Crafted Boom: <strong>${craftedBoomSulfur.toLocaleString()}S</strong></span>
+          ${spareBoomNotes.length ? `<span style="color:var(--sulfur-yellow);">Spare Boom: <strong>${spareBoomNotes.join(', ')} (${spareBoomSulfur.toLocaleString()}S)</strong></span>` : ''}
+          ${missingCharcoal > 0 && stash.charcoal > 0 ? `<span style="color:#fb923c;">Need ~${missingCharcoal.toLocaleString()} more Charcoal for GP</span>` : ''}
+        </div>
+      </div>
+    `;
+
+    const benchmarkTargets = [
+      { id: 'sheet_metal_door', short: 'Sheet Metal Door', cost: 1575, via: '63 Explo / 1 Rkt+8' },
+      { id: 'garage_door', short: 'Garage Door', cost: 3200, via: '1 C4 + 40 Explo' },
+      { id: 'stone_wall', short: 'Stone Wall', cost: 4300, via: '1 C4 + 84 Explo' },
+      { id: 'armored_door', short: 'Armored Door', cost: 5150, via: '2 C4 + 30 Explo' },
+      { id: 'sheet_metal_wall', short: 'Sheet Metal Wall', cost: 8350, via: '3 C4 + 70 Explo' },
+      { id: 'armored_wall', short: 'Armored Wall', cost: 16150, via: '7 C4 + 30 Explo' }
+    ];
+
+    affordEl.innerHTML = benchmarkTargets
+      .map((bt) => {
+        const count = Math.floor(totalWithOreSulfurEq / bt.cost);
+        const gap = Math.max(0, bt.cost - totalWithOreSulfurEq);
+        return `
+          <div class="afford-card ${count > 0 ? 'can-raid' : ''}">
+            <div class="afford-card-title">${bt.short}</div>
+            <div class="afford-card-val" style="color:${count > 0 ? '#4ade80' : '#fca5a5'};">
+              ${count > 0 ? `✅ Can raid ${count}×` : `Need ${gap.toLocaleString()}S (${Math.ceil(gap / 300)} nodes)`}
+            </div>
+            <div class="text-xs text-muted" style="font-size:10px;">Best: ${bt.cost.toLocaleString()}S (${bt.via})</div>
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  function parseRaidLootFromOcrText(rawText) {
+    const cleanText = String(rawText || '').replace(/\r/g, '');
+    const lines = cleanText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    const patterns = [
+      { key: 'explo_ammo', rx: /EXPLOSIVE\s*5[.,]?\s*56|5[.,]?\s*56\s*RIFLE|EXPLO\s*5[.,]?\s*56|EXPLO\s*AMMO/i },
+      { key: 'hv_rocket', rx: /HIGH\s*VELOC|HV\s*ROCKET/i },
+      { key: 'incen_rocket', rx: /INCENDIARY\s*ROCKET|INCEN\s*ROCKET/i },
+      { key: 'c4', rx: /TIMED\s*EXPLOSIVE|\bC4\b/i },
+      { key: 'explosives', rx: /\bEXPLOSIVES?\b/i },
+      { key: 'rocket', rx: /\bROCKETS?\b/i },
+      { key: 'satchel', rx: /\bSATCHEL/i },
+      { key: 'beancan', rx: /\bBEANCAN/i },
+      { key: 'molotov', rx: /\bMOLOTOV/i },
+      { key: 'sulfur_ore', rx: /(?:SULFUR|SULPHUR|5ULFUR)\s*(?:ORE|0RE)/i },
+      { key: 'sulfur', rx: /\b(?:SULFUR|SULPHUR|5ULFUR)\b/i },
+      { key: 'gunpowder', rx: /GUN\s*P[O0]WDER|\bGP\b/i },
+      { key: 'charcoal', rx: /CHARC[O0]AL/i },
+      { key: 'lgf', rx: /L[O0]W\s*GRADE|\bLGF\b/i }
+    ];
+
+    const extractQtyFromStr = (str) => {
+      if (!str) return null;
+      const sanitized = str
+        .replace(/\b5[.,]\s*56\b/gi, ' ')
+        .replace(/\b\d{1,3}\s*%/g, ' ')
+        .replace(/\b\d{1,2}:\d{2}\b/g, ' ');
+      const xMatch = sanitized.match(/(?:^|\s)[x×]\s*(\d[\d,.]*)/i);
+      if (xMatch) {
+        const val = parseInt(xMatch[1].replace(/[,.]/g, ''), 10);
+        if (val > 0 && val <= 200000) return val;
+      }
+      const amtMatch = sanitized.match(/(?:AMOUNT|QTY|COUNT|STACK)\s*:?\s*(\d[\d,]*)/i);
+      if (amtMatch) {
+        const val = parseInt(amtMatch[1].replace(/,/g, ''), 10);
+        if (val > 0 && val <= 200000) return val;
+      }
+      const nums = sanitized.match(/\b(\d{1,6})\b/g);
+      if (nums && nums.length) {
+        for (const nStr of nums) {
+          const val = parseInt(nStr, 10);
+          if (val > 0 && val <= 100000) return val;
+        }
+      }
+      return null;
+    };
+
+    const detected = [];
+    const seenKeys = new Set();
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      for (const p of patterns) {
+        if (!p.rx.test(line)) continue;
+        // Skip misleading description prose lines when an uppercase/short header wasn't matched cleanly
+        if (line.length > 65 && !/x\s*\d+/i.test(line)) continue;
+
+        let qty = extractQtyFromStr(line);
+        if (qty === null && i + 1 < lines.length) qty = extractQtyFromStr(lines[i + 1]);
+        if (qty === null && i + 2 < lines.length) qty = extractQtyFromStr(lines[i + 2]);
+        if (qty === null && i - 1 >= 0) qty = extractQtyFromStr(lines[i - 1]);
+        if (qty === null) qty = ['c4', 'rocket', 'hv_rocket', 'incen_rocket', 'satchel', 'molotov'].includes(p.key) ? 1 : 0;
+
+        if (qty > 0 && !seenKeys.has(p.key)) {
+          seenKeys.add(p.key);
+          const meta = STASH_ITEM_META[p.key];
+          detected.push({
+            key: p.key,
+            name: meta.name,
+            qty,
+            sulfurEq: qty * (meta.sulfurEq || 0)
+          });
+        }
+        break;
+      }
+    }
+
+    return detected;
+  }
+
+  function renderRaidScannedFeed() {
+    const feedEl = document.getElementById('raidScannedFeed');
+    if (!feedEl) return;
+    if (!raidScannedHistory.length) {
+      feedEl.innerHTML = '';
+      return;
+    }
+    feedEl.innerHTML = `
+      <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border-subtle); border-radius:6px; padding:8px 10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">
+            🧾 SCANNED STACKS LOG (${raidScannedHistory.length})
+          </span>
+          <button id="raidClearFeedBtn" class="btn btn-sm" type="button">Clear Log</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;">
+          ${raidScannedHistory
+            .slice(0, 15)
+            .map(
+              (ev) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 8px; background:var(--bg-card); border-radius:4px; font-family:var(--font-mono); font-size:11.5px;">
+              <div>
+                <strong style="color:#fff;">${ev.mode === 'set' ? '=' : '+'}${ev.qty.toLocaleString()} ${ev.name}</strong>
+                ${ev.sulfurEq > 0 ? `<span style="color:var(--sulfur-yellow);">(${ev.sulfurEq.toLocaleString()}S eq.)</span>` : ''}
+                ${ev.slotLabel ? `<span class="target-tier-tag" style="margin-left:4px; color:#4ade80;">📍 ${ev.slotLabel}</span>` : ''}
+              </div>
+              <button class="btn btn-sm raid-undo-scan-btn" data-scan-id="${ev.id}" type="button" title="Undo this scan">Undo</button>
+            </div>
+          `
+            )
+            .join('')}
+        </div>
+      </div>
+    `;
+
+    feedEl.querySelector('#raidClearFeedBtn')?.addEventListener('click', () => {
+      raidScannedHistory = [];
+      renderRaidScannedFeed();
+    });
+    feedEl.querySelectorAll('.raid-undo-scan-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-scan-id');
+        const idx = raidScannedHistory.findIndex((x) => x.id === id);
+        if (idx < 0) return;
+        const ev = raidScannedHistory[idx];
+        if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
+        if (ev.mode === 'set') {
+          appState.raidStash[ev.key] = Math.max(0, ev.prevVal || 0);
+        } else {
+          appState.raidStash[ev.key] = Math.max(0, (appState.raidStash[ev.key] || 0) - ev.qty);
+        }
+        raidScannedHistory.splice(idx, 1);
+        renderRaidScannedFeed();
+        renderRaidStashReadiness();
+        syncStateToServer();
+      });
+    });
+  }
+
+  function applyDetectedStashEntries(entries, slotLabel = '', mode = 'accumulate') {
+    if (!entries.length) return 0;
+    if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
+    entries.forEach((ent, i) => {
+      const prevVal = Math.max(0, Number(appState.raidStash[ent.key]) || 0);
+      if (mode === 'set') {
+        appState.raidStash[ent.key] = ent.qty;
+      } else {
+        appState.raidStash[ent.key] = prevVal + ent.qty;
+      }
+      raidScannedHistory.unshift({
+        id: 'rs-' + Date.now() + '-' + i,
+        key: ent.key,
+        name: ent.name,
+        qty: ent.qty,
+        sulfurEq: ent.sulfurEq,
+        mode,
+        prevVal,
+        slotLabel
+      });
+    });
+    renderRaidScannedFeed();
+    renderRaidStashReadiness();
+    syncStateToServer();
+    return entries.length;
+  }
+
+  function drawRaidScannerPreview() {
+    const canvas = document.getElementById('raidScannerCanvas');
+    const wrap = document.getElementById('raidScannerPreviewWrap');
+    const clearBoxBtn = document.getElementById('raidClearBoxGridBtn');
+    const dims = getScannerSourceDimensions(raidScannerImg);
+    if (!canvas || !wrap || !raidScannerImg || !dims.w || !dims.h) return;
+
+    wrap.style.display = 'block';
+    canvas.width = dims.w;
+    canvas.height = dims.h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(raidScannerImg, 0, 0, dims.w, dims.h);
+
+    if (raidBoxGridRect && raidBoxGridRect.w > 12 && raidBoxGridRect.h > 12) {
+      const { rows, cols } = getRaidBoxGridDims();
+      const cw = raidBoxGridRect.w / cols;
+      const ch = raidBoxGridRect.h / rows;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.72)';
+      ctx.lineWidth = Math.max(1.5, canvas.width / 700);
+      ctx.strokeRect(raidBoxGridRect.x, raidBoxGridRect.y, raidBoxGridRect.w, raidBoxGridRect.h);
+      for (let r = 1; r < rows; r++) {
+        const y = raidBoxGridRect.y + r * ch;
+        ctx.beginPath();
+        ctx.moveTo(raidBoxGridRect.x, y);
+        ctx.lineTo(raidBoxGridRect.x + raidBoxGridRect.w, y);
+        ctx.stroke();
+      }
+      for (let c = 1; c < cols; c++) {
+        const x = raidBoxGridRect.x + c * cw;
+        ctx.beginPath();
+        ctx.moveTo(x, raidBoxGridRect.y);
+        ctx.lineTo(x, raidBoxGridRect.y + raidBoxGridRect.h);
+        ctx.stroke();
+      }
+      if (raidLastBoxSlot) {
+        const hx = raidBoxGridRect.x + (raidLastBoxSlot.col - 1) * cw;
+        const hy = raidBoxGridRect.y + (raidLastBoxSlot.row - 1) * ch;
+        ctx.fillStyle = 'rgba(74, 222, 128, 0.25)';
+        ctx.fillRect(hx, hy, cw, ch);
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = Math.max(2.5, canvas.width / 320);
+        ctx.strokeRect(hx, hy, cw, ch);
+      }
+      ctx.restore();
+      if (clearBoxBtn) clearBoxBtn.style.display = 'inline-flex';
+    } else if (clearBoxBtn) {
+      clearBoxBtn.style.display = 'none';
+    }
+
+    if (raidScannerCropRect && raidScannerCropRect.w > 6 && raidScannerCropRect.h > 6) {
+      ctx.save();
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = Math.max(2, canvas.width / 420);
+      ctx.setLineDash([8, 5]);
+      ctx.strokeRect(raidScannerCropRect.x, raidScannerCropRect.y, raidScannerCropRect.w, raidScannerCropRect.h);
+      ctx.restore();
+    }
+  }
+
+  async function scanRaidLootImage(srcEl, cropRect = null, opts = {}) {
+    const statusEl = document.getElementById('raidScannerStatusMsg');
+    const setStatus = (msg) => {
+      if (statusEl) statusEl.textContent = msg;
+    };
+    const isLive = Boolean(opts.isLive);
+    const autoAddLive = Boolean(opts.autoAddLive);
+    const mode = document.getElementById('raidLiveScanModeSelect')?.value || 'accumulate';
+
+    try {
+      const dims = getScannerSourceDimensions(srcEl);
+      if (!dims.w || !dims.h) return;
+
+      const worker = await ensureRaidOcrWorker(setStatus);
+      if (!isLive) setStatus('🔍 Scanning Rust image for Sulfur, Gun Powder & Boom...');
+
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = dims.w;
+      fullCanvas.height = dims.h;
+      fullCanvas.getContext('2d').drawImage(srcEl, 0, 0, dims.w, dims.h);
+
+      const detectedSlot = raidBoxGridRect
+        ? detectBoxGridSlot(fullCanvas, raidBoxGridRect, raidPrevBoxCanvas, { dims: getRaidBoxGridDims(), boxName: '' })
+        : null;
+      if (detectedSlot) raidLastBoxSlot = detectedSlot;
+
+      // Default inspect area on 16:9 / large Rust captures if user didn't drag a custom inspect crop
+      let activeRect =
+        cropRect && cropRect.w > 12 && cropRect.h > 12
+          ? cropRect
+          : dims.w >= 900 && dims.h >= 500
+          ? {
+              x: Math.round(dims.w * 0.25),
+              y: Math.round(dims.h * 0.08),
+              w: Math.round(dims.w * 0.45),
+              h: Math.round(dims.h * 0.44)
+            }
+          : { x: 0, y: 0, w: dims.w, h: dims.h };
+
+      if (isLive) {
+        const sig = `${detectedSlot?.label || ''}|${computeCanvasRegionSig(fullCanvas, activeRect)}`;
+        if (sig === raidLastLiveSig) {
+          return;
+        }
+        raidLastLiveSig = sig;
+      }
+      raidPrevBoxCanvas = fullCanvas;
+
+      let entries = [];
+      const prep1 = buildOcrPrepCanvas(fullCanvas, activeRect, 'invGray');
+      const res1 = await worker.recognize(prep1);
+      entries = parseRaidLootFromOcrText(res1?.data?.text);
+
+      // For static screenshots or cropped misses, fallback to full canvas once
+      if (!entries.length && !cropRect && !isLive && (activeRect.w !== dims.w || activeRect.h !== dims.h)) {
+        const wholeRect = { x: 0, y: 0, w: dims.w, h: dims.h };
+        const prepFull = buildOcrPrepCanvas(fullCanvas, wholeRect, 'invGray');
+        const resFull = await worker.recognize(prepFull);
+        entries = parseRaidLootFromOcrText(resFull?.data?.text);
+      }
+
+      if (entries.length > 0) {
+        if (!isLive || autoAddLive) {
+          applyDetectedStashEntries(entries, detectedSlot?.label || '', mode);
+          if (isLive) playAlertSound('urgent');
+          const summary = entries.map((e) => `${e.qty.toLocaleString()} ${e.name}`).join(', ');
+          const locSuffix = detectedSlot?.label ? ` at 📍 ${detectedSlot.label}` : '';
+          setStatus(
+            `${isLive ? '🟢 LIVE' : '✅'} Scanned: ${summary}${locSuffix}`
+          );
+        }
+      } else if (!isLive) {
+        setStatus('⚠️ No Sulfur / GP / Boom item text found. Drag a 🔍 yellow crop over the Rust item inspect name + stack amount and click "Scan Screen / Crop".');
+      }
+    } catch (err) {
+      setStatus(`❌ Stash scan failed: ${err?.message || err}`);
+    }
+  }
+
+  function stopRaidLiveScan() {
+    if (raidLiveTimer) {
+      clearInterval(raidLiveTimer);
+      raidLiveTimer = null;
+    }
+    if (raidLiveStream) {
+      raidLiveStream.getTracks().forEach((t) => t.stop());
+      raidLiveStream = null;
+    }
+    raidLiveBusy = false;
+    raidPrevBoxCanvas = null;
+    raidLastBoxSlot = null;
+    const video = document.getElementById('raidLiveScanVideo');
+    if (video) video.srcObject = null;
+    const startBtn = document.getElementById('raidLiveScanStartBtn');
+    const stopBtn = document.getElementById('raidLiveScanStopBtn');
+    const badge = document.getElementById('raidLiveScanBadge');
+    const statusEl = document.getElementById('raidScannerStatusMsg');
+    if (startBtn) startBtn.style.display = 'inline-flex';
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+    if (statusEl && statusEl.textContent.includes('LIVE')) {
+      statusEl.textContent = '⏹ Live Stash scan stopped.';
+    }
+  }
+
+  async function startRaidLiveScan() {
+    if (typeof stopLiveRustScan === 'function') stopLiveRustScan();
+    const panel = document.getElementById('raidScannerPanel');
+    if (panel) panel.style.display = 'block';
+
+    const statusEl = document.getElementById('raidScannerStatusMsg');
+    const setStatus = (msg) => {
+      if (statusEl) statusEl.textContent = msg;
+    };
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      const origin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : window.location.href;
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="padding:10px 12px; border-radius:6px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.55); color:#fecaca; font-family:var(--font-sans); font-size:12px; line-height:1.45;">
+            ⚠️ <strong>Browser blocked Live Screen Capture on plain HTTP / local file!</strong> Chrome &amp; Edge require <code>https://</code> or <code>http://localhost</code>.<br/>
+            • Enable <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> with <code>${origin}</code> or use <kbd>Win+Shift+S</kbd> + <kbd>Ctrl+V</kbd> right here!
+          </div>
+        `;
+      }
+      return;
+    }
+
+    stopRaidLiveScan();
+    raidLastLiveSig = '';
+
+    try {
+      setStatus('🪟 Pick your Rust game window (or monitor) in the browser prompt...');
+      raidLiveStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'never', frameRate: { ideal: 10, max: 15 } },
+        audio: false
+      });
+    } catch (err) {
+      setStatus(`⚠️ Window share cancelled: ${err?.message || 'Permission declined'}`);
+      return;
+    }
+
+    const video = document.getElementById('raidLiveScanVideo');
+    if (!video) return;
+    video.srcObject = raidLiveStream;
+    try {
+      await video.play();
+    } catch (_) {}
+
+    const track = raidLiveStream.getVideoTracks()[0];
+    if (track) track.addEventListener('ended', stopRaidLiveScan, { once: true });
+
+    document.getElementById('raidLiveScanStartBtn')?.style && (document.getElementById('raidLiveScanStartBtn').style.display = 'none');
+    document.getElementById('raidLiveScanStopBtn')?.style && (document.getElementById('raidLiveScanStopBtn').style.display = 'inline-flex');
+    document.getElementById('raidLiveScanBadge')?.style && (document.getElementById('raidLiveScanBadge').style.display = 'inline-flex');
+
+    try {
+      await ensureRaidOcrWorker(setStatus);
+    } catch (err) {
+      stopRaidLiveScan();
+      setStatus(`❌ Failed to load OCR engine: ${err?.message || err}`);
+      return;
+    }
+
+    raidScannerImg = video;
+    raidScannerCropRect = null;
+    drawRaidScannerPreview();
+    setStatus('🔴 LIVE: Click Sulfur, Gun Powder, Explosives, C4, Rockets or Explo 5.56 in your Rust boxes — each stack auto-adds with a beep!');
+
+    raidLiveTimer = setInterval(async () => {
+      if (!raidLiveStream || raidLiveBusy || video.readyState < 2) return;
+      raidLiveBusy = true;
+      try {
+        raidScannerImg = video;
+        drawRaidScannerPreview();
+        const autoAddLive = Boolean(document.getElementById('raidLiveScanAutoAddCb')?.checked ?? true);
+        await scanRaidLootImage(video, raidScannerCropRect, { isLive: true, autoAddLive });
+      } finally {
+        raidLiveBusy = false;
+      }
+    }, 750);
+  }
+
+  function loadRaidImageFile(file) {
+    return new Promise((resolve) => {
+      if (!file || !file.type.startsWith('image/')) {
+        resolve();
+        return;
+      }
+      stopRaidLiveScan();
+      const panel = document.getElementById('raidScannerPanel');
+      if (panel) panel.style.display = 'block';
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = async () => {
+          raidScannerImg = img;
+          raidScannerCropRect = null;
+          drawRaidScannerPreview();
+          await scanRaidLootImage(img, null, { isLive: false });
+          resolve();
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function initRaidStashModule() {
+    // 1. Bind editable numeric stash inputs
+    document.querySelectorAll('#raidStashInputs input[data-stash-key]').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
+        const key = inp.getAttribute('data-stash-key');
+        appState.raidStash[key] = Math.max(0, Math.floor(Number(inp.value) || 0));
+        renderRaidStashReadiness();
+        syncStateToServer();
+      });
+    });
+
+    document.getElementById('resetRaidStashBtn')?.addEventListener('click', () => {
+      appState.raidStash = { ...DEFAULT_RAID_STASH };
+      raidScannedHistory = [];
+      renderRaidScannedFeed();
+      renderRaidStashReadiness();
+      syncStateToServer();
+    });
+
+    // 2. Bind Live Window & Screenshot Scanner controls
+    const panel = document.getElementById('raidScannerPanel');
+    document.getElementById('raidToggleScannerBtn')?.addEventListener('click', () => {
+      if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+    document.getElementById('raidLiveScanToggleBtn')?.addEventListener('click', () => {
+      if (panel) panel.style.display = 'block';
+      startRaidLiveScan();
+    });
+    document.getElementById('raidLiveScanStartBtn')?.addEventListener('click', startRaidLiveScan);
+    document.getElementById('raidLiveScanStopBtn')?.addEventListener('click', stopRaidLiveScan);
+    document.getElementById('raidCloseScannerBtn')?.addEventListener('click', () => {
+      stopRaidLiveScan();
+      if (panel) panel.style.display = 'none';
+    });
+
+    const fileInput = document.getElementById('raidScanFileInput');
+    document.getElementById('raidPickScanFilesBtn')?.addEventListener('click', () => fileInput?.click());
+    const handleFiles = async (fileList) => {
+      const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'));
+      for (const f of files) await loadRaidImageFile(f);
+    };
+    fileInput?.addEventListener('change', async (e) => {
+      await handleFiles(e.target.files);
+      fileInput.value = '';
+    });
+
+    const dropZone = document.getElementById('raidScannerDropZone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        await handleFiles(e.dataTransfer?.files);
+      });
+    }
+
+    document.addEventListener('paste', async (e) => {
+      if (!document.getElementById('tab-raid')?.classList.contains('active')) return;
+      const items = Array.from(e.clipboardData?.items || []);
+      const imgItem = items.find((it) => it.type.startsWith('image/'));
+      if (!imgItem) return;
+      e.preventDefault();
+      const file = imgItem.getAsFile();
+      if (file) await loadRaidImageFile(file);
+    });
+
+    const boxBtn = document.getElementById('raidDragModeBoxBtn');
+    const inspectBtn = document.getElementById('raidDragModeInspectBtn');
+    const setDragMode = (m) => {
+      raidDragMode = m;
+      boxBtn?.classList.toggle('btn-sulfur', m === 'box');
+      inspectBtn?.classList.toggle('btn-sulfur', m === 'inspect');
+    };
+    boxBtn?.addEventListener('click', () => setDragMode('box'));
+    inspectBtn?.addEventListener('click', () => setDragMode('inspect'));
+
+    document.getElementById('raidScannerBoxLayoutSelect')?.addEventListener('change', () => {
+      raidLastBoxSlot = null;
+      drawRaidScannerPreview();
+    });
+    document.getElementById('raidClearBoxGridBtn')?.addEventListener('click', () => {
+      raidBoxGridRect = null;
+      raidLastBoxSlot = null;
+      drawRaidScannerPreview();
+    });
+    document.getElementById('raidClearCropBtn')?.addEventListener('click', () => {
+      raidScannerCropRect = null;
+      raidLastLiveSig = '';
+      drawRaidScannerPreview();
+    });
+    document.getElementById('raidRescanBtn')?.addEventListener('click', () => {
+      if (raidScannerImg) {
+        raidLastLiveSig = '';
+        scanRaidLootImage(raidScannerImg, raidScannerCropRect, {
+          isLive: Boolean(raidLiveStream),
+          autoAddLive: Boolean(raidLiveStream && document.getElementById('raidLiveScanAutoAddCb')?.checked)
+        });
+      }
+    });
+
+    const canvas = document.getElementById('raidScannerCanvas');
+    if (canvas) {
+      let dragging = false;
+      let startPt = null;
+      const toCoords = (evt) => {
+        const r = canvas.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(canvas.width, ((evt.clientX - r.left) / r.width) * canvas.width)),
+          y: Math.max(0, Math.min(canvas.height, ((evt.clientY - r.top) / r.height) * canvas.height))
+        };
+      };
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!raidScannerImg) return;
+        dragging = true;
+        startPt = toCoords(e);
+        canvas.setPointerCapture?.(e.pointerId);
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!dragging || !startPt) return;
+        const cur = toCoords(e);
+        const rect = {
+          x: Math.min(startPt.x, cur.x),
+          y: Math.min(startPt.y, cur.y),
+          w: Math.abs(cur.x - startPt.x),
+          h: Math.abs(cur.y - startPt.y)
+        };
+        if (raidDragMode === 'box') raidBoxGridRect = rect;
+        else raidScannerCropRect = rect;
+        drawRaidScannerPreview();
+      });
+      canvas.addEventListener('pointerup', () => {
+        dragging = false;
+        if (raidDragMode === 'box' && raidBoxGridRect && (raidBoxGridRect.w < 20 || raidBoxGridRect.h < 20)) {
+          raidBoxGridRect = null;
+        }
+        if (raidDragMode === 'inspect' && raidScannerCropRect && (raidScannerCropRect.w < 12 || raidScannerCropRect.h < 12)) {
+          raidScannerCropRect = null;
+        }
+        drawRaidScannerPreview();
+      });
+    }
+
+    renderRaidStashReadiness();
   }
   // =========================================================================
   // MODULE 2: MONUMENT GUIDE (KEYCARDS, FUSES, CRATES & RESPAWN TIMERS)
@@ -2581,9 +3438,9 @@
     };
   }
 
-  function detectBoxGridSlot(curFullCanvas, boxRect, prevCanvas) {
+  function detectBoxGridSlot(curFullCanvas, boxRect, prevCanvas, opts = {}) {
     if (!curFullCanvas || !boxRect || boxRect.w < 24 || boxRect.h < 24) return null;
-    const { rows, cols } = getBoxGridDims();
+    const { rows, cols } = opts.dims || getBoxGridDims();
     const bx = Math.max(0, Math.round(boxRect.x));
     const by = Math.max(0, Math.round(boxRect.y));
     const bw = Math.max(cols * 4, Math.min(curFullCanvas.width - bx, Math.round(boxRect.w)));
@@ -2655,7 +3512,10 @@
     if (best.score < 2.2) return null;
     if (best.score <= secondScore * 1.12 && best.blueRatio < 0.05) return null;
 
-    const boxName = (document.getElementById('scannerBoxNameInput')?.value || '').trim();
+    const boxName =
+      opts.boxName !== undefined
+        ? String(opts.boxName || '').trim()
+        : (document.getElementById('scannerBoxNameInput')?.value || '').trim();
     const posText = `Line ${best.row} · Col ${best.col}`;
     return {
       row: best.row,
@@ -5935,6 +6795,7 @@
     renderRaidTargets();
     renderSelectedTargetInspector();
     renderRaidPlanner();
+    renderRaidStashReadiness();
     renderMonumentAtlas();
     renderTimersTick();
     renderSavedClonesAndTeas();
@@ -5954,6 +6815,7 @@
     };
     safeRun(initNavigation);
     safeRun(initRaidModule);
+    safeRun(initRaidStashModule);
     safeRun(initMonumentsModule);
     safeRun(initTimerModule);
     safeRun(initGeneticsModule);
