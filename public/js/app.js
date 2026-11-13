@@ -1328,67 +1328,194 @@
       .join('');
   }
 
-  function classifyRustBoxSlotPixels(ctx, sx, sy, sw, sh) {
+  function classifyRustBoxSlotPixels(ctx, bx0, by0, cw, ch, maxW, maxH) {
+    const clampX = (x) => Math.max(0, Math.min(maxW - 1, Math.floor(x)));
+    const clampY = (y) => Math.max(0, Math.min(maxH - 1, Math.floor(y)));
+
+    // Estimate frosted semi-transparent slot background from inner margin points (avoids grid border & top badge)
+    const cornerPts = [
+      [clampX(bx0 + cw * 0.09), clampY(by0 + ch * 0.45)],
+      [clampX(bx0 + cw * 0.91), clampY(by0 + ch * 0.45)],
+      [clampX(bx0 + cw * 0.11), clampY(by0 + ch * 0.20)],
+      [clampX(bx0 + cw * 0.89), clampY(by0 + ch * 0.20)]
+    ];
+    let bgR = 0;
+    let bgG = 0;
+    let bgB = 0;
+    cornerPts.forEach(([px, py]) => {
+      const p = ctx.getImageData(px, py, 1, 1).data;
+      bgR += p[0];
+      bgG += p[1];
+      bgB += p[2];
+    });
+    bgR /= 4;
+    bgG /= 4;
+    bgB /= 4;
+
+    const sx = Math.max(0, Math.floor(bx0 + cw * 0.16));
+    const sy = Math.max(0, Math.floor(by0 + ch * 0.22));
+    const sw = Math.max(4, Math.min(maxW - sx, Math.floor(cw * 0.68)));
+    const sh = Math.max(4, Math.min(maxH - sy, Math.floor(ch * 0.50)));
     const d = ctx.getImageData(sx, sy, sw, sh).data;
-    let brightY = 0;
-    let medY = 0;
-    let brownOre = 0;
-    let darkN = 0;
-    let vDark = 0;
-    let warmTan = 0;
-    let tanBrick = 0;
-    let total = 0;
+
+    let tot = 0;
+    let edgeSum = 0;
+    let edgeHi = 0;
     let lumaSum = 0;
-    let lumaSqSum = 0;
+    let lumaSq = 0;
+    let diagEdge = 0;
+    let diagN = 0;
+    let offEdge = 0;
+    let offN = 0;
+    let bri = 0;
+    let wVDark = 0;
+    let fgCount = 0;
+    let fgBrightY = 0;
+    let fgMedY = 0;
+    let fgOre = 0;
+    let fgDark = 0;
+    let fgVDark = 0;
+    let fgWarm = 0;
+    let fgWhiteGrey = 0;
+    let allBrightY = 0;
+    let allMedY = 0;
+    let allOre = 0;
+    let allDark = 0;
+    let allWarm = 0;
+    let allWhiteGrey = 0;
 
-    for (let i = 0; i < d.length; i += 4) {
-      const rr = d[i];
-      const gg = d[i + 1];
-      const bb = d[i + 2];
-      const mx = Math.max(rr, gg, bb);
-      const mn = Math.min(rr, gg, bb);
-      const sat = mx ? (mx - mn) / mx : 0;
-      const luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
-      lumaSum += luma;
-      lumaSqSum += luma * luma;
-      total++;
+    for (let py = 0; py < sh; py++) {
+      for (let px = 0; px < sw; px++) {
+        const i = (py * sw + px) * 4;
+        const rr = d[i];
+        const gg = d[i + 1];
+        const bb = d[i + 2];
+        const mx = Math.max(rr, gg, bb);
+        const mn = Math.min(rr, gg, bb);
+        const sat = mx ? (mx - mn) / mx : 0;
+        const luma = 0.299 * rr + 0.587 * gg + 0.114 * bb;
+        lumaSum += luma;
+        lumaSq += luma * luma;
+        tot++;
 
-      if (rr >= 135 && gg >= 130 && gg - bb >= 34 && rr - bb >= 34) brightY++;
-      if (rr >= 78 && gg >= 68 && gg - bb >= 16 && rr < 170) medY++;
-      if (rr > 55 && rr < 120 && gg > 45 && gg < 105 && bb < 72 && rr - bb >= 12) brownOre++;
-      if (rr < 72 && gg < 72 && bb < 76 && sat < 0.25) darkN++;
-      if (luma < 42) vDark++;
-      if (rr > gg + 6 && gg > bb + 6 && rr > 95) warmTan++;
-      if (rr > 95 && gg > 80 && bb > 68 && mx - mn < 42 && mx > 95 && bb >= 65) tanBrick++;
+        if (px > 0) {
+          const j = (py * sw + px - 1) * 4;
+          const lL = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+          const diff = Math.abs(luma - lL);
+          edgeSum += diff;
+          if (diff >= 14) edgeHi++;
+          const u = px / sw;
+          const v = py / sh;
+          if (Math.abs(u - v) < 0.26) {
+            diagEdge += diff;
+            diagN++;
+          } else {
+            offEdge += diff;
+            offN++;
+          }
+        }
+        if (py > 0) {
+          const idxU = ((py - 1) * sw + px) * 4;
+          const lU = 0.299 * d[idxU] + 0.587 * d[idxU + 1] + 0.114 * d[idxU + 2];
+          if (Math.abs(luma - lU) >= 14) edgeHi++;
+        }
+
+        if (luma >= 145) bri++;
+        if (luma < 42) wVDark++;
+
+        const isBY = rr >= 135 && gg >= 130 && gg - bb >= 34 && rr - bb >= 34;
+        const isMY = rr >= 78 && gg >= 68 && gg - bb >= 16 && rr < 170;
+        const isOre = rr > 55 && rr < 120 && gg > 45 && gg < 105 && bb < 72 && rr - bb >= 12;
+        const isDark = luma < 85 && sat < 0.28;
+        const isVDark = luma < 44;
+        const isWarm = rr > gg + 6 && gg > bb + 5 && rr > 90;
+        const isWG = luma >= 120 && sat < 0.22;
+
+        if (isBY) allBrightY++;
+        if (isMY) allMedY++;
+        if (isOre) allOre++;
+        if (isDark) allDark++;
+        if (isWarm) allWarm++;
+        if (isWG) allWhiteGrey++;
+
+        const bgDist = Math.abs(rr - bgR) + Math.abs(gg - bgG) + Math.abs(bb - bgB);
+        if (bgDist >= 22) {
+          fgCount++;
+          if (isBY) fgBrightY++;
+          if (isMY) fgMedY++;
+          if (isOre) fgOre++;
+          if (isDark) fgDark++;
+          if (isVDark) fgVDark++;
+          if (isWarm) fgWarm++;
+          if (isWG) fgWhiteGrey++;
+        }
+      }
+    }
+    if (!tot) return 'empty';
+
+    // Bottom-right white stack digit presence check
+    const dx = Math.max(0, Math.floor(bx0 + cw * 0.30));
+    const dy = Math.max(0, Math.floor(by0 + ch * 0.70));
+    const dw = Math.max(4, Math.min(maxW - dx, Math.floor(cw * 0.68)));
+    const dh = Math.max(4, Math.min(maxH - dy, Math.floor(ch * 0.28)));
+    const dd = ctx.getImageData(dx, dy, dw, dh).data;
+    const dScores = [];
+    for (let i = 0; i < dd.length; i += 4) {
+      const r = dd[i];
+      const g = dd[i + 1];
+      const b = dd[i + 2];
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      dScores.push(0.299 * r + 0.587 * g + 0.114 * b - spread * 0.35);
+    }
+    dScores.sort((a, b) => a - b);
+    const digDiff = (dScores[Math.floor(dScores.length * 0.985)] || 0) - (dScores[Math.floor(dScores.length * 0.45)] || 0);
+
+    const edgeAvg = edgeSum / tot;
+    const hiE = edgeHi / (tot * 2);
+    const meanLuma = lumaSum / tot;
+    const stdLuma = Math.sqrt(Math.max(0, lumaSq / tot - meanLuma * meanLuma));
+    const fgFrac = fgCount / tot;
+    const diagAvg = diagEdge / Math.max(1, diagN);
+    const offAvg = offEdge / Math.max(1, offN);
+    const diagRatio = diagAvg / Math.max(0.5, offAvg);
+    const pBri = bri / tot;
+    const pWVD = wVDark / tot;
+
+    const useFg = fgFrac >= 0.22;
+    const den = useFg ? fgCount : tot;
+    const fBY = (useFg ? fgBrightY : allBrightY) / den;
+    const fMY = (useFg ? fgMedY : allMedY) / den;
+    const fOre = (useFg ? fgOre : allOre) / den;
+    const fDk = (useFg ? fgDark : allDark) / den;
+    const fVDk = (useFg ? fgVDark : wVDark) / den;
+    const fWm = (useFg ? fgWarm : allWarm) / den;
+    const fWG = (useFg ? fgWhiteGrey : allWhiteGrey) / den;
+
+    // Empty gate: reject semi-transparent background scenery without sharp item icon edges
+    const looksDarkMound =
+      stdLuma >= 13.5 && fgFrac >= 0.40 && fDk >= 0.80 && (hiE >= 0.08 || digDiff >= 34 || (fDk >= 0.90 && edgeAvg >= 3.8));
+    const hasStackDigits = digDiff >= 38 && edgeAvg >= 3.8;
+    if (hiE < 0.15 && edgeAvg < 6.0 && !looksDarkMound && !hasStackDigits) {
+      return 'empty';
     }
 
-    if (!total) return 'empty';
-    const pBY = brightY / total;
-    const pMY = medY / total;
-    const pOre = brownOre / total;
-    const pDark = darkN / total;
-    const pVDark = vDark / total;
-    const pWarmTan = warmTan / total;
-    const pTan = tanBrick / total;
-    const meanLuma = lumaSum / total;
-    const stdLuma = Math.sqrt(Math.max(0, lumaSqSum / total - meanLuma * meanLuma));
-
-    if (pBY >= 0.09 && pMY >= 0.22) return 'sulfur';
-    if (pDark > 0.72 && pBY < 0.01 && pMY < 0.02) {
-      // Smooth fine Gun Powder mound tends to have fewer deep black rock crevices than jagged Charcoal chunks
-      return pVDark < 0.22 ? 'gunpowder' : 'charcoal';
+    if (fBY >= 0.20 && fMY >= 0.48) return 'sulfur';
+    if (fWm >= 0.45 && fVDk < 0.12 && fBY < 0.05 && stdLuma >= 20) return 'satchel';
+    if (fWG >= 0.22 && fWm < 0.20 && fBY < 0.05 && fDk < 0.35 && stdLuma >= 28) return 'explosives';
+    if (diagRatio >= 2.15 && diagAvg >= 18 && pBri <= 0.025) return 'rocket';
+    if (diagAvg >= 26.5 && stdLuma >= 26 && fVDk < 0.42 && pBri >= 0.02) return 'explo_ammo';
+    if (fVDk >= 0.46 && edgeAvg >= 17.5 && stdLuma >= 25 && fWm < 0.12) return 'c4';
+    if (fDk >= 0.54 && fBY < 0.05 && fWm < 0.10) {
+      return pWVD < 0.22 || edgeAvg < 15.5 ? 'gunpowder' : 'charcoal';
     }
-    if (pTan >= 0.14 && pBY < 0.012 && pOre < 0.20) {
-      // Satchel wraps 4 beancans in warm tan canvas with almost no deep black casing/circuitry; C4 has dark straps + black casing
-      return pWarmTan >= 0.22 && pVDark < 0.045 ? 'satchel' : 'c4';
+    if ((fOre >= 0.20 || (fMY >= 0.26 && edgeAvg >= 6.5)) && stdLuma >= 18 && (edgeAvg >= 6.5 || hiE >= 0.16)) {
+      return 'sulfur_ore';
     }
-    if (pOre >= 0.16 || (pBY >= 0.014 && pMY >= 0.10)) return 'sulfur_ore';
-    if (stdLuma < 12 && pBY < 0.01 && pOre < 0.08) return 'empty';
     return 'empty';
   }
 
   function parseStackDigitsText(rawStr) {
-    const cleaned = String(rawStr || '').trim().replace(/^[x×]+/i, '').replace(/[,.]/g, '');
+    const cleaned = String(rawStr || '').trim().replace(/^[x×*+]+/i, '').replace(/[,.\s]+/g, '');
     const m = cleaned.match(/\d{1,6}/);
     if (!m) return null;
     const val = parseInt(m[0], 10);
@@ -1402,43 +1529,59 @@
     const rctx = rawC.getContext('2d');
     rctx.drawImage(srcCanvas, sx, sy, rw, rh, 0, 0, rw, rh);
     const rData = rctx.getImageData(0, 0, rw, rh).data;
-    const lumas = [];
+    const scores = [];
     for (let i = 0; i < rData.length; i += 4) {
-      lumas.push(0.299 * rData[i] + 0.587 * rData[i + 1] + 0.114 * rData[i + 2]);
+      const r = rData[i];
+      const g = rData[i + 1];
+      const b = rData[i + 2];
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      scores.push(luma - spread * 0.40);
     }
-    const sorted = [...lumas].sort((a, b) => a - b);
-    const bg = sorted[Math.floor(sorted.length * 0.45)] || 60;
-    const hi = sorted[Math.floor(sorted.length * 0.985)] || 150;
-    const thresh = Math.max(96, Math.min(156, Math.round(bg + (hi - bg) * 0.50)));
+    const sorted = [...scores].sort((a, b) => a - b);
+    const bg = sorted[Math.floor(sorted.length * 0.45)] || 55;
+    const hi = sorted[Math.floor(sorted.length * 0.985)] || 145;
+    const diff = hi - bg;
+    const thresh = Math.max(88, Math.min(162, Math.round(bg + diff * 0.48)));
 
-    // Render crisp high-contrast mask on original res then scale cleanly
-    const maskC = document.createElement('canvas');
-    maskC.width = rw;
-    maskC.height = rh;
-    const mctx = maskC.getContext('2d');
-    const mid = mctx.createImageData(rw, rh);
-    for (let i = 0; i < lumas.length; i++) {
-      const ink = lumas[i] >= thresh ? 0 : 255;
-      const p = i * 4;
-      mid.data[p] = ink;
-      mid.data[p + 1] = ink;
-      mid.data[p + 2] = ink;
-      mid.data[p + 3] = 255;
-    }
-    mctx.putImageData(mid, 0, 0);
-
+    const padPx = 14;
+    const upW = Math.round(rw * scale);
+    const upH = Math.round(rh * scale);
     const out = document.createElement('canvas');
-    out.width = Math.round(rw * scale);
-    out.height = Math.round(rh * scale);
+    out.width = upW + padPx * 2;
+    out.height = upH + padPx * 2;
     const octx = out.getContext('2d');
     octx.fillStyle = '#ffffff';
     octx.fillRect(0, 0, out.width, out.height);
-    octx.imageSmoothingEnabled = true;
-    octx.drawImage(maskC, 0, 0, rw, rh, 0, 0, out.width, out.height);
+
+    const tmp = document.createElement('canvas');
+    tmp.width = upW;
+    tmp.height = upH;
+    const tctx = tmp.getContext('2d');
+    tctx.imageSmoothingEnabled = true;
+    tctx.imageSmoothingQuality = 'high';
+    tctx.drawImage(rawC, 0, 0, rw, rh, 0, 0, upW, upH);
+    const td = tctx.getImageData(0, 0, upW, upH).data;
+    const mId = octx.getImageData(padPx, padPx, upW, upH);
+    for (let i = 0; i < td.length; i += 4) {
+      const r = td[i];
+      const g = td[i + 1];
+      const b = td[i + 2];
+      const sc = 0.299 * r + 0.587 * g + 0.114 * b - (Math.max(r, g, b) - Math.min(r, g, b)) * 0.40;
+      const norm = Math.max(0, Math.min(1, (sc - (thresh - 14)) / 28));
+      const v = Math.round((1 - norm) * 255);
+      mId.data[i] = v;
+      mId.data[i + 1] = v;
+      mId.data[i + 2] = v;
+      mId.data[i + 3] = 255;
+    }
+    octx.putImageData(mId, padPx, padPx);
+    out._digDiff = diff;
     return out;
   }
 
   let raidLastScanApplyMode = 'add';
+  let raidBoxScanActive = false;
 
   function applyBoxSlotTagsToStash(applyMode = raidLastScanApplyMode) {
     if (!raidLastBoxSlotTags.length) return;
@@ -1504,10 +1647,15 @@
   }
 
   async function scanWholeRaidBoxGrid(srcEl, applyMode = 'add') {
+    if (raidBoxScanActive) return;
     const statusEl = document.getElementById('raidScannerStatusMsg');
     const setStatus = (msg) => {
       if (statusEl) statusEl.textContent = msg;
     };
+
+    raidBoxScanActive = true;
+    const wasLiveBusy = raidLiveBusy;
+    raidLiveBusy = true;
 
     try {
       const dims = getScannerSourceDimensions(srcEl);
@@ -1515,12 +1663,12 @@
 
       raidLastScanApplyMode = applyMode;
       const worker = await ensureRaidOcrWorker(setStatus);
-      setStatus('📦 Analyzing all chest slots (Sulfur Ore, Sulfur, Gun Powder, Charcoal, Satchel, C4)...');
+      setStatus('📦 Analyzing all chest slots (Sulfur Ore, Sulfur, Gun Powder, Charcoal, Satchel, C4, Rockets, Explo)...');
 
       const fullCanvas = document.createElement('canvas');
       fullCanvas.width = dims.w;
       fullCanvas.height = dims.h;
-      const fctx = fullCanvas.getContext('2d');
+      const fctx = fullCanvas.getContext('2d', { willReadFrequently: true });
       fctx.drawImage(srcEl, 0, 0, dims.w, dims.h);
 
       const boxRect =
@@ -1535,11 +1683,9 @@
       const slots = [];
       for (let r = 0; r < rows; r++) {
         for (let col = 0; col < cols; col++) {
-          const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.14));
-          const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.12));
-          const sw = Math.max(4, Math.min(dims.w - sx, Math.floor(cw * 0.72)));
-          const sh = Math.max(4, Math.min(dims.h - sy, Math.floor(ch * 0.56)));
-          const key = classifyRustBoxSlotPixels(fctx, sx, sy, sw, sh);
+          const bx0 = boxRect.x + col * cw;
+          const by0 = boxRect.y + r * ch;
+          const key = classifyRustBoxSlotPixels(fctx, bx0, by0, cw, ch, dims.w, dims.h);
           if (key !== 'empty') {
             slots.push({ row: r, col, key, qty: null });
           }
@@ -1547,77 +1693,69 @@
       }
 
       if (!slots.length) {
+        raidLastBoxSlotTags = [];
+        drawRaidScannerPreview();
         setStatus('⚠️ No Sulfur / Ore / Boom slots detected inside box grid. Drag the green Calibrate Box Grid tightly over the chest slots.');
         return;
       }
 
-      await worker.setParameters({ tessedit_char_whitelist: '0123456789x,' });
-      const scale = Math.max(3.5, Math.min(5.5, Math.round(180 / Math.max(28, cw))));
-      const subW = Math.max(10, Math.round(cw * 0.70));
-      const subH = Math.max(7, Math.round(ch * 0.28));
-      const pad = 28;
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
+      const scale = Math.max(3.5, Math.min(6.0, Math.round(190 / Math.max(22, cw))));
+      const subH = Math.max(7, Math.round(ch * 0.27));
 
-      const getDigitTile = (r, col) => {
-        const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.29));
-        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.71));
-        const rw = Math.max(4, Math.min(dims.w - sx, subW));
+      const cropDigitTile = (r, col, xStartFrac) => {
+        const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * xStartFrac));
+        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.72));
+        const rw = Math.max(4, Math.min(dims.w - sx, Math.round(cw * (0.98 - xStartFrac))));
         const rh = Math.max(4, Math.min(dims.h - sy, subH));
         return buildAdaptiveDigitTile(fullCanvas, sx, sy, rw, rh, scale);
       };
 
-      const rowsMap = new Map();
-      slots.forEach((s) => {
-        if (!rowsMap.has(s.row)) rowsMap.set(s.row, []);
-        rowsMap.get(s.row).push(s);
-      });
+      const maxReasonableByKey = {
+        c4: 100,
+        satchel: 100,
+        rocket: 64,
+        hv_rocket: 64,
+        incen_rocket: 64,
+        beancan: 50,
+        explo_ammo: 256,
+        explosives: 500
+      };
+      const bulkStackKeys = new Set(['sulfur_ore', 'sulfur', 'gunpowder', 'charcoal']);
 
-      let rowIdx = 0;
-      for (const [r, rowSlots] of rowsMap.entries()) {
-        rowIdx++;
-        setStatus(`🔍 Reading stack numbers row ${rowIdx}/${rowsMap.size} (${slots.length} slots)...`);
-        const tiles = rowSlots.map((s) => getDigitTile(r, s.col));
-        const totalW = tiles.reduce((sum, t) => sum + t.width + pad, pad);
-        const maxH = tiles.reduce((m, t) => Math.max(m, t.height), 20) + 24;
-        const strip = document.createElement('canvas');
-        strip.width = totalW;
-        strip.height = maxH;
-        const sctx = strip.getContext('2d');
-        sctx.fillStyle = '#ffffff';
-        sctx.fillRect(0, 0, strip.width, strip.height);
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (i === 0 || (i + 1) % 4 === 0 || i === slots.length - 1) {
+          setStatus(`🔍 Reading stack numbers ${i + 1}/${slots.length}...`);
+        }
+        const tile = cropDigitTile(s.row, s.col, 0.32);
+        if ((tile._digDiff || 0) < 30) {
+          s.qty = 1;
+          continue;
+        }
 
-        let curX = pad;
-        tiles.forEach((t) => {
-          sctx.drawImage(t, curX, 12);
-          curX += t.width + pad;
-        });
+        const res = await worker.recognize(tile);
+        let parsed = parseStackDigitsText(res?.data?.text);
+        const cap = maxReasonableByKey[s.key];
 
-        await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
-        const res = await worker.recognize(strip);
-        const tokens = String(res?.data?.text || '')
-          .trim()
-          .split(/\s+/)
-          .map(parseStackDigitsText)
-          .filter((v) => v !== null);
-
-        if (tokens.length === rowSlots.length) {
-          rowSlots.forEach((s, i) => {
-            s.qty = tokens[i];
-          });
-        } else {
-          await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '8' });
-          for (let i = 0; i < rowSlots.length; i++) {
-            const tile = tiles[i];
-            const solo = document.createElement('canvas');
-            solo.width = tile.width + 44;
-            solo.height = tile.height + 28;
-            const octx = solo.getContext('2d');
-            octx.fillStyle = '#ffffff';
-            octx.fillRect(0, 0, solo.width, solo.height);
-            octx.drawImage(tile, 22, 14);
-            const soloRes = await worker.recognize(solo);
-            const parsed = parseStackDigitsText(soloRes?.data?.text);
-            rowSlots[i].qty = parsed !== null ? parsed : ['c4', 'rocket', 'satchel'].includes(rowSlots[i].key) ? 1 : 1000;
+        // Retry tighter right-aligned crop if sprite corner bled into x10 / x128 / x3 or hit an impossible outlier
+        if (parsed === null || (cap && parsed > cap)) {
+          const tightTile = cropDigitTile(s.row, s.col, 0.45);
+          const tightRes = await worker.recognize(tightTile);
+          const tightParsed = parseStackDigitsText(tightRes?.data?.text);
+          if (tightParsed !== null && (!cap || tightParsed <= cap)) {
+            parsed = tightParsed;
+          } else if (cap && parsed > cap) {
+            parsed = null;
           }
+        }
+
+        if (parsed !== null) {
+          s.qty = parsed;
+        } else if (bulkStackKeys.has(s.key) && (tile._digDiff || 0) >= 38) {
+          s.qty = 1000;
+        } else {
+          s.qty = 1;
         }
       }
 
@@ -1630,9 +1768,12 @@
       playAlertSound('urgent');
 
       const summaryStr = entries.map((e) => `${e.qty.toLocaleString()} ${e.name} (${e.slots} slots)`).join(' • ');
-      setStatus(`✅ Scanned ${slots.length} slots: ${summaryStr}. Click any item group below or any canvas slot if you need to re-tag Charcoal/GP or Satchel/C4.`);
+      setStatus(`✅ Scanned ${slots.length} slots: ${summaryStr}. Click any dropdown below or canvas slot to re-tag.`);
     } catch (err) {
       setStatus(`❌ Box scan failed: ${err?.message || err}`);
+    } finally {
+      raidBoxScanActive = false;
+      raidLiveBusy = wasLiveBusy;
     }
   }
   function parseRaidLootFromOcrText(rawText) {
@@ -1882,6 +2023,7 @@
         const fontSize = Math.max(9, Math.min(13, Math.round(cw * 0.2)));
         ctx.font = `700 ${fontSize}px monospace`;
         raidLastBoxSlotTags.forEach((tag) => {
+          if (!tag.key || tag.key === 'empty') return;
           const meta = STASH_ITEM_META[tag.key] || { short: tag.key, color: '#fff' };
           const tx = effectiveBox.x + tag.col * cw + 2;
           const ty = effectiveBox.y + tag.row * ch + 2;
@@ -1910,6 +2052,7 @@
   }
 
   async function scanRaidLootImage(srcEl, cropRect = null, opts = {}) {
+    if (raidBoxScanActive) return;
     const statusEl = document.getElementById('raidScannerStatusMsg');
     const setStatus = (msg) => {
       if (statusEl) statusEl.textContent = msg;
@@ -2282,7 +2425,7 @@
           const row = Math.floor(((endPt.y - effBox.y) / effBox.h) * rows);
           const slotTag = raidLastBoxSlotTags.find((t) => t.row === row && t.col === col);
           if (slotTag) {
-            const cycle = ['sulfur_ore', 'sulfur', 'gunpowder', 'charcoal', 'satchel', 'c4', 'explosives', 'rocket', 'explo_ammo'];
+            const cycle = ['sulfur_ore', 'sulfur', 'gunpowder', 'charcoal', 'satchel', 'c4', 'explosives', 'rocket', 'explo_ammo', 'empty'];
             const nextIdx = (cycle.indexOf(slotTag.key) + 1) % cycle.length;
             slotTag.key = cycle[nextIdx];
             applyBoxSlotTagsToStash(raidLastScanApplyMode);
