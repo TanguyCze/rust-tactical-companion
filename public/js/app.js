@@ -2098,6 +2098,22 @@
   let bfHeatmapGrids = {};
   let bfFarmingSpots = [];
   let bfSelectedFarmIdx = -1;
+  let bfZoom = 1;
+  let bfPanX = 0;
+  let bfPanY = 0;
+
+  function bfComputeFitZoom() {
+    if (!bfMapData || !bfMapData.size) return 1;
+    const half = bfMapData.size / 2;
+    let maxCoord = half * 1.04;
+    (bfMapData.monuments || []).forEach((m) => {
+      const t = String(m.type || '').toLowerCase();
+      if (t.includes('oil') || t.includes('underwater lab') || t.includes('harbor') || t.includes('fishing')) {
+        maxCoord = Math.max(maxCoord, Math.abs(m.x) + 220, Math.abs(m.y) + 220);
+      }
+    });
+    return Math.max(0.55, Math.min(1, half / maxCoord));
+  }
 
   function getSelectedBuildSpot() {
     return bfSelectedIdx === -1 ? bfStealthBest : (bfTopSpots[bfSelectedIdx] || null);
@@ -2789,43 +2805,49 @@
       return;
     }
 
+    const mapSize = bfMapData.size || 4000;
+    const scale = (W / mapSize) * bfZoom;
+    const toPx = (wx, wy) => ({
+      px: W / 2 + (wx - bfPanX) * scale,
+      py: H / 2 - (wy - bfPanY) * scale
+    });
+
+    const imgTopLeft = toPx(-mapSize / 2, mapSize / 2);
+    const imgSizePx = mapSize * scale;
+
     if (bfLoadedImage) {
-      ctx.drawImage(bfLoadedImage, 0, 0, W, H);
+      ctx.drawImage(bfLoadedImage, imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
     }
 
     if (bfActiveHeatmap !== 'none' && bfHeatmapImages[bfActiveHeatmap]) {
       ctx.save();
       ctx.globalAlpha = 0.85;
-      ctx.drawImage(bfHeatmapImages[bfActiveHeatmap], 0, 0, W, H);
+      ctx.drawImage(bfHeatmapImages[bfActiveHeatmap], imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
       ctx.restore();
     }
 
-    const mapSize = bfMapData.size || 4000;
-    const toPx = (wx, wy) => ({
-      px: ((wx + mapSize / 2) / mapSize) * W,
-      py: (1 - (wy + mapSize / 2) / mapSize) * H
-    });
-
     // 1. Rust-accurate grid overlay
     const count = Math.max(1, Math.ceil(mapSize / 150));
-    const cellPx = W / count;
+    const cellPx = imgSizePx / count;
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
     ctx.lineWidth = 1;
-    ctx.font = '600 9px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.font = '600 9.5px "JetBrains Mono", monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     for (let i = 0; i <= count; i++) {
+      const gx = imgTopLeft.px + i * cellPx;
+      const gy = imgTopLeft.py + i * cellPx;
       ctx.beginPath();
-      ctx.moveTo(i * cellPx, 0);
-      ctx.lineTo(i * cellPx, H);
+      ctx.moveTo(gx, imgTopLeft.py);
+      ctx.lineTo(gx, imgTopLeft.py + imgSizePx);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(0, i * cellPx);
-      ctx.lineTo(W, i * cellPx);
+      ctx.moveTo(imgTopLeft.px, gy);
+      ctx.lineTo(imgTopLeft.px + imgSizePx, gy);
       ctx.stroke();
       if (i < count) {
-        ctx.fillText(bfColLabel(i), i * cellPx + 3, 11);
-        ctx.fillText(String(i), 3, i * cellPx + 20);
+        ctx.fillText(bfColLabel(i), gx + 3, Math.max(11, imgTopLeft.py + 11));
+        ctx.fillText(String(i), Math.max(3, imgTopLeft.px + 3), gy + 18);
       }
     }
     ctx.restore();
@@ -2841,7 +2863,7 @@
         if (bfMatchesTarget(m.type, targetKey)) {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(px, py, (450 / mapSize) * W, 0, Math.PI * 2);
+          ctx.arc(px, py, 450 * scale, 0, Math.PI * 2);
           ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 4]);
@@ -2850,7 +2872,7 @@
         } else if (bfIsHighTraffic(m.type)) {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(px, py, (650 / mapSize) * W, 0, Math.PI * 2);
+          ctx.arc(px, py, 650 * scale, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(239, 68, 68, 0.14)';
           ctx.fill();
           ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
@@ -3172,6 +3194,9 @@
         }
 
         bfMapData = data;
+        bfZoom = bfComputeFitZoom();
+        bfPanX = 0;
+        bfPanY = 0;
         bfHeatmapImages = {};
         bfHeatmapGrids = {};
         if (metaEl) {
@@ -3238,6 +3263,71 @@
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
+
+    // Zoom, Fit All, Island 100%, Full-Width Expand, and Drag-to-Pan controls
+    const setZoomClamped = (nextZoom) => {
+      bfZoom = Math.max(0.45, Math.min(3.5, nextZoom));
+      renderBaseFinderMap();
+    };
+    document.getElementById('bfZoomInBtn')?.addEventListener('click', () => setZoomClamped(bfZoom * 1.24));
+    document.getElementById('bfZoomOutBtn')?.addEventListener('click', () => setZoomClamped(bfZoom * 0.80));
+    document.getElementById('bfZoomFitBtn')?.addEventListener('click', () => {
+      bfPanX = 0;
+      bfPanY = 0;
+      setZoomClamped(bfComputeFitZoom());
+    });
+    document.getElementById('bfZoomResetBtn')?.addEventListener('click', () => {
+      bfPanX = 0;
+      bfPanY = 0;
+      setZoomClamped(1);
+    });
+    const expandBtn = document.getElementById('bfExpandMapBtn');
+    const layoutEl = document.getElementById('bfLayoutContainer');
+    expandBtn?.addEventListener('click', () => {
+      const expanded = layoutEl?.classList.toggle('bf-map-expanded');
+      expandBtn.textContent = expanded ? '⤡ Split View' : '⤢ Full Width';
+    });
+
+    const bfCanvas = document.getElementById('bfMapCanvas');
+    if (bfCanvas) {
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      bfCanvas.addEventListener('mousedown', (e) => {
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        bfCanvas.style.cursor = 'grabbing';
+      });
+      window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        bfCanvas.style.cursor = 'grab';
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging || !bfMapData) return;
+        const rect = bfCanvas.getBoundingClientRect();
+        const mapSize = bfMapData.size || 4000;
+        const scale = (bfCanvas.width / mapSize) * bfZoom;
+        const dx = ((e.clientX - lastX) * bfCanvas.width) / Math.max(1, rect.width);
+        const dy = ((e.clientY - lastY) * bfCanvas.height) / Math.max(1, rect.height);
+        lastX = e.clientX;
+        lastY = e.clientY;
+        bfPanX -= dx / scale;
+        bfPanY += dy / scale;
+        renderBaseFinderMap();
+      });
+      bfCanvas.addEventListener(
+        'wheel',
+        (e) => {
+          if (!bfMapData) return;
+          e.preventDefault();
+          const factor = e.deltaY < 0 ? 1.14 : 0.88;
+          setZoomClamped(bfZoom * factor);
+        },
+        { passive: false }
+      );
+    }
 
     document.querySelectorAll('#bfHeatmapPills .filter-pill').forEach((btn) => {
       btn.addEventListener('click', () => {

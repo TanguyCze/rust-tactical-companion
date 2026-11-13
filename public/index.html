@@ -567,7 +567,7 @@
         <div id="bfStatusBar" style="margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);"></div>
       </div>
 
-      <div class="grid-2" style="align-items: start;">
+      <div id="bfLayoutContainer" class="bf-map-layout">
         <!-- Left: Visual Annotated RustMaps Canvas -->
         <div class="panel">
           <div class="panel-header" style="margin-bottom: 10px;">
@@ -584,18 +584,27 @@
                 <input id="bfShowHeatmapCb" type="checkbox" checked />
                 <span>Show Traffic / Safe Zones</span>
               </label>
+              <button id="bfExpandMapBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11.5px;">⤢ Full Width</button>
             </div>
           </div>
-          <div id="bfHeatmapPills" class="filter-pills" style="margin-bottom: 10px;">
-            <button class="filter-pill active" data-hm="none">🗺️ Clean Map</button>
-            <button class="filter-pill" data-hm="Nodes">⛏️ Ore Nodes</button>
-            <button class="filter-pill" data-hm="Hemp">🌿 Hemp</button>
-            <button class="filter-pill" data-hm="Berries">🫐 Berries</button>
-            <button class="filter-pill" data-hm="Horses">🐎 Horses</button>
-            <button class="filter-pill" data-hm="PlayerSpawns">🏃 Spawn Beach</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+            <div id="bfHeatmapPills" class="filter-pills" style="margin-bottom: 0;">
+              <button class="filter-pill active" data-hm="none">🗺️ Clean Map</button>
+              <button class="filter-pill" data-hm="Nodes">⛏️ Ore Nodes</button>
+              <button class="filter-pill" data-hm="Hemp">🌿 Hemp</button>
+              <button class="filter-pill" data-hm="Berries">🫐 Berries</button>
+              <button class="filter-pill" data-hm="Horses">🐎 Horses</button>
+              <button class="filter-pill" data-hm="PlayerSpawns">🏃 Spawn Beach</button>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="bfZoomOutBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom Out">➖</button>
+              <button id="bfZoomInBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom In">➕</button>
+              <button id="bfZoomFitBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
+              <button id="bfZoomResetBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
+            </div>
           </div>
           <div style="background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
-            <canvas id="bfMapCanvas" width="760" height="760" style="width: 100%; height: auto; display: block;"></canvas>
+            <canvas id="bfMapCanvas" width="900" height="900" style="width: 100%; height: auto; display: block; cursor: grab;"></canvas>
           </div>
           <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--text-secondary);">
             <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build Grids</span>
