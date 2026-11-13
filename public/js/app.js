@@ -1058,6 +1058,7 @@
     lgf: { name: 'Low Grade Fuel', short: 'LGF', color: '#f59e0b', sulfurEq: 0 }
   };
 
+  const RAID_BOX_GRID_STORAGE_KEY = 'rust_companion_raid_box_grids_v1';
   let raidOcrWorkerPromise = null;
   let raidScannerImg = null;
   let raidScannerCropRect = null;
@@ -1066,6 +1067,7 @@
   let raidLiveStream = null;
   let raidLiveTimer = null;
   let raidLiveBusy = false;
+  let raidLiveAutoLoadedGrid = false;
   let raidLastLiveSig = '';
   let raidPrevBoxCanvas = null;
   let raidLastBoxSlot = null;
@@ -1090,11 +1092,108 @@
 
   function getRaidBoxGridDims() {
     const val = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
+    if (val === '6x4') return { rows: 4, cols: 6 };
+    if (val === '6x1') return { rows: 1, cols: 6 };
     const [rStr, cStr] = val.split('x');
     return {
       rows: Math.max(1, parseInt(rStr, 10) || 8),
       cols: Math.max(1, parseInt(cStr, 10) || 6)
     };
+  }
+
+  /** Detect full-game widescreen frames (16:9 / 16:10 / 21:9) vs tight chest crops. */
+  function isWidescreenGameFrame(dims) {
+    if (!dims || !dims.w || !dims.h) return false;
+    const aspect = dims.w / Math.max(1, dims.h);
+    return dims.w >= 720 ? aspect >= 1.45 : aspect >= 1.58;
+  }
+
+  function getSavedRaidBoxGrids() {
+    try {
+      const raw = localStorage.getItem(RAID_BOX_GRID_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveRaidBoxGridNorm(layoutVal, rect, dims) {
+    if (!layoutVal || !rect || !dims || !dims.w || !dims.h) return;
+    if (rect.w < 20 || rect.h < 20) return;
+    try {
+      const saved = getSavedRaidBoxGrids();
+      saved[layoutVal] = {
+        rx: Math.max(0, Math.min(0.95, rect.x / dims.w)),
+        ry: Math.max(0, Math.min(0.95, rect.y / dims.h)),
+        rw: Math.max(0.04, Math.min(1, rect.w / dims.w)),
+        rh: Math.max(0.04, Math.min(1, rect.h / dims.h))
+      };
+      localStorage.setItem(RAID_BOX_GRID_STORAGE_KEY, JSON.stringify(saved));
+    } catch (_) {}
+  }
+
+  function clearSavedRaidBoxGridNorm(layoutVal) {
+    if (!layoutVal) return;
+    try {
+      const saved = getSavedRaidBoxGrids();
+      if (saved && Object.prototype.hasOwnProperty.call(saved, layoutVal)) {
+        delete saved[layoutVal];
+        localStorage.setItem(RAID_BOX_GRID_STORAGE_KEY, JSON.stringify(saved));
+      }
+    } catch (_) {}
+  }
+
+  /** Compute standard Rust 16:9 (height-scaled, horizontally centered) container bounds. */
+  function computeRustDefaultBoxRect(dims, layoutVal) {
+    const W = dims.w;
+    const H = dims.h;
+    const cell = H * 0.06315;
+    const rightX = W * 0.5 + H * 0.1975;
+    const bottomY = H * 0.8833;
+    let raw;
+    if (layoutVal === '6x1') {
+      raw = { x: W * 0.5 - H * 0.211, y: H * 0.920, w: H * 0.394, h: H * 0.066 };
+    } else {
+      const rows = layoutVal === '5x6' ? 5 : layoutVal === '6x4' ? 4 : 8;
+      const w = 6 * cell;
+      const h = rows * cell;
+      raw = { x: rightX, y: bottomY - h, w, h };
+    }
+    const w = Math.min(W, Math.max(24, raw.w));
+    const h = Math.min(H, Math.max(24, raw.h));
+    const x = Math.max(0, Math.min(W - w, raw.x));
+    const y = Math.max(0, Math.min(H - h, raw.y));
+    return { x, y, w, h };
+  }
+
+  /** Pre-load saved custom normalized grid (or standard Rust preset) onto canvas dims. */
+  function applyPreloadedRaidBoxGrid(dims, opts = {}) {
+    if (!dims || !dims.w || !dims.h) return null;
+    const layoutVal = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
+    if (!opts.forcePreset) {
+      const g = getSavedRaidBoxGrids()[layoutVal];
+      if (g && g.rw >= 0.04 && g.rh >= 0.04 && g.rw <= 0.96 && g.rh <= 0.96) {
+        const w = Math.max(24, Math.min(dims.w, g.rw * dims.w));
+        const h = Math.max(24, Math.min(dims.h, g.rh * dims.h));
+        raidBoxGridRect = {
+          x: Math.max(0, Math.min(dims.w - w, g.rx * dims.w)),
+          y: Math.max(0, Math.min(dims.h - h, g.ry * dims.h)),
+          w,
+          h
+        };
+        return { source: 'saved', layout: layoutVal };
+      }
+    }
+    if (isWidescreenGameFrame(dims) || opts.isLive) {
+      raidBoxGridRect = computeRustDefaultBoxRect(dims, layoutVal);
+      return { source: 'preset', layout: layoutVal };
+    }
+    if (opts.forcePreset) {
+      raidBoxGridRect = { x: 0, y: 0, w: dims.w, h: dims.h };
+      return { source: 'preset', layout: layoutVal };
+    }
+    return null;
   }
 
   function syncStashInputsFromState() {
@@ -2357,6 +2456,7 @@
       raidLiveStream = null;
     }
     raidLiveBusy = false;
+    raidLiveAutoLoadedGrid = false;
     raidPrevBoxCanvas = null;
     raidLastBoxSlot = null;
     const video = document.getElementById('raidLiveScanVideo');
@@ -2435,14 +2535,37 @@
 
     raidScannerImg = video;
     raidScannerCropRect = null;
+    raidBoxGridRect = null;
+    raidLiveAutoLoadedGrid = false;
+    const initDims = getScannerSourceDimensions(video);
+    if (initDims.w > 0 && initDims.h > 0) {
+      const loaded = applyPreloadedRaidBoxGrid(initDims, { isLive: true });
+      if (loaded) raidLiveAutoLoadedGrid = true;
+    }
     drawRaidScannerPreview();
-    setStatus('🔴 LIVE: Click items OR mark the green Box Grid over your chest and click "📦 Scan Whole Box Grid"!');
+    setStatus(
+      raidBoxGridRect
+        ? '🔴 LIVE: Box Grid pre-loaded over your chest! Open a box in Rust and click "📦 Scan Whole Box Grid" (or drag to adjust).'
+        : '🔴 LIVE: Click items OR mark the green Box Grid over your chest and click "📦 Scan Whole Box Grid"!'
+    );
 
     raidLiveTimer = setInterval(async () => {
       if (!raidLiveStream || raidLiveBusy || video.readyState < 2) return;
       raidLiveBusy = true;
       try {
         raidScannerImg = video;
+        if (!raidLiveAutoLoadedGrid) {
+          const liveDims = getScannerSourceDimensions(video);
+          if (liveDims.w > 0 && liveDims.h > 0) {
+            raidLiveAutoLoadedGrid = true;
+            if (!raidBoxGridRect && !raidScannerCropRect) {
+              const loaded = applyPreloadedRaidBoxGrid(liveDims, { isLive: true });
+              if (loaded) {
+                setStatus(`🔴 LIVE: Pre-loaded ${loaded.source === 'saved' ? 'saved' : 'Rust preset'} ${loaded.layout} grid — open your chest & click "📦 Scan Whole Box Grid"!`);
+              }
+            }
+          }
+        }
         drawRaidScannerPreview();
         const autoAddLive = Boolean(document.getElementById('raidLiveScanAutoAddCb')?.checked ?? true);
         await scanRaidLootImage(video, raidScannerCropRect, { isLive: true, autoAddLive });
@@ -2468,6 +2591,12 @@
           raidScannerImg = img;
           raidScannerCropRect = null;
           raidLastBoxSlotTags = [];
+          const dims = getScannerSourceDimensions(img);
+          if (isWidescreenGameFrame(dims)) {
+            applyPreloadedRaidBoxGrid(dims);
+          } else {
+            raidBoxGridRect = null;
+          }
           drawRaidScannerPreview();
           await scanRaidLootImage(img, null, { isLive: false });
           resolve();
@@ -2565,13 +2694,51 @@
     document.getElementById('raidScannerBoxLayoutSelect')?.addEventListener('change', () => {
       raidLastBoxSlot = null;
       raidLastBoxSlotTags = [];
+      let loaded = null;
+      if (raidScannerImg) {
+        const dims = getScannerSourceDimensions(raidScannerImg);
+        if (raidLiveStream || isWidescreenGameFrame(dims)) {
+          loaded = applyPreloadedRaidBoxGrid(dims, { isLive: Boolean(raidLiveStream) });
+        } else {
+          raidBoxGridRect = null;
+        }
+      }
       drawRaidScannerPreview();
+      if (loaded) {
+        const statusEl = document.getElementById('raidScannerStatusMsg');
+        if (statusEl) {
+          const srcLabel = loaded.source === 'saved' ? 'saved custom' : 'standard Rust';
+          statusEl.textContent = `🎯 Pre-loaded ${srcLabel} ${loaded.layout} Box Grid — click "📦 Scan Whole Box Grid" (or drag to fine-tune).`;
+        }
+      }
+    });
+    document.getElementById('raidPresetBoxGridBtn')?.addEventListener('click', () => {
+      const layoutVal = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
+      clearSavedRaidBoxGridNorm(layoutVal);
+      const statusEl = document.getElementById('raidScannerStatusMsg');
+      if (raidScannerImg) {
+        const dims = getScannerSourceDimensions(raidScannerImg);
+        applyPreloadedRaidBoxGrid(dims, { forcePreset: true, isLive: Boolean(raidLiveStream) });
+        raidLastBoxSlot = null;
+        drawRaidScannerPreview();
+        if (statusEl) {
+          statusEl.textContent = `🎯 Pre-loaded standard Rust ${layoutVal} Box Grid — click "📦 Scan Whole Box Grid" (or drag to fine-tune).`;
+        }
+      } else if (statusEl) {
+        statusEl.textContent = `🎯 Cleared any saved ${layoutVal} override — load a screenshot or start Live Scan to preview the Rust preset grid.`;
+      }
     });
     document.getElementById('raidClearBoxGridBtn')?.addEventListener('click', () => {
+      const layoutVal = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
+      clearSavedRaidBoxGridNorm(layoutVal);
       raidBoxGridRect = null;
       raidLastBoxSlot = null;
       raidLastBoxSlotTags = [];
       drawRaidScannerPreview();
+      const statusEl = document.getElementById('raidScannerStatusMsg');
+      if (statusEl) {
+        statusEl.textContent = 'Grid cleared. Click "🎯 Rust Preset" to restore the default chest grid or drag a custom box.';
+      }
     });
     document.getElementById('raidClearCropBtn')?.addEventListener('click', () => {
       raidScannerCropRect = null;
@@ -2648,6 +2815,16 @@
         }
         if (raidDragMode === 'box' && raidBoxGridRect && (raidBoxGridRect.w < 20 || raidBoxGridRect.h < 20)) {
           raidBoxGridRect = null;
+        } else if (raidDragMode === 'box' && raidBoxGridRect && moveDist > 5) {
+          const dims = getScannerSourceDimensions(raidScannerImg);
+          const layoutVal = document.getElementById('raidScannerBoxLayoutSelect')?.value || '8x6';
+          if (raidLiveStream || isWidescreenGameFrame(dims)) {
+            saveRaidBoxGridNorm(layoutVal, raidBoxGridRect, dims);
+            const statusEl = document.getElementById('raidScannerStatusMsg');
+            if (statusEl) {
+              statusEl.textContent = `📌 Saved custom ${layoutVal} Box Grid — it will auto-load next time!`;
+            }
+          }
         }
         if (raidDragMode === 'inspect' && raidScannerCropRect && (raidScannerCropRect.w < 12 || raidScannerCropRect.h < 12)) {
           raidScannerCropRect = null;

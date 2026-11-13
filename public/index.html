@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261113j" />
+  <link rel="stylesheet" href="css/styles.css?v=20261113k" />
 </head>
 <body>
 
@@ -204,11 +204,12 @@
                   </select>
                   <button id="raidScanBoxBtn" class="btn btn-sm btn-primary" type="button" title="Count ALL slots in the box grid in 1 click (Sulfur Ore, Sulfur, Charcoal, C4, etc.)">📦 Scan Whole Box Grid</button>
                   <button id="raidRescanBtn" class="btn btn-sm" type="button">🔍 Scan Inspect Crop</button>
+                  <button id="raidPresetBoxGridBtn" class="btn btn-sm" type="button" title="Pre-load standard Rust UI container grid position">🎯 Rust Preset</button>
                   <button id="raidClearBoxGridBtn" class="btn btn-sm" type="button" style="display:none;">Clear Grid</button>
                   <button id="raidClearCropBtn" class="btn btn-sm" type="button">Clear Crop</button>
                 </div>
                 <div id="raidScannerDragHint" style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono); margin-bottom:6px;">
-                  💡 <strong>Tip:</strong> Paste/upload a chest screenshot (e.g. an 8×6 box) or draw the <span style="color:#4ade80; font-weight:700;">green grid</span> over any open chest in Live Scan, then click <strong style="color:#fff;">📦 Scan Whole Box Grid</strong> to count all uncooked Sulfur Ore, Sulfur, Charcoal &amp; C4 at once!
+                  💡 <strong>Tip:</strong> Full widescreen Rust screenshots &amp; Live Scan automatically pre-load the <span style="color:#4ade80; font-weight:700;">green chest grid</span>! Drag to fine-tune (auto-saved per layout) or click <strong style="color:#fff;">🎯 Rust Preset</strong>, then click <strong style="color:#fff;">📦 Scan Whole Box Grid</strong>.
                 </div>
                 <canvas id="raidScannerCanvas" class="scanner-canvas"></canvas>
               </div>
@@ -922,7 +923,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261113j"></script>
-  <script src="js/app.js?v=20261113j"></script>
+  <script src="js/data.js?v=20261113k"></script>
+  <script src="js/app.js?v=20261113k"></script>
 </body>
 </html>
