@@ -1334,6 +1334,8 @@
     let medY = 0;
     let brownOre = 0;
     let darkN = 0;
+    let vDark = 0;
+    let warmTan = 0;
     let tanBrick = 0;
     let total = 0;
     let lumaSum = 0;
@@ -1355,6 +1357,8 @@
       if (rr >= 78 && gg >= 68 && gg - bb >= 16 && rr < 170) medY++;
       if (rr > 55 && rr < 120 && gg > 45 && gg < 105 && bb < 72 && rr - bb >= 12) brownOre++;
       if (rr < 72 && gg < 72 && bb < 76 && sat < 0.25) darkN++;
+      if (luma < 42) vDark++;
+      if (rr > gg + 6 && gg > bb + 6 && rr > 95) warmTan++;
       if (rr > 95 && gg > 80 && bb > 68 && mx - mn < 42 && mx > 95 && bb >= 65) tanBrick++;
     }
 
@@ -1363,13 +1367,21 @@
     const pMY = medY / total;
     const pOre = brownOre / total;
     const pDark = darkN / total;
+    const pVDark = vDark / total;
+    const pWarmTan = warmTan / total;
     const pTan = tanBrick / total;
     const meanLuma = lumaSum / total;
     const stdLuma = Math.sqrt(Math.max(0, lumaSqSum / total - meanLuma * meanLuma));
 
     if (pBY >= 0.09 && pMY >= 0.22) return 'sulfur';
-    if (pDark > 0.72 && pBY < 0.01 && pMY < 0.02) return 'charcoal';
-    if (pTan >= 0.14 && pBY < 0.012 && pOre < 0.20) return 'c4';
+    if (pDark > 0.72 && pBY < 0.01 && pMY < 0.02) {
+      // Smooth fine Gun Powder mound tends to have fewer deep black rock crevices than jagged Charcoal chunks
+      return pVDark < 0.22 ? 'gunpowder' : 'charcoal';
+    }
+    if (pTan >= 0.14 && pBY < 0.012 && pOre < 0.20) {
+      // Satchel wraps 4 beancans in warm tan canvas with almost no deep black casing/circuitry; C4 has dark straps + black casing
+      return pWarmTan >= 0.22 && pVDark < 0.045 ? 'satchel' : 'c4';
+    }
     if (pOre >= 0.16 || (pBY >= 0.014 && pMY >= 0.10)) return 'sulfur_ore';
     if (stdLuma < 12 && pBY < 0.01 && pOre < 0.08) return 'empty';
     return 'empty';
@@ -1383,7 +1395,115 @@
     return val > 0 && val <= 100000 ? val : null;
   }
 
-  async function scanWholeRaidBoxGrid(srcEl, applyMode = 'replace') {
+  function buildAdaptiveDigitTile(srcCanvas, sx, sy, rw, rh, scale) {
+    const rawC = document.createElement('canvas');
+    rawC.width = rw;
+    rawC.height = rh;
+    const rctx = rawC.getContext('2d');
+    rctx.drawImage(srcCanvas, sx, sy, rw, rh, 0, 0, rw, rh);
+    const rData = rctx.getImageData(0, 0, rw, rh).data;
+    const lumas = [];
+    for (let i = 0; i < rData.length; i += 4) {
+      lumas.push(0.299 * rData[i] + 0.587 * rData[i + 1] + 0.114 * rData[i + 2]);
+    }
+    const sorted = [...lumas].sort((a, b) => a - b);
+    const bg = sorted[Math.floor(sorted.length * 0.45)] || 60;
+    const hi = sorted[Math.floor(sorted.length * 0.985)] || 150;
+    const thresh = Math.max(96, Math.min(156, Math.round(bg + (hi - bg) * 0.50)));
+
+    // Render crisp high-contrast mask on original res then scale cleanly
+    const maskC = document.createElement('canvas');
+    maskC.width = rw;
+    maskC.height = rh;
+    const mctx = maskC.getContext('2d');
+    const mid = mctx.createImageData(rw, rh);
+    for (let i = 0; i < lumas.length; i++) {
+      const ink = lumas[i] >= thresh ? 0 : 255;
+      const p = i * 4;
+      mid.data[p] = ink;
+      mid.data[p + 1] = ink;
+      mid.data[p + 2] = ink;
+      mid.data[p + 3] = 255;
+    }
+    mctx.putImageData(mid, 0, 0);
+
+    const out = document.createElement('canvas');
+    out.width = Math.round(rw * scale);
+    out.height = Math.round(rh * scale);
+    const octx = out.getContext('2d');
+    octx.fillStyle = '#ffffff';
+    octx.fillRect(0, 0, out.width, out.height);
+    octx.imageSmoothingEnabled = true;
+    octx.drawImage(maskC, 0, 0, rw, rh, 0, 0, out.width, out.height);
+    return out;
+  }
+
+  let raidLastScanApplyMode = 'add';
+
+  function applyBoxSlotTagsToStash(applyMode = raidLastScanApplyMode) {
+    if (!raidLastBoxSlotTags.length) return;
+    if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
+
+    const sums = {};
+    const slotCounts = {};
+    raidLastBoxSlotTags.forEach((s) => {
+      if (!s.key || s.key === 'empty') return;
+      sums[s.key] = (sums[s.key] || 0) + (s.qty || 0);
+      slotCounts[s.key] = (slotCounts[s.key] || 0) + 1;
+    });
+
+    const entries = Object.entries(sums).map(([key, qty]) => {
+      const meta = STASH_ITEM_META[key];
+      return {
+        key,
+        name: meta.name,
+        qty,
+        slots: slotCounts[key],
+        sulfurEq: qty * (meta.sulfurEq || 0)
+      };
+    });
+
+    if (applyMode === 'replace') {
+      Object.keys(DEFAULT_RAID_STASH).forEach((k) => {
+        appState.raidStash[k] = 0;
+      });
+    } else {
+      // Remove previous items from THIS same box-scan batch before re-applying updated re-tags
+      const prevBatch = raidScannedHistory.filter((ev) => ev.isBoxBatch);
+      prevBatch.forEach((ev) => {
+        appState.raidStash[ev.key] = Math.max(0, (appState.raidStash[ev.key] || 0) - ev.qty);
+      });
+    }
+
+    raidScannedHistory = raidScannedHistory.filter((ev) => !ev.isBoxBatch);
+    const { rows, cols } = getRaidBoxGridDims();
+
+    entries.forEach((ent, i) => {
+      const prevVal = Math.max(0, Number(appState.raidStash[ent.key]) || 0);
+      appState.raidStash[ent.key] = applyMode === 'replace' ? ent.qty : prevVal + ent.qty;
+      raidScannedHistory.unshift({
+        id: 'rbox-' + Date.now() + '-' + i,
+        key: ent.key,
+        name: `${ent.name} (${ent.slots} slots)`,
+        rawName: ent.name,
+        slots: ent.slots,
+        qty: ent.qty,
+        sulfurEq: ent.sulfurEq,
+        mode: applyMode === 'replace' ? 'set' : 'accumulate',
+        prevVal,
+        isBoxBatch: true,
+        slotLabel: `Box Grid ${rows}×${cols}`
+      });
+    });
+
+    drawRaidScannerPreview();
+    renderRaidScannedFeed();
+    renderRaidStashReadiness();
+    syncStateToServer();
+    return entries;
+  }
+
+  async function scanWholeRaidBoxGrid(srcEl, applyMode = 'add') {
     const statusEl = document.getElementById('raidScannerStatusMsg');
     const setStatus = (msg) => {
       if (statusEl) statusEl.textContent = msg;
@@ -1393,8 +1513,9 @@
       const dims = getScannerSourceDimensions(srcEl);
       if (!dims.w || !dims.h) return;
 
+      raidLastScanApplyMode = applyMode;
       const worker = await ensureRaidOcrWorker(setStatus);
-      setStatus('📦 Analyzing all chest slots (Sulfur Ore, Sulfur, Charcoal, C4)...');
+      setStatus('📦 Analyzing all chest slots (Sulfur Ore, Sulfur, Gun Powder, Charcoal, Satchel, C4)...');
 
       const fullCanvas = document.createElement('canvas');
       fullCanvas.width = dims.w;
@@ -1417,7 +1538,7 @@
           const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.14));
           const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.12));
           const sw = Math.max(4, Math.min(dims.w - sx, Math.floor(cw * 0.72)));
-          const sh = Math.max(4, Math.min(dims.h - sy, Math.floor(ch * 0.58)));
+          const sh = Math.max(4, Math.min(dims.h - sy, Math.floor(ch * 0.56)));
           const key = classifyRustBoxSlotPixels(fctx, sx, sy, sw, sh);
           if (key !== 'empty') {
             slots.push({ row: r, col, key, qty: null });
@@ -1426,40 +1547,22 @@
       }
 
       if (!slots.length) {
-        setStatus('⚠️ No Sulfur / Ore / Boom slots detected inside box grid. Drag the green Calibrate Box Grid tightly over the 48 chest slots.');
+        setStatus('⚠️ No Sulfur / Ore / Boom slots detected inside box grid. Drag the green Calibrate Box Grid tightly over the chest slots.');
         return;
       }
 
-      // Batch OCR per occupied row for fast stack-number extraction
       await worker.setParameters({ tessedit_char_whitelist: '0123456789x,' });
-      const scale = Math.max(3, Math.min(5, Math.round(180 / Math.max(30, cw))));
-      const subW = Math.max(10, Math.round(cw * 0.74));
-      const subH = Math.max(8, Math.round(ch * 0.34));
+      const scale = Math.max(3.5, Math.min(5.5, Math.round(180 / Math.max(28, cw))));
+      const subW = Math.max(10, Math.round(cw * 0.70));
+      const subH = Math.max(7, Math.round(ch * 0.28));
       const pad = 28;
 
-      const buildDigitTile = (r, col) => {
-        const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.25));
-        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.65));
+      const getDigitTile = (r, col) => {
+        const sx = Math.max(0, Math.floor(boxRect.x + col * cw + cw * 0.29));
+        const sy = Math.max(0, Math.floor(boxRect.y + r * ch + ch * 0.71));
         const rw = Math.max(4, Math.min(dims.w - sx, subW));
         const rh = Math.max(4, Math.min(dims.h - sy, subH));
-        const tmp = document.createElement('canvas');
-        tmp.width = Math.round(rw * scale);
-        tmp.height = Math.round(rh * scale);
-        const tctx = tmp.getContext('2d');
-        tctx.imageSmoothingEnabled = true;
-        tctx.drawImage(fullCanvas, sx, sy, rw, rh, 0, 0, tmp.width, tmp.height);
-        const id = tctx.getImageData(0, 0, tmp.width, tmp.height);
-        const d = id.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-          const ink = luma >= 156 ? 0 : 255;
-          d[i] = ink;
-          d[i + 1] = ink;
-          d[i + 2] = ink;
-          d[i + 3] = 255;
-        }
-        tctx.putImageData(id, 0, 0);
-        return tmp;
+        return buildAdaptiveDigitTile(fullCanvas, sx, sy, rw, rh, scale);
       };
 
       const rowsMap = new Map();
@@ -1472,9 +1575,9 @@
       for (const [r, rowSlots] of rowsMap.entries()) {
         rowIdx++;
         setStatus(`🔍 Reading stack numbers row ${rowIdx}/${rowsMap.size} (${slots.length} slots)...`);
-        const tiles = rowSlots.map((s) => buildDigitTile(r, s.col));
+        const tiles = rowSlots.map((s) => getDigitTile(r, s.col));
         const totalW = tiles.reduce((sum, t) => sum + t.width + pad, pad);
-        const maxH = tiles.reduce((m, t) => Math.max(m, t.height), 20) + 20;
+        const maxH = tiles.reduce((m, t) => Math.max(m, t.height), 20) + 24;
         const strip = document.createElement('canvas');
         strip.width = totalW;
         strip.height = maxH;
@@ -1484,10 +1587,11 @@
 
         let curX = pad;
         tiles.forEach((t) => {
-          sctx.drawImage(t, curX, 10);
+          sctx.drawImage(t, curX, 12);
           curX += t.width + pad;
         });
 
+        await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '7' });
         const res = await worker.recognize(strip);
         const tokens = String(res?.data?.text || '')
           .trim()
@@ -1500,16 +1604,16 @@
             s.qty = tokens[i];
           });
         } else {
-          // Per-slot fallback for uneven spacing or tiny single-digit stacks like x2 / x3
+          await worker.setParameters({ tessedit_char_whitelist: '0123456789x,', tessedit_pageseg_mode: '8' });
           for (let i = 0; i < rowSlots.length; i++) {
             const tile = tiles[i];
             const solo = document.createElement('canvas');
-            solo.width = tile.width + 40;
-            solo.height = tile.height + 24;
+            solo.width = tile.width + 44;
+            solo.height = tile.height + 28;
             const octx = solo.getContext('2d');
             octx.fillStyle = '#ffffff';
             octx.fillRect(0, 0, solo.width, solo.height);
-            octx.drawImage(tile, 20, 12);
+            octx.drawImage(tile, 22, 14);
             const soloRes = await worker.recognize(solo);
             const parsed = parseStackDigitsText(soloRes?.data?.text);
             rowSlots[i].qty = parsed !== null ? parsed : ['c4', 'rocket', 'satchel'].includes(rowSlots[i].key) ? 1 : 1000;
@@ -1517,66 +1621,20 @@
         }
       }
 
-      // Reset whitelist back to empty so single-inspect header OCR still works seamlessly
-      await worker.setParameters({ tessedit_char_whitelist: '' });
+      await worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: '3' });
 
       raidLastBoxSlotTags = slots.map((s) => ({ row: s.row, col: s.col, key: s.key, qty: s.qty }));
-      drawRaidScannerPreview();
-
-      // Aggregate per-item totals
-      const sums = {};
-      const slotCounts = {};
-      slots.forEach((s) => {
-        sums[s.key] = (sums[s.key] || 0) + (s.qty || 0);
-        slotCounts[s.key] = (slotCounts[s.key] || 0) + 1;
-      });
-
-      const entries = Object.entries(sums).map(([key, qty]) => {
-        const meta = STASH_ITEM_META[key];
-        return {
-          key,
-          name: meta.name,
-          qty,
-          slots: slotCounts[key],
-          sulfurEq: qty * (meta.sulfurEq || 0)
-        };
-      });
-
-      if (applyMode === 'replace') {
-        if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
-        Object.keys(DEFAULT_RAID_STASH).forEach((k) => {
-          appState.raidStash[k] = 0;
-        });
-        raidScannedHistory = [];
-      }
-
-      entries.forEach((ent, i) => {
-        const prevVal = Math.max(0, Number(appState.raidStash[ent.key]) || 0);
-        appState.raidStash[ent.key] = applyMode === 'replace' ? ent.qty : prevVal + ent.qty;
-        raidScannedHistory.unshift({
-          id: 'rbox-' + Date.now() + '-' + i,
-          key: ent.key,
-          name: `${ent.name} (${ent.slots} slots)`,
-          qty: ent.qty,
-          sulfurEq: ent.sulfurEq,
-          mode: applyMode === 'replace' ? 'set' : 'accumulate',
-          prevVal,
-          slotLabel: `Box Grid ${rows}×${cols}`
-        });
-      });
-
-      renderRaidScannedFeed();
-      renderRaidStashReadiness();
-      syncStateToServer();
+      // Clear any stale prior batch history before applying newly scanned box
+      raidScannedHistory = raidScannedHistory.filter((ev) => !ev.isBoxBatch);
+      const entries = applyBoxSlotTagsToStash(applyMode) || [];
       playAlertSound('urgent');
 
       const summaryStr = entries.map((e) => `${e.qty.toLocaleString()} ${e.name} (${e.slots} slots)`).join(' • ');
-      setStatus(`✅ Scanned ${slots.length} box slots: ${summaryStr}`);
+      setStatus(`✅ Scanned ${slots.length} slots: ${summaryStr}. Click any item group below or any canvas slot if you need to re-tag Charcoal/GP or Satchel/C4.`);
     } catch (err) {
       setStatus(`❌ Box scan failed: ${err?.message || err}`);
     }
   }
-
   function parseRaidLootFromOcrText(rawText) {
     const cleanText = String(rawText || '').replace(/\r/g, '');
     const lines = cleanText
@@ -1666,29 +1724,41 @@
       feedEl.innerHTML = '';
       return;
     }
+
+    const retagOptions = ['sulfur_ore', 'sulfur', 'gunpowder', 'charcoal', 'satchel', 'c4', 'explosives', 'rocket', 'explo_ammo'];
+
     feedEl.innerHTML = `
       <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border-subtle); border-radius:6px; padding:8px 10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
           <span style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">
-            🧾 SCANNED STACKS LOG (${raidScannedHistory.length})
+            🧾 SCANNED STACKS LOG (${raidScannedHistory.length}) — CLICK TYPE TO RE-TAG IF NEEDED
           </span>
           <button id="raidClearFeedBtn" class="btn btn-sm" type="button">Clear Log</button>
         </div>
-        <div style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;">
+        <div style="display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto;">
           ${raidScannedHistory
             .slice(0, 15)
-            .map(
-              (ev) => `
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 8px; background:var(--bg-card); border-radius:4px; font-family:var(--font-mono); font-size:11.5px;">
-              <div>
-                <strong style="color:#fff;">${ev.mode === 'set' ? '=' : '+'}${ev.qty.toLocaleString()} ${ev.name}</strong>
-                ${ev.sulfurEq > 0 ? `<span style="color:var(--sulfur-yellow);">(${ev.sulfurEq.toLocaleString()}S eq.)</span>` : ''}
-                ${ev.slotLabel ? `<span class="target-tier-tag" style="margin-left:4px; color:#4ade80;">📍 ${ev.slotLabel}</span>` : ''}
-              </div>
-              <button class="btn btn-sm raid-undo-scan-btn" data-scan-id="${ev.id}" type="button" title="Undo this scan">Undo</button>
-            </div>
-          `
-            )
+            .map((ev) => {
+              const selectHtml = ev.isBoxBatch
+                ? `<select class="select raid-retag-group-select" data-old-key="${ev.key}" style="padding:2px 5px; font-size:11px;">
+                     ${retagOptions
+                       .map((k) => `<option value="${k}" ${k === ev.key ? 'selected' : ''}>${STASH_ITEM_META[k].name}</option>`)
+                       .join('')}
+                   </select>`
+                : '';
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:4px 8px; background:var(--bg-card); border-radius:4px; font-family:var(--font-mono); font-size:11.5px;">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <strong style="color:#fff;">${ev.mode === 'set' ? '=' : '+'}${ev.qty.toLocaleString()}</strong>
+                    ${selectHtml || `<strong style="color:#fff;">${ev.name}</strong>`}
+                    ${ev.isBoxBatch ? `<span class="text-xs text-muted">(${ev.slots} slots)</span>` : ''}
+                    ${ev.sulfurEq > 0 ? `<span style="color:var(--sulfur-yellow);">(${ev.sulfurEq.toLocaleString()}S eq.)</span>` : ''}
+                    ${ev.slotLabel ? `<span class="target-tier-tag" style="color:#4ade80;">📍 ${ev.slotLabel}</span>` : ''}
+                  </div>
+                  <button class="btn btn-sm raid-undo-scan-btn" data-scan-id="${ev.id}" type="button" title="Undo this scan">Undo</button>
+                </div>
+              `;
+            })
             .join('')}
         </div>
       </div>
@@ -1698,6 +1768,19 @@
       raidScannedHistory = [];
       renderRaidScannedFeed();
     });
+
+    feedEl.querySelectorAll('.raid-retag-group-select').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const oldKey = sel.getAttribute('data-old-key');
+        const newKey = sel.value;
+        if (!oldKey || !newKey || oldKey === newKey) return;
+        raidLastBoxSlotTags.forEach((tag) => {
+          if (tag.key === oldKey) tag.key = newKey;
+        });
+        applyBoxSlotTagsToStash(raidLastScanApplyMode);
+      });
+    });
+
     feedEl.querySelectorAll('.raid-undo-scan-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-scan-id');
@@ -1717,7 +1800,6 @@
       });
     });
   }
-
   function applyDetectedStashEntries(entries, slotLabel = '', mode = 'accumulate') {
     if (!entries.length) return 0;
     if (!appState.raidStash) appState.raidStash = { ...DEFAULT_RAID_STASH };
@@ -2185,8 +2267,28 @@
         else raidScannerCropRect = rect;
         drawRaidScannerPreview();
       });
-      canvas.addEventListener('pointerup', () => {
+      canvas.addEventListener('pointerup', (e) => {
+        const endPt = toCoords(e);
+        const moveDist = startPt ? Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y) : 99;
         dragging = false;
+        if (moveDist <= 5 && raidLastBoxSlotTags.length) {
+          const dims = getScannerSourceDimensions(raidScannerImg);
+          const effBox =
+            raidBoxGridRect && raidBoxGridRect.w >= 24 && raidBoxGridRect.h >= 24
+              ? raidBoxGridRect
+              : { x: 0, y: 0, w: dims.w, h: dims.h };
+          const { rows, cols } = getRaidBoxGridDims();
+          const col = Math.floor(((endPt.x - effBox.x) / effBox.w) * cols);
+          const row = Math.floor(((endPt.y - effBox.y) / effBox.h) * rows);
+          const slotTag = raidLastBoxSlotTags.find((t) => t.row === row && t.col === col);
+          if (slotTag) {
+            const cycle = ['sulfur_ore', 'sulfur', 'gunpowder', 'charcoal', 'satchel', 'c4', 'explosives', 'rocket', 'explo_ammo'];
+            const nextIdx = (cycle.indexOf(slotTag.key) + 1) % cycle.length;
+            slotTag.key = cycle[nextIdx];
+            applyBoxSlotTagsToStash(raidLastScanApplyMode);
+            return;
+          }
+        }
         if (raidDragMode === 'box' && raidBoxGridRect && (raidBoxGridRect.w < 20 || raidBoxGridRect.h < 20)) {
           raidBoxGridRect = null;
         }
