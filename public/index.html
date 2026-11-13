@@ -278,12 +278,17 @@
                 <div class="panel-title">🧬 6-Gene Crossbreeding Solver & God Clone Builder</div>
                 <div class="panel-subtitle">Add your harvested clones below and automatically compute the optimal 3x3 Large Planter Box crossbreed</div>
               </div>
-              <div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <select id="geneticsTargetGoal" class="select">
                   <option value="GGGYYY">🎯 Target: GGGYYY (Balanced 3G/3Y God Clone)</option>
                   <option value="YYYYGG">🌾 Target: YYYYGG (Max Yield 4Y/2G God Clone)</option>
                   <option value="GGGGYY">⚡ Target: GGGGYY (Fast Growth 4G/2Y Clone)</option>
+                  <option value="GGGYHY">❄️ Target: GGGYHY (Snow Biome 3G/2Y/1H Clone)</option>
                 </select>
+                <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-secondary); cursor:pointer;" title="Allows planting multiple cloned copies of your saved plants as donors in the 3x3 planter">
+                  <input id="geneticsAllowDupesCb" type="checkbox" checked />
+                  <span>Allow 2×+ Cloned Donors</span>
+                </label>
               </div>
             </div>
 
@@ -298,19 +303,20 @@
                   <option value="White Berry">⚪ White Berry (Scrap Tea)</option>
                   <option value="Pumpkin">🎃 Pumpkin / Potato</option>
                 </select>
-                <input id="cloneGeneInput" type="text" class="input" maxlength="6" placeholder="Enter 6 genes (e.g. YGYWGG)" style="font-family: var(--font-mono); text-transform: uppercase; width: 190px; letter-spacing: 0.12em;" />
+                <input id="cloneGeneInput" type="text" class="input" placeholder="6 genes or paste list (e.g. YGYWGG)" style="font-family: var(--font-mono); text-transform: uppercase; width: 225px; letter-spacing: 0.08em;" />
                 <div style="display: flex; gap: 4px;">
                   <button class="btn btn-sm gene-quick-btn" data-g="G" style="border-color:#22c55e; color:#4ade80;">+G</button>
                   <button class="btn btn-sm gene-quick-btn" data-g="Y" style="border-color:#22c55e; color:#4ade80;">+Y</button>
                   <button class="btn btn-sm gene-quick-btn" data-g="H" style="border-color:#22c55e; color:#4ade80;">+H</button>
                   <button class="btn btn-sm gene-quick-btn" data-g="W" style="border-color:#ef4444; color:#f87171;">+W</button>
                   <button class="btn btn-sm gene-quick-btn" data-g="X" style="border-color:#ef4444; color:#f87171;">+X</button>
+                  <button id="clearGeneInputBtn" class="btn btn-sm" title="Clear input">⌫</button>
                 </div>
                 <button id="addCloneBtn" class="btn btn-primary">+ Save Clone</button>
                 <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
               </div>
               <div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
-                DOMINANCE WEIGHTS: <span style="color:#4ade80;">G / Y / H = 0.6</span> • <span style="color:#f87171;">X (Empty) = 0.9</span> • <span style="color:#f87171;">W (Water) = 1.0</span> (2x Green genes = 1.2 &gt; 1x Red gene!)
+                DOMINANCE WEIGHTS: <span style="color:#4ade80;">G / Y / H = 0.6</span> • <span style="color:#f87171;">W / X = 1.0</span> (2× Green = 1.2 beats 1× Red 1.0! Paste multiple space/comma-separated clones too)
               </div>
             </div>
 
@@ -349,7 +355,10 @@
                 <div class="panel-title">🌱 Squad Saved Clones & Saplings</div>
                 <div class="panel-subtitle">Click "Solve Crossbreed" after adding 2+ clones of the same crop</div>
               </div>
-              <button id="runGeneticsSolverBtn" class="btn btn-primary btn-sm">⚡ Re-Solve Best Crossbreed</button>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button id="clearCropClonesBtn" class="btn btn-sm" title="Clear clones for selected crop">🗑️ Clear Crop</button>
+                <button id="runGeneticsSolverBtn" class="btn btn-primary btn-sm">⚡ Re-Solve Best Crossbreed</button>
+              </div>
             </div>
             <div id="savedClonesList"></div>
           </div>

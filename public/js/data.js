@@ -1766,7 +1766,7 @@ window.RUST_DATA = {
     Y: { code: 'Y', name: 'Increased Yield', type: 'good', weight: 0.6, color: '#22c55e', desc: '+25% more harvest yield (Cloth / Berries / Food)' },
     H: { code: 'H', name: 'Hardiness', type: 'good', weight: 0.6, color: '#22c55e', desc: 'Improves cold temperature resistance in Snow biomes' },
     W: { code: 'W', name: 'Increased Water', type: 'bad', weight: 1.0, color: '#ef4444', desc: 'BAD GENE (Weight 1.0): Increases water consumption' },
-    X: { code: 'X', name: 'Empty Slot', type: 'bad', weight: 0.9, color: '#ef4444', desc: 'BAD GENE (Weight 0.9): Provides zero benefit' }
+    X: { code: 'X', name: 'Empty Slot', type: 'bad', weight: 1.0, color: '#ef4444', desc: 'BAD GENE (Weight 1.0): Empty slot (requires 2x Green 1.2 to overwrite)' }
   },
 
   teaRecipes: [
