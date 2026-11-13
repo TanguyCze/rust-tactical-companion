@@ -57,6 +57,8 @@
   let isServerConnected = false;
   let audioEnabled = true;
   let selectedRaidCategory = 'All';
+  let selectedRaidWb = 'All';
+  let raidTargetSearch = '';
   let selectedRaidTargetId = 'garage_door';
   let selectedMonumentFilter = 'all';
   let selectedMonumentId = 'launch_site';
@@ -269,24 +271,95 @@
   // =========================================================================
   // MODULE 1: RAID CALCULATOR & SULFUR SAVER COMBO ENGINE
   // =========================================================================
-  function getBestSulfurForTarget(target) {
-    const comboMin = (target.combos || []).reduce((min, c) => Math.min(min, c.sulfur), Infinity);
-    const methodMin = (target.methods || []).reduce((min, m) => Math.min(min, m.sulfur), Infinity);
-    return Math.min(comboMin, methodMin);
+  const MELEE_TOOL_IDS = new Set(['pickaxe', 'jackhammer', 'salvaged_sword']);
+  const WB_RANK = { T1: 1, T2: 2, T3: 3 };
+
+  function isRealRaidTool(toolId) {
+    return Boolean(toolId) && !MELEE_TOOL_IDS.has(toolId);
+  }
+
+  function toolFitsWb(toolId, maxWb) {
+    if (!maxWb || maxWb === 'All') return true;
+    const tool = DATA.raidTools[toolId];
+    if (!tool) return false;
+    return (WB_RANK[tool.wb] || 3) <= (WB_RANK[maxWb] || 3);
+  }
+
+  function formatRaidTime(seconds) {
+    const s = Math.max(1, Math.round(seconds || 0));
+    if (s < 60) return `~${s}s`;
+    const mins = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem ? `~${mins}m ${rem}s` : `~${mins}m`;
+  }
+
+  function getFilteredMethods(target, maxWb) {
+    return (target.methods || [])
+      .map((m, idx) => ({ ...m, _origIdx: idx }))
+      .filter((m) => isRealRaidTool(m.toolId) && toolFitsWb(m.toolId, maxWb))
+      .sort((a, b) => (a.sulfur || 0) - (b.sulfur || 0) || (a.timeSec || 999) - (b.timeSec || 999));
+  }
+
+  function getFilteredCombos(target, maxWb) {
+    return (target.combos || [])
+      .map((c, idx) => ({ ...c, _origIdx: idx }))
+      .filter((c) => (c.items || []).every((it) => isRealRaidTool(it.toolId) && toolFitsWb(it.toolId, maxWb)))
+      .sort((a, b) => (a.sulfur || 0) - (b.sulfur || 0) || (a.timeSec || 999) - (b.timeSec || 999));
+  }
+
+  function getBestEntryForTarget(target, maxWb) {
+    const combos = getFilteredCombos(target, maxWb);
+    const methods = getFilteredMethods(target, maxWb);
+    const candidates = [
+      ...combos.map((c) => ({ sulfur: c.sulfur || 0, lgf: c.lgf || 0, isFire: (c.sulfur || 0) === 0, isCombo: true, saved: c.savedSulfur || 0 })),
+      ...methods.map((m) => ({ sulfur: m.sulfur || 0, lgf: m.lgf || 0, isFire: (m.sulfur || 0) === 0, isCombo: false, saved: 0 }))
+    ];
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => a.sulfur - b.sulfur || a.lgf - b.lgf);
+    return candidates[0];
   }
 
   function renderRaidTargets() {
     const grid = document.getElementById('raidTargetGrid');
     if (!grid) return;
 
-    const filtered = DATA.raidTargets.filter(
-      (t) => selectedRaidCategory === 'All' || t.category === selectedRaidCategory
-    );
+    const query = raidTargetSearch.trim().toLowerCase();
+    const filtered = DATA.raidTargets.filter((t) => {
+      const catOk = selectedRaidCategory === 'All' || t.category === selectedRaidCategory;
+      if (!catOk) return false;
+      if (!query) return true;
+      return (
+        t.name.toLowerCase().includes(query) ||
+        t.tier.toLowerCase().includes(query) ||
+        t.category.toLowerCase().includes(query)
+      );
+    });
+
+    if (filtered.length === 0) {
+      grid.innerHTML =
+        '<div class="text-muted text-sm" style="grid-column:1/-1; padding:12px;">No targets match your filter. Clear search or switch category.</div>';
+      renderSelectedTargetInspector();
+      return;
+    }
+
+    if (!filtered.some((t) => t.id === selectedRaidTargetId)) {
+      selectedRaidTargetId = filtered[0].id;
+    }
 
     grid.innerHTML = filtered
       .map((t) => {
-        const minSulfur = getBestSulfurForTarget(t);
+        const best = getBestEntryForTarget(t, selectedRaidWb);
         const isSelected = t.id === selectedRaidTargetId;
+        let bestText = 'Higher WB needed';
+        let fireClass = '';
+        if (best) {
+          if (best.isFire) {
+            bestText = `🔥 0 Sulfur (${best.lgf || 50} LGF Fire)`;
+            fireClass = ' is-fire';
+          } else {
+            bestText = `⚡ Best: ${best.sulfur.toLocaleString()} Sulfur`;
+          }
+        }
         return `
           <div class="target-card ${isSelected ? 'selected' : ''}" data-target-id="${t.id}">
             <div class="target-card-top">
@@ -294,9 +367,7 @@
               <span class="target-hp">${t.hp} HP</span>
             </div>
             <div class="target-name">${t.name}</div>
-            <div class="target-best-sulfur">
-              ⚡ Best: ${minSulfur === 0 ? '0 Sulfur (Fire/Eco)' : minSulfur.toLocaleString() + ' Sulfur'}
-            </div>
+            <div class="target-best-sulfur${fireClass}">${bestText}</div>
           </div>
         `;
       })
@@ -309,6 +380,8 @@
         renderSelectedTargetInspector();
       });
     });
+
+    renderSelectedTargetInspector();
   }
 
   function renderSelectedTargetInspector() {
@@ -318,91 +391,112 @@
     const target = DATA.raidTargets.find((t) => t.id === selectedRaidTargetId) || DATA.raidTargets[0];
     if (!target) return;
 
-    const combosHtml = (target.combos || [])
-      .map(
-        (c, idx) => `
-        <div class="combo-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <span class="combo-badge">${c.badge}</span>
-            ${c.savedSulfur > 0 ? `<span class="combo-save-pill">Saves ${c.savedSulfur.toLocaleString()} Sulfur</span>` : ''}
-          </div>
-          <div class="combo-title">${c.label}</div>
-          <div class="combo-stats">
-            <span style="color:var(--sulfur-yellow); font-weight:700;">🟡 ${c.sulfur.toLocaleString()} Sulfur</span>
-            ${c.charcoal ? `<span>⚫ ${c.charcoal.toLocaleString()} Charcoal</span>` : ''}
-            ${c.lgf ? `<span style="color:#4ade80;">🛢️ ${c.lgf} LGF</span>` : ''}
-            <span>⏱️ ~${c.timeSec}s</span>
-          </div>
-          <div style="font-size:12px; color:var(--text-secondary); flex:1;">${c.notes}</div>
-          <button class="btn btn-sm btn-primary add-target-combo-btn" data-target="${target.id}" data-combo-idx="${idx}">
-            + Add This Combo to Raid Plan
-          </button>
-        </div>
-      `
-      )
-      .join('');
+    const combos = getFilteredCombos(target, selectedRaidWb);
+    const methods = getFilteredMethods(target, selectedRaidWb);
+    const activeWbLabel = selectedRaidWb === 'All' ? 'All Tiers' : `Max ${selectedRaidWb}`;
 
-    const methodsRows = (target.methods || [])
-      .map((m, idx) => {
-        const tool = DATA.raidTools[m.toolId] || { name: m.toolId, wb: '-' };
-        return `
-          <tr>
-            <td style="font-weight:700; color:#fff;">${m.qty}x ${tool.name}</td>
-            <td><span class="target-tier-tag">${tool.wb}</span></td>
-            <td style="color:var(--sulfur-yellow); font-weight:700;">${(m.sulfur || 0).toLocaleString()}</td>
-            <td>${(m.charcoal || 0).toLocaleString()}</td>
-            <td>${(m.metal || 0).toLocaleString()}</td>
-            <td>${(m.lgf || 0).toLocaleString()}</td>
-            <td>~${m.timeSec}s</td>
-            <td style="font-family:var(--font-sans); font-size:12px; color:var(--text-secondary);">${m.notes || ''}</td>
-            <td>
-              <button class="btn btn-sm add-single-method-btn" data-target="${target.id}" data-method-idx="${idx}">
-                + Plan
-              </button>
-            </td>
-          </tr>
-        `;
-      })
-      .join('');
+    const combosHtml =
+      combos.length > 0
+        ? combos
+            .map((c) => {
+              const itemsText = (c.items || [])
+                .map((it) => {
+                  const tool = DATA.raidTools[it.toolId] || { shortName: it.toolId, name: it.toolId };
+                  return `${it.qty}x ${tool.shortName || tool.name}`;
+                })
+                .join(' + ');
+              const lgfNote = c.lgf ? `<span>LGF: <strong style="color:#fb923c">${c.lgf}</strong></span>` : '';
+              return `
+                <div class="combo-card">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span class="combo-badge">${c.badge}</span>
+                    ${c.savedSulfur > 0 ? `<span class="combo-save-pill">Saves ${c.savedSulfur.toLocaleString()} Sulfur</span>` : ''}
+                  </div>
+                  <div class="combo-title">${c.label}</div>
+                  <div class="text-xs" style="color:#cbd5e1; font-family:var(--font-mono);">${itemsText}</div>
+                  <div class="combo-stats">
+                    <span>Sulfur: <strong style="color:var(--sulfur-yellow)">${c.sulfur.toLocaleString()}</strong></span>
+                    <span>Charcoal: <strong>${(c.charcoal || 0).toLocaleString()}</strong></span>
+                    ${lgfNote}
+                    <span>Time: <strong>${formatRaidTime(c.timeSec)}</strong></span>
+                  </div>
+                  <div class="text-xs text-muted">${c.notes || ''}</div>
+                  <div style="margin-top:auto; padding-top:6px;">
+                    <button class="btn btn-sm btn-primary add-target-combo-btn" data-target="${target.id}" data-combo-idx="${c._origIdx}">
+                      + Add Combo to Raid Plan
+                    </button>
+                  </div>
+                </div>
+              `;
+            })
+            .join('')
+        : `<div class="text-xs text-muted" style="padding:10px; background:var(--bg-card); border-radius:6px; border:1px solid var(--border-subtle);">No mixed combos available at ${activeWbLabel} for ${target.name} — switch Workbench filter to All/T3 or use pure methods below.</div>`;
+
+    const lowestSulfur = methods.length > 0 ? methods[0].sulfur : Infinity;
+    const methodsRows =
+      methods.length > 0
+        ? methods
+            .map((m) => {
+              const tool = DATA.raidTools[m.toolId] || { name: m.toolId, wb: '-' };
+              const isCheapest = (m.sulfur || 0) === lowestSulfur;
+              return `
+                <tr class="${isCheapest ? 'method-best-row' : ''}">
+                  <td style="font-weight:700; color:#fff;">${m.qty}x ${tool.name}</td>
+                  <td style="color:${m.sulfur === 0 ? '#4ade80' : 'var(--sulfur-yellow)'}; font-weight:700;">
+                    ${m.sulfur === 0 ? `0 Sulfur (${m.lgf || 0} LGF)` : m.sulfur.toLocaleString()}
+                  </td>
+                  <td>${formatRaidTime(m.timeSec)}</td>
+                  <td><span class="target-tier-tag">${tool.wb}</span></td>
+                  <td class="text-xs text-muted" style="font-family:var(--font-body)">${m.notes || ''}</td>
+                  <td>
+                    <button class="btn btn-sm add-single-method-btn" data-target="${target.id}" data-method-idx="${m._origIdx}">
+                      + Add
+                    </button>
+                  </td>
+                </tr>
+              `;
+            })
+            .join('')
+        : `<tr><td colspan="6" class="text-xs text-muted">No practical boom/fire tools at ${activeWbLabel}. Try T2/T3.</td></tr>`;
+
+    const softSideHtml = target.softSideNote
+      ? `<div class="soft-side-callout"><strong>ℹ️ Eco / Soft-Side Note (Unranked):</strong> ${target.softSideNote}</div>`
+      : '';
 
     container.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
-        <div>
-          <span style="font-family:var(--font-display); font-size:18px; font-weight:700; color:#fff;">
-            ${target.name} (${target.hp} HP)
-          </span>
-          <span style="margin-left:8px;" class="target-tier-tag">${target.category} • ${target.tier}</span>
+      <div style="border-top:1px solid var(--border-subtle); padding-top:16px; margin-top:4px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          <div>
+            <h3 style="font-family:var(--font-display); font-size:18px; text-transform:uppercase; color:#fff;">
+              ${target.name} <span class="text-green">(${target.hp} HP)</span>
+            </h3>
+            <span class="text-xs text-muted">${target.category} • Material: ${target.tier} • Filter: ${activeWbLabel}</span>
+          </div>
+          <button class="btn btn-sulfur btn-sm" id="addOptimalTargetBtn" data-target="${target.id}">
+            ⚡ Add Optimal to Squad Plan
+          </button>
         </div>
-        <button class="btn btn-sulfur btn-sm" id="addOptimalTargetBtn" data-target="${target.id}">
-          ⚡ Quick Add Optimal to Squad Raid Plan
-        </button>
-      </div>
 
-      <div style="font-family:var(--font-display); font-size:13px; text-transform:uppercase; color:var(--sulfur-yellow); margin-bottom:8px; font-weight:700;">
-        ⚡ Recommended Sulfur-Saving Combinations (Mixed Loadouts)
-      </div>
-      <div class="combo-grid">${combosHtml}</div>
+        <h4 class="text-xs text-muted" style="margin-bottom:8px; letter-spacing:0.06em;">RECOMMENDED SULFUR-SAVING COMBOS</h4>
+        <div class="combo-grid">${combosHtml}</div>
 
-      <div style="font-family:var(--font-display); font-size:13px; text-transform:uppercase; color:var(--text-secondary); margin-bottom:8px; font-weight:700;">
-        📊 Single-Method Raid Comparison Table (Pure C4 / Rocket / Explo / Fire / Melee)
-      </div>
-      <div style="overflow-x:auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Method / Quantity</th>
-              <th>WB</th>
-              <th>Sulfur</th>
-              <th>Charcoal</th>
-              <th>Metal</th>
-              <th>Low Grade</th>
-              <th>Time</th>
-              <th>Tactical Notes</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>${methodsRows}</tbody>
-        </table>
+        <h4 class="text-xs text-muted" style="margin-bottom:8px; letter-spacing:0.06em;">PURE SINGLE-TOOL COMPARISON</h4>
+        <div style="overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Boom / Fire Tool</th>
+                <th>Sulfur</th>
+                <th>Time</th>
+                <th>WB</th>
+                <th>Tactical Note</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${methodsRows}</tbody>
+          </table>
+        </div>
+        ${softSideHtml}
       </div>
     `;
 
@@ -412,35 +506,53 @@
 
     container.querySelectorAll('.add-target-combo-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const cIdx = parseInt(btn.getAttribute('data-combo-idx'), 10);
+        const cIdx = Number(btn.getAttribute('data-combo-idx'));
         addRaidQueueItem(target.id, 1, `combo:${cIdx}`);
       });
     });
 
     container.querySelectorAll('.add-single-method-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const mIdx = parseInt(btn.getAttribute('data-method-idx'), 10);
+        const mIdx = Number(btn.getAttribute('data-method-idx'));
         addRaidQueueItem(target.id, 1, `method:${mIdx}`);
       });
     });
   }
 
   function addRaidQueueItem(targetId, qty, mode) {
+    const cleanQty = Math.max(1, Math.min(99, Number(qty) || 1));
     const existing = appState.raidQueue.find((item) => item.targetId === targetId && item.mode === mode);
     if (existing) {
-      existing.qty += qty;
+      existing.qty += cleanQty;
     } else {
-      appState.raidQueue.push({ targetId, qty, mode });
+      appState.raidQueue.push({ targetId, qty: cleanQty, mode });
     }
-    syncStateToServer();
     renderRaidPlanner();
+    saveState();
+  }
+
+  function changeRaidQueueQty(idx, delta) {
+    const item = appState.raidQueue[idx];
+    if (!item) return;
+    const next = (Number(item.qty) || 1) + delta;
+    if (next <= 0) {
+      appState.raidQueue.splice(idx, 1);
+    } else {
+      item.qty = Math.min(99, next);
+    }
+    renderRaidPlanner();
+    saveState();
   }
 
   function resolveQueueItemLoadout(item) {
-    const target = DATA.raidTargets.find((t) => t.id === item.targetId) || DATA.raidTargets[0];
+    const target = DATA.raidTargets.find((t) => t.id === item.targetId);
     if (!target) return null;
 
-    let chosenLabel = '';
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const mode = item.mode || 'combo';
+    const validMethods = getFilteredMethods(target, 'All');
+    const validCombos = getFilteredCombos(target, 'All');
+
     let sulfur = 0;
     let charcoal = 0;
     let lgf = 0;
@@ -448,111 +560,93 @@
     let pipes = 0;
     let techTrash = 0;
     let timeSec = 0;
-    let savedSulfur = 0;
-    let toolCounts = {};
+    let chosenLabel = '';
+    const toolCounts = {};
 
-    if (item.mode.startsWith('combo:')) {
-      const idx = parseInt(item.mode.split(':')[1], 10) || 0;
-      const c = target.combos[idx] || target.combos[0];
-      chosenLabel = c.label;
-      sulfur = c.sulfur;
+    const applyMethod = (m) => {
+      const tool = DATA.raidTools[m.toolId] || { name: m.toolId };
+      sulfur = m.sulfur || 0;
+      charcoal = m.charcoal || 0;
+      lgf = m.lgf || 0;
+      metal = m.metal || 0;
+      pipes = m.pipes || 0;
+      techTrash = m.techTrash || 0;
+      timeSec = m.timeSec || 20;
+      chosenLabel = `${m.qty}x ${tool.shortName || tool.name}`;
+      toolCounts[m.toolId] = m.qty;
+    };
+
+    const applyCombo = (c) => {
+      sulfur = c.sulfur || 0;
       charcoal = c.charcoal || 0;
       lgf = c.lgf || 0;
-      timeSec = c.timeSec || 15;
-      savedSulfur = c.savedSulfur || 0;
+      timeSec = c.timeSec || 20;
+      chosenLabel = c.label;
       (c.items || []).forEach((it) => {
+        const tool = DATA.raidTools[it.toolId] || {};
         toolCounts[it.toolId] = (toolCounts[it.toolId] || 0) + it.qty;
-        const tool = DATA.raidTools[it.toolId];
-        if (tool) {
-          metal += (tool.metal || 0) * it.qty;
-          pipes += (tool.pipes || 0) * it.qty;
-          techTrash += (tool.techTrash || 0) * it.qty;
-        }
+        metal += (tool.metal || 0) * it.qty;
+        pipes += (tool.pipes || 0) * it.qty;
+        techTrash += (tool.techTrash || 0) * it.qty;
       });
-    } else if (item.mode.startsWith('method:')) {
-      const idx = parseInt(item.mode.split(':')[1], 10) || 0;
-      const m = target.methods[idx] || target.methods[0];
-      const tool = DATA.raidTools[m.toolId] || { name: m.toolId };
-      chosenLabel = `${m.qty}x ${tool.name}`;
-      sulfur = m.sulfur || 0;
-      charcoal = m.charcoal || 0;
-      lgf = m.lgf || 0;
-      metal = m.metal || 0;
-      pipes = m.pipes || 0;
-      techTrash = m.techTrash || 0;
-      timeSec = m.timeSec || 15;
-      toolCounts[m.toolId] = m.qty;
-    } else if (item.mode === 'cheapest_single') {
-      const sorted = [...target.methods].sort((a, b) => (a.sulfur || 0) - (b.sulfur || 0));
-      const m = sorted[0];
-      const tool = DATA.raidTools[m.toolId] || { name: m.toolId };
-      chosenLabel = `${m.qty}x ${tool.name}`;
-      sulfur = m.sulfur || 0;
-      charcoal = m.charcoal || 0;
-      lgf = m.lgf || 0;
-      metal = m.metal || 0;
-      pipes = m.pipes || 0;
-      techTrash = m.techTrash || 0;
-      timeSec = m.timeSec || 15;
-      toolCounts[m.toolId] = m.qty;
-    } else if (item.mode === 'fastest') {
-      const sorted = [...target.methods].sort((a, b) => (a.timeSec || 999) - (b.timeSec || 999));
-      const m = sorted[0];
-      const tool = DATA.raidTools[m.toolId] || { name: m.toolId };
-      chosenLabel = `${m.qty}x ${tool.name}`;
-      sulfur = m.sulfur || 0;
-      charcoal = m.charcoal || 0;
-      lgf = m.lgf || 0;
-      metal = m.metal || 0;
-      pipes = m.pipes || 0;
-      techTrash = m.techTrash || 0;
-      timeSec = m.timeSec || 15;
-      toolCounts[m.toolId] = m.qty;
-    } else if (item.mode === 't1') {
+    };
+
+    if (mode.startsWith('combo:')) {
+      const idx = Number(mode.split(':')[1]);
+      const c = (target.combos || [])[idx] || validCombos[0];
+      if (c) applyCombo(c);
+    } else if (mode.startsWith('method:')) {
+      const idx = Number(mode.split(':')[1]);
+      const m = (target.methods || [])[idx] || validMethods[0];
+      if (m) applyMethod(m);
+    } else if (mode === 'explo_only') {
+      const explo = validMethods.find((m) => m.toolId === 'explo_ammo');
+      if (explo) applyMethod(explo);
+      else if (validMethods[0]) applyMethod(validMethods[0]);
+    } else if (mode === 'cheapest_single') {
+      if (validMethods[0]) applyMethod(validMethods[0]);
+    } else if (mode === 'fastest') {
+      const sortedFast = [...validMethods].sort((a, b) => (a.timeSec || 999) - (b.timeSec || 999));
+      if (sortedFast[0]) applyMethod(sortedFast[0]);
+    } else if (mode === 't1') {
+      const t1Combo = validCombos.find((c) =>
+        (c.items || []).every((it) => (WB_RANK[(DATA.raidTools[it.toolId] || {}).wb] || 3) <= 2)
+      );
       const t1Method =
-        target.methods.find((m) => ['molotov', 'satchel', 'beancan', 'salvaged_sword'].includes(m.toolId)) ||
-        target.methods[0];
-      const tool = DATA.raidTools[t1Method.toolId] || { name: t1Method.toolId };
-      chosenLabel = `${t1Method.qty}x ${tool.name}`;
-      sulfur = t1Method.sulfur || 0;
-      charcoal = t1Method.charcoal || 0;
-      lgf = t1Method.lgf || 0;
-      metal = t1Method.metal || 0;
-      timeSec = t1Method.timeSec || 30;
-      toolCounts[t1Method.toolId] = t1Method.qty;
+        validMethods.find((m) => ['molotov', 'satchel', 'beancan', 'flamethrower', 'hv_rocket'].includes(m.toolId)) ||
+        validMethods[0];
+      if (t1Combo && (!t1Method || t1Combo.sulfur <= t1Method.sulfur)) {
+        applyCombo(t1Combo);
+      } else if (t1Method) {
+        applyMethod(t1Method);
+      }
     } else {
-      // Default: 'combo' -> pick lowest sulfur combo (or first combo)
-      const c = target.combos[0];
-      chosenLabel = c.label;
-      sulfur = c.sulfur;
-      charcoal = c.charcoal || 0;
-      lgf = c.lgf || 0;
-      timeSec = c.timeSec || 15;
-      savedSulfur = c.savedSulfur || 0;
-      (c.items || []).forEach((it) => {
-        toolCounts[it.toolId] = (toolCounts[it.toolId] || 0) + it.qty;
-        const tool = DATA.raidTools[it.toolId];
-        if (tool) {
-          metal += (tool.metal || 0) * it.qty;
-          pipes += (tool.pipes || 0) * it.qty;
-          techTrash += (tool.techTrash || 0) * it.qty;
-        }
-      });
+      // 'combo' default: pick lowest sulfur between best combo and cheapest single boom/fire
+      const bestCombo = validCombos[0];
+      const bestMethod = validMethods[0];
+      if (bestCombo && (!bestMethod || bestCombo.sulfur <= bestMethod.sulfur + 25)) {
+        applyCombo(bestCombo);
+      } else if (bestMethod) {
+        applyMethod(bestMethod);
+      }
     }
+
+    const scaledToolCounts = {};
+    Object.entries(toolCounts).forEach(([id, count]) => {
+      scaledToolCounts[id] = count * qty;
+    });
 
     return {
       target,
-      qty: item.qty,
       chosenLabel,
-      totalSulfur: sulfur * item.qty,
-      totalCharcoal: charcoal * item.qty,
-      totalLgf: lgf * item.qty,
-      totalMetal: metal * item.qty,
-      totalPipes: pipes * item.qty,
-      totalTechTrash: techTrash * item.qty,
-      totalTimeSec: timeSec * item.qty,
-      totalSavedSulfur: savedSulfur * item.qty,
-      toolCounts
+      totalSulfur: sulfur * qty,
+      totalCharcoal: charcoal * qty,
+      totalLgf: lgf * qty,
+      totalMetal: metal * qty,
+      totalPipes: pipes * qty,
+      totalTechTrash: techTrash * qty,
+      totalTimeSec: timeSec * qty,
+      toolCounts: scaledToolCounts
     };
   }
 
@@ -563,11 +657,8 @@
     if (!queueContainer || !summaryContainer || !nodeContainer) return;
 
     if (!appState.raidQueue || appState.raidQueue.length === 0) {
-      queueContainer.innerHTML = `
-        <div style="padding:18px; text-align:center; color:var(--text-muted); background:var(--bg-card); border-radius:6px;">
-          No raid targets queued yet. Select any door/wall on the left or use the quick-add bar above.
-        </div>
-      `;
+      queueContainer.innerHTML =
+        '<div class="text-muted text-sm" style="padding:14px; text-align:center; border:1px dashed var(--border-subtle); border-radius:6px;">No targets queued. Click any structure on the left or use + Add above.</div>';
       summaryContainer.innerHTML = '';
       nodeContainer.innerHTML = '';
       return;
@@ -578,42 +669,51 @@
     let grandLgf = 0;
     let grandMetal = 0;
     let grandPipes = 0;
-    let grandTech = 0;
-    let grandSaved = 0;
-    let aggregatedTools = {};
+    let grandTechTrash = 0;
+    let grandTimeSec = 0;
+    const shoppingList = {};
 
     const rowsHtml = appState.raidQueue
       .map((item, idx) => {
         const res = resolveQueueItemLoadout(item);
         if (!res) return '';
+
         grandSulfur += res.totalSulfur;
         grandCharcoal += res.totalCharcoal;
         grandLgf += res.totalLgf;
         grandMetal += res.totalMetal;
         grandPipes += res.totalPipes;
-        grandTech += res.totalTechTrash;
-        grandSaved += res.totalSavedSulfur;
+        grandTechTrash += res.totalTechTrash;
+        grandTimeSec += res.totalTimeSec;
 
         Object.entries(res.toolCounts).forEach(([tId, count]) => {
-          aggregatedTools[tId] = (aggregatedTools[tId] || 0) + count * item.qty;
+          shoppingList[tId] = (shoppingList[tId] || 0) + count;
         });
 
         return `
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px; padding:10px 12px; margin-bottom:8px;">
-            <div>
-              <div style="font-family:var(--font-display); font-weight:700; color:#fff; font-size:14px;">
-                ${item.qty}x ${res.target.name}
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px;">
+            <div style="min-width:0; flex:1;">
+              <div style="font-weight:700; color:#fff; font-size:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span>${res.target.name}</span>
+                <span class="queue-qty-stepper">
+                  <button class="queue-qty-btn raid-qty-dec" data-idx="${idx}" title="Decrease quantity">-</button>
+                  <span class="queue-qty-num">${item.qty}x</span>
+                  <button class="queue-qty-btn raid-qty-inc" data-idx="${idx}" title="Increase quantity">+</button>
+                </span>
               </div>
-              <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-                Method: <span style="color:#fff;">${res.chosenLabel}</span> (per target)
+              <div class="text-xs text-muted" style="margin-top:3px;">
+                Loadout: <span style="color:var(--sulfur-yellow)">${res.chosenLabel}</span>
+                • ${formatRaidTime(res.totalTimeSec)}
               </div>
             </div>
-            <div style="display:flex; align-items:center; gap:10px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
               <div style="text-align:right; font-family:var(--font-mono);">
-                <div style="color:var(--sulfur-yellow); font-weight:700;">${res.totalSulfur.toLocaleString()} Sulfur</div>
-                ${res.totalSavedSulfur > 0 ? `<div style="font-size:10px; color:var(--card-green);">Saved ${res.totalSavedSulfur.toLocaleString()}</div>` : ''}
+                <div style="color:${res.totalSulfur === 0 ? '#4ade80' : 'var(--sulfur-yellow)'}; font-weight:700; font-size:13px;">
+                  ${res.totalSulfur === 0 ? `${res.totalLgf} LGF` : `${res.totalSulfur.toLocaleString()} S`}
+                </div>
+                <div class="text-xs text-muted">${res.totalCharcoal.toLocaleString()} Char</div>
               </div>
-              <button class="btn btn-sm remove-raid-item-btn" data-idx="${idx}">✕</button>
+              <button class="btn btn-sm btn-danger remove-raid-queue-btn" data-idx="${idx}" title="Remove">✕</button>
             </div>
           </div>
         `;
@@ -622,44 +722,40 @@
 
     queueContainer.innerHTML = rowsHtml;
 
-    queueContainer.querySelectorAll('.remove-raid-item-btn').forEach((btn) => {
+    queueContainer.querySelectorAll('.raid-qty-dec').forEach((btn) => {
+      btn.addEventListener('click', () => changeRaidQueueQty(Number(btn.getAttribute('data-idx')), -1));
+    });
+    queueContainer.querySelectorAll('.raid-qty-inc').forEach((btn) => {
+      btn.addEventListener('click', () => changeRaidQueueQty(Number(btn.getAttribute('data-idx')), 1));
+    });
+    queueContainer.querySelectorAll('.remove-raid-queue-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        const idx = Number(btn.getAttribute('data-idx'));
         appState.raidQueue.splice(idx, 1);
-        syncStateToServer();
         renderRaidPlanner();
+        saveState();
       });
     });
 
-    const loadoutBadges = Object.entries(aggregatedTools)
-      .map(([tId, count]) => {
-        const tool = DATA.raidTools[tId] || { shortName: tId, color: '#f97316' };
-        return `
-          <span style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:var(--bg-card); border:1px solid ${tool.color}; border-radius:5px; font-family:var(--font-mono); font-weight:700; color:#fff;">
-            ${count}x ${tool.shortName || tool.name}
-          </span>
-        `;
+    const shoppingPills = Object.entries(shoppingList)
+      .filter(([, count]) => count > 0)
+      .map(([toolId, count]) => {
+        const tool = DATA.raidTools[toolId] || { shortName: toolId, name: toolId, color: '#eab308' };
+        return `<span style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; background:var(--bg-card); border:1px solid ${tool.color || '#eab308'}; border-radius:5px; font-family:var(--font-mono); font-weight:700; color:#fff;">
+          ${count}x ${tool.shortName || tool.name}
+        </span>`;
       })
       .join('');
 
     summaryContainer.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <span style="font-family:var(--font-display); font-weight:700; text-transform:uppercase; color:#fff;">
-          📦 Total Ordnance to Craft / Bring
-        </span>
-        ${
-          grandSaved > 0
-            ? `<span class="keycard-tag keycard-Green">⚡ COMBO SAVED ${grandSaved.toLocaleString()} SULFUR!</span>`
-            : ''
-        }
-      </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
-        ${loadoutBadges}
+      <div style="margin-bottom:14px;">
+        <div class="text-xs text-muted" style="margin-bottom:6px; letter-spacing:0.05em;">EXPLOSIVES &amp; FIRE SHOPPING LIST (${formatRaidTime(grandTimeSec)} EST. BREACH)</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">${shoppingPills}</div>
       </div>
 
       <div class="resource-grid">
         <div class="resource-box highlight-sulfur">
-          <div class="resource-val" style="color:var(--sulfur-yellow);">${grandSulfur.toLocaleString()}</div>
+          <div class="resource-val text-sulfur">${grandSulfur.toLocaleString()}</div>
           <div class="resource-label">Total Sulfur</div>
         </div>
         <div class="resource-box">
@@ -667,142 +763,162 @@
           <div class="resource-label">Charcoal</div>
         </div>
         <div class="resource-box">
-          <div class="resource-val">${Math.ceil(grandSulfur * 0.5).toLocaleString()}</div>
-          <div class="resource-label">Gunpowder</div>
+          <div class="resource-val">${grandLgf.toLocaleString()}</div>
+          <div class="resource-label">Low Grade</div>
         </div>
         <div class="resource-box">
           <div class="resource-val">${grandMetal.toLocaleString()}</div>
           <div class="resource-label">Metal Frags</div>
         </div>
         <div class="resource-box">
-          <div class="resource-val" style="color:#4ade80;">${grandLgf.toLocaleString()}</div>
-          <div class="resource-label">Low Grade Fuel</div>
-        </div>
-        <div class="resource-box">
-          <div class="resource-val">${grandPipes} / ${grandTech}</div>
-          <div class="resource-label">Pipes / Tech Trash</div>
+          <div class="resource-val">${grandPipes} / ${grandTechTrash}</div>
+          <div class="resource-label">Pipes / Tech</div>
         </div>
       </div>
     `;
 
-    // Sulfur Node & Ore Tea breakdown
-    const nodesNoTea = Math.ceil(grandSulfur / 300);
-    const nodesBasic = Math.ceil(grandSulfur / 360);
-    const nodesAdv = Math.ceil(grandSulfur / 405);
-    const nodesPure = Math.ceil(grandSulfur / 450);
+    // Farming & Furnace Breakdown (1 Sulfur Node = 300 Sulfur Ore = 300 Smelted Sulfur; Pure Ore Tea +50% = 450)
+    const nodesNormal = Math.ceil(grandSulfur / 300);
+    const nodesPureTea = Math.ceil(grandSulfur / 450);
+    const gpNeeded = Math.floor(grandSulfur * 0.45);
+    const electricFurnaces = Math.max(1, Math.min(18, Math.ceil(grandSulfur / 2400)));
+    const cookMins = grandSulfur > 0 ? Math.max(1, Math.ceil((grandSulfur / (electricFurnaces * 120)))) : 0;
 
     nodeContainer.innerHTML = `
-      <div class="resource-grid" style="margin-top:0;">
-        <div class="resource-box">
-          <div class="resource-val">${nodesNoTea}</div>
-          <div class="resource-label">No Tea (300/node)</div>
+      <div style="margin-top:14px; padding:12px; background:rgba(234,179,8,0.06); border:1px solid rgba(234,179,8,0.25); border-radius:6px;">
+        <div class="text-xs" style="color:var(--sulfur-yellow); font-weight:700; margin-bottom:6px; letter-spacing:0.05em;">⛏️ FARMING &amp; SMELTING LOGISTICS</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:8px; font-family:var(--font-mono); font-size:12px;">
+          <div>No Tea (300/node): <strong style="color:#fff">${nodesNormal} Sulfur Nodes</strong></div>
+          <div>Pure Ore Tea (450/node): <strong class="text-green">${nodesPureTea} Sulfur Nodes</strong></div>
+          <div>Smelt (~${electricFurnaces} Elec. Furnaces): <strong>${grandSulfur > 0 ? `~${cookMins}m` : '0m'}</strong></div>
+          <div>Est. Gunpowder Batch: <strong>~${gpNeeded.toLocaleString()} GP</strong></div>
         </div>
-        <div class="resource-box">
-          <div class="resource-val" style="color:#60a5fa;">${nodesBasic}</div>
-          <div class="resource-label">Basic Tea (+20%)</div>
-        </div>
-        <div class="resource-box">
-          <div class="resource-val" style="color:#c084fc;">${nodesAdv}</div>
-          <div class="resource-label">Adv. Tea (+35%)</div>
-        </div>
-        <div class="resource-box highlight-sulfur">
-          <div class="resource-val" style="color:#4ade80;">${nodesPure}</div>
-          <div class="resource-label">Pure Ore Tea (+50%)</div>
-        </div>
-      </div>
-      <div style="margin-top:10px; font-size:12px; color:var(--text-secondary);">
-        💡 <strong>Farming Tip:</strong> Drinking a <strong>Pure Ore Tea</strong> (2 Yellow + 2 Blue Berries) saves you <strong>${Math.max(0, nodesNoTea - nodesPure)} Sulfur Nodes</strong> on this raid alone!
       </div>
     `;
   }
 
-  // Dynamic Remaining HP Calculator
   function solveCustomRemainingHp() {
-    const targetId = document.getElementById('customHpTargetSelect')?.value || 'garage_door';
-    const remainingHp = parseInt(document.getElementById('customHpInput')?.value, 10) || 100;
-    const out = document.getElementById('customHpResult');
-    if (!out) return;
+    const targetId = document.getElementById('customHpTargetSelect')?.value || 'sheet_metal_door';
+    const remainingHpRaw = Number(document.getElementById('customHpInput')?.value) || 0;
+    const resultEl = document.getElementById('customHpResult');
+    if (!resultEl) return;
 
-    const target = DATA.raidTargets.find((t) => t.id === targetId) || DATA.raidTargets[0];
-    const ratio = Math.min(1, Math.max(0.01, remainingHp / target.hp));
+    const target = DATA.raidTargets.find((t) => t.id === targetId);
+    if (!target) return;
 
-    // Estimate per-unit damage for this target based on its full-HP methods
-    const unitOptions = target.methods.map((m) => {
-      const tool = DATA.raidTools[m.toolId] || { name: m.toolId, sulfur: 0 };
-      const dmgPerUnit = target.hp / m.qty;
-      const unitsNeeded = Math.ceil(remainingHp / dmgPerUnit);
-      const totalSulfur = unitsNeeded * (tool.sulfur || 0);
-      return {
-        toolId: m.toolId,
-        toolName: tool.name,
-        dmgPerUnit,
-        unitsNeeded,
-        totalSulfur
-      };
-    });
+    const remainingHp = Math.min(target.hp, Math.max(1, remainingHpRaw));
+    const ratio = remainingHp / target.hp;
+    const validMethods = getFilteredMethods(target, 'All');
 
-    // Also compute best 2-tool combination (e.g. Rockets/C4/Satchels + Explo Ammo/Beancans)
+    // Pure single boom/fire tool finishes (NO melee tools!)
+    const unitOptions = validMethods
+      .map((m) => {
+        const tool = DATA.raidTools[m.toolId] || { name: m.toolId, sulfur: 0, lgf: 0, wb: '-' };
+        const dmgPerUnit = target.hp / m.qty;
+        const unitsNeeded = Math.max(1, Math.ceil(remainingHp / dmgPerUnit));
+        const totalSulfur = unitsNeeded * (tool.sulfur || 0);
+        const totalLgf = unitsNeeded * (m.toolId === 'flamethrower' ? 1 : m.toolId === 'molotov' ? 50 : (tool.lgf || 0));
+        const totalTime = Math.max(2, Math.round(unitsNeeded * ((m.timeSec || 20) / m.qty)));
+        return {
+          toolId: m.toolId,
+          toolName: tool.shortName || tool.name,
+          wb: tool.wb,
+          unitsNeeded,
+          totalSulfur,
+          totalLgf,
+          totalTime
+        };
+      })
+      .sort((a, b) => a.totalSulfur - b.totalSulfur || a.totalLgf - b.totalLgf || a.totalTime - b.totalTime);
+
+    // Compute best mixed explosive sulfur-saver: 1..N heavy boom + fast finish boom/fire
     let bestMix = null;
-    const heavyTools = unitOptions.filter((u) => ['c4', 'rocket', 'satchel'].includes(u.toolId));
-    const finishTools = unitOptions.filter((u) => ['explo_ammo', 'beancan', 'molotov'].includes(u.toolId));
+    const heavyTools = ['c4', 'rocket', 'satchel'];
+    const finishTools = ['explo_ammo', 'beancan', 'molotov'];
 
-    heavyTools.forEach((h) => {
-      for (let hCount = 0; hCount <= h.unitsNeeded; hCount++) {
-        const hpLeft = Math.max(0, remainingHp - hCount * h.dmgPerUnit);
-        if (hpLeft === 0) {
-          const s = hCount * (DATA.raidTools[h.toolId]?.sulfur || 0);
-          if (!bestMix || s < bestMix.sulfur) {
-            bestMix = { label: `${hCount}x ${h.toolName}`, sulfur: s };
+    heavyTools.forEach((hId) => {
+      const hMethod = validMethods.find((m) => m.toolId === hId);
+      if (!hMethod) return;
+      const hDmg = target.hp / hMethod.qty;
+      const hTool = DATA.raidTools[hId];
+      const maxHeavy = Math.floor(remainingHp / hDmg);
+
+      for (let hCount = 1; hCount <= maxHeavy; hCount++) {
+        const hpLeft = remainingHp - hCount * hDmg;
+        if (hpLeft <= 0.1) continue;
+        finishTools.forEach((fId) => {
+          const fMethod = validMethods.find((m) => m.toolId === fId);
+          if (!fMethod) return;
+          const fDmg = target.hp / fMethod.qty;
+          const fTool = DATA.raidTools[fId];
+          const fCount = Math.ceil(hpLeft / fDmg);
+          const mixSulfur = hCount * (hTool.sulfur || 0) + fCount * (fTool.sulfur || 0);
+          const mixTime = Math.round(
+            hCount * ((hMethod.timeSec || 15) / hMethod.qty) + fCount * ((fMethod.timeSec || 15) / fMethod.qty)
+          );
+          if (!bestMix || mixSulfur < bestMix.sulfur || (mixSulfur === bestMix.sulfur && mixTime < bestMix.time)) {
+            bestMix = {
+              label: `${hCount}x ${hTool.shortName || hTool.name} + ${fCount}x ${fTool.shortName || fTool.name}`,
+              sulfur: mixSulfur,
+              time: mixTime
+            };
           }
-        } else {
-          finishTools.forEach((f) => {
-            const fCount = Math.ceil(hpLeft / f.dmgPerUnit);
-            const s =
-              hCount * (DATA.raidTools[h.toolId]?.sulfur || 0) +
-              fCount * (DATA.raidTools[f.toolId]?.sulfur || 0);
-            const lbl = hCount > 0 ? `${hCount}x ${h.toolName} + ${fCount}x ${f.toolName}` : `${fCount}x ${f.toolName}`;
-            if (!bestMix || s < bestMix.sulfur) {
-              bestMix = { label: lbl, sulfur: s };
-            }
-          });
-        }
+        });
       }
     });
 
-    unitOptions.sort((a, b) => a.totalSulfur - b.totalSulfur);
+    const bestPure = unitOptions[0];
+    const showMixHighlight = bestMix && (!bestPure || bestMix.sulfur < bestPure.totalSulfur);
 
-    out.innerHTML = `
-      <div style="background:var(--bg-card); border:1px solid var(--sulfur-yellow); border-radius:6px; padding:12px;">
-        <div style="font-family:var(--font-display); font-weight:700; color:var(--sulfur-yellow); margin-bottom:6px;">
+    const rowsHtml = unitOptions
+      .map(
+        (opt, i) => `
+      <tr class="${i === 0 && !showMixHighlight ? 'method-best-row' : ''}">
+        <td style="font-weight:700; color:#fff;">${opt.unitsNeeded}x ${opt.toolName}</td>
+        <td style="color:${opt.totalSulfur === 0 ? '#4ade80' : 'var(--sulfur-yellow)'}; font-weight:700;">
+          ${opt.totalSulfur === 0 ? `0 Sulfur (${opt.totalLgf} LGF)` : `${opt.totalSulfur.toLocaleString()} Sulfur`}
+        </td>
+        <td>${formatRaidTime(opt.totalTime)}</td>
+        <td><span class="target-tier-tag">${opt.wb}</span></td>
+      </tr>
+    `
+      )
+      .join('');
+
+    resultEl.innerHTML = `
+      <div style="padding:12px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); border-radius:6px;">
+        <div style="font-family:var(--font-display); font-weight:700; color:#4ade80; margin-bottom:8px;">
           ⚡ Optimal Finish for ${target.name} @ ${remainingHp} / ${target.hp} HP (${Math.round(ratio * 100)}% HP):
         </div>
         ${
-          bestMix
-            ? `<div style="font-family:var(--font-mono); font-size:14px; color:#fff; margin-bottom:8px;">
-                Best Combo: <strong>${bestMix.label}</strong> → <span style="color:var(--sulfur-yellow);">${bestMix.sulfur.toLocaleString()} Sulfur</span>
-              </div>`
+          showMixHighlight
+            ? `<div style="margin-bottom:10px; padding:8px 10px; background:rgba(234,179,8,0.14); border:1px solid var(--sulfur-yellow); border-radius:4px; font-family:var(--font-mono); font-size:12px;">
+                 🔥 <strong>BEST MIXED SULFUR-SAVER:</strong> ${bestMix.label} →
+                 <strong style="color:var(--sulfur-yellow)">${bestMix.sulfur.toLocaleString()} Sulfur</strong> (${formatRaidTime(bestMix.time)})
+               </div>`
             : ''
         }
-        <div style="display:flex; gap:8px; flex-wrap:wrap; font-family:var(--font-mono); font-size:12px; color:var(--text-secondary);">
-          ${unitOptions
-            .map((u) => `<span>• ${u.unitsNeeded}x ${u.toolName} (${u.totalSulfur.toLocaleString()} Sulfur)</span>`)
-            .join('')}
-        </div>
+        <table class="data-table">
+          <thead><tr><th>Single Tool Finish</th><th>Sulfur</th><th>Time</th><th>WB</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
       </div>
     `;
   }
 
   function initRaidModule() {
-    // Populate dropdowns
-    const quickSel = document.getElementById('quickAddTargetSelect');
-    const customHpSel = document.getElementById('customHpTargetSelect');
-    const optionsHtml = DATA.raidTargets
-      .map((t) => `<option value="${t.id}">${t.name} (${t.hp} HP)</option>`)
-      .join('');
-    if (quickSel) quickSel.innerHTML = optionsHtml;
-    if (customHpSel) {
-      customHpSel.innerHTML = optionsHtml;
-      customHpSel.value = 'garage_door';
+    const quickTargetSelect = document.getElementById('quickAddTargetSelect');
+    const customTargetSelect = document.getElementById('customHpTargetSelect');
+
+    if (quickTargetSelect) {
+      quickTargetSelect.innerHTML = DATA.raidTargets
+        .map((t) => `<option value="${t.id}">${t.name} (${t.hp} HP)</option>`)
+        .join('');
+    }
+    if (customTargetSelect) {
+      customTargetSelect.innerHTML = DATA.raidTargets
+        .map((t) => `<option value="${t.id}" ${t.id === 'sheet_metal_door' ? 'selected' : ''}>${t.name} (${t.hp} HP)</option>`)
+        .join('');
     }
 
     document.querySelectorAll('#raidCategoryPills .filter-pill').forEach((pill) => {
@@ -814,36 +930,89 @@
       });
     });
 
+    document.querySelectorAll('#raidWbPills .filter-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll('#raidWbPills .filter-pill').forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        selectedRaidWb = pill.getAttribute('data-wb') || 'All';
+        renderRaidTargets();
+      });
+    });
+
+    document.getElementById('raidTargetSearch')?.addEventListener('input', (e) => {
+      raidTargetSearch = e.target.value || '';
+      renderRaidTargets();
+    });
+
     document.getElementById('quickAddRaidBtn')?.addEventListener('click', () => {
-      const tId = quickSel.value;
-      const qty = Math.max(1, parseInt(document.getElementById('quickAddQtyInput').value, 10) || 1);
-      const mode = document.getElementById('quickAddModeSelect').value;
-      addRaidQueueItem(tId, qty, mode);
+      const tId = document.getElementById('quickAddTargetSelect')?.value;
+      const qty = Number(document.getElementById('quickAddQtyInput')?.value) || 1;
+      const mode = document.getElementById('quickAddModeSelect')?.value || 'combo';
+      if (tId) addRaidQueueItem(tId, qty, mode);
     });
 
     document.getElementById('clearRaidQueueBtn')?.addEventListener('click', () => {
       appState.raidQueue = [];
-      syncStateToServer();
       renderRaidPlanner();
+      saveState();
     });
 
-    document.getElementById('discordRaidPlanBtn')?.addEventListener('click', async () => {
+    document.getElementById('discordRaidPlanBtn')?.addEventListener('click', () => {
       if (!appState.raidQueue || appState.raidQueue.length === 0) return;
-      let totalSulfur = 0;
-      const lines = appState.raidQueue.map((item) => {
-        const res = resolveQueueItemLoadout(item);
-        totalSulfur += res.totalSulfur;
-        return `• **${item.qty}x ${res.target.name}** → ${res.chosenLabel} (**${res.totalSulfur.toLocaleString()} Sulfur**)`;
-      });
-      lines.push(`\n🟡 **Total Sulfur Required:** ${totalSulfur.toLocaleString()} (${Math.ceil(totalSulfur / 450)} nodes w/ Pure Ore Tea)`);
-      const ok = await sendDiscordAlert('💣 Squad Raid Plan & Sulfur Shopping List', lines.join('\n'), 0xeab308);
-      if (ok) alert('Raid plan posted to Discord!');
+      let totalS = 0;
+      let totalChar = 0;
+      let totalLgf = 0;
+      const totalsMap = {};
+      const lines = appState.raidQueue
+        .map((item) => {
+          const res = resolveQueueItemLoadout(item);
+          if (!res) return '';
+          totalS += res.totalSulfur;
+          totalChar += res.totalCharcoal;
+          totalLgf += res.totalLgf;
+          Object.entries(res.toolCounts).forEach(([tId, c]) => {
+            totalsMap[tId] = (totalsMap[tId] || 0) + c;
+          });
+          return `• **${item.qty}x ${res.target.name}** → ${res.chosenLabel} (${res.totalSulfur === 0 ? `${res.totalLgf} LGF` : `**${res.totalSulfur.toLocaleString()} Sulfur**`})`;
+        })
+        .filter(Boolean);
+
+      const carryList = Object.entries(totalsMap)
+        .filter(([, c]) => c > 0)
+        .map(([tId, c]) => `${c}x ${(DATA.raidTools[tId] || {}).shortName || tId}`)
+        .join(' + ');
+
+      const discordMsg =
+        `💣 **RAID PLAN — ${appState.squadName}**\n` +
+        `${lines.join('\n')}\n` +
+        `🎒 **Carry:** ${carryList}\n` +
+        `💛 **Total:** **${totalS.toLocaleString()} Sulfur** (${Math.ceil(totalS / 300)} Nodes | ${Math.ceil(totalS / 450)} w/ Pure Ore Tea) • ${totalChar.toLocaleString()} Charcoal${totalLgf ? ` • ${totalLgf} LGF` : ''}`;
+
+      navigator.clipboard?.writeText(discordMsg).catch(() => {});
+      const btn = document.getElementById('discordRaidPlanBtn');
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied Discord Plan!';
+        setTimeout(() => {
+          btn.textContent = orig;
+        }, 1800);
+      }
     });
 
     document.getElementById('solveCustomHpBtn')?.addEventListener('click', solveCustomRemainingHp);
+    document.getElementById('customHpTargetSelect')?.addEventListener('change', (e) => {
+      const target = DATA.raidTargets.find((t) => t.id === e.target.value);
+      const hpInput = document.getElementById('customHpInput');
+      if (target && hpInput) {
+        hpInput.max = target.hp;
+        if (Number(hpInput.value) > target.hp) {
+          hpInput.value = Math.max(1, Math.round(target.hp * 0.4));
+        }
+      }
+      solveCustomRemainingHp();
+    });
     solveCustomRemainingHp();
   }
-
   // =========================================================================
   // MODULE 2: MONUMENT GUIDE (KEYCARDS, FUSES, CRATES & RESPAWN TIMERS)
   // =========================================================================

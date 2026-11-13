@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261113c" />
+  <link rel="stylesheet" href="css/styles.css?v=20261113d" />
 </head>
 <body>
 
@@ -85,99 +85,98 @@
       <div class="grid-2">
         <!-- Left Column: Target Selector + Combo & Method Inspector -->
         <div style="display: flex; flex-direction: column; gap: 20px;">
-          <div class="panel">
-            <div class="panel-header">
+          <div class="card">
+            <div class="card-header">
               <div>
-                <div class="panel-title">🎯 1. Select Raidable Structure / Target</div>
-                <div class="panel-subtitle">Click any door, wall, window, turret, or deployable to see exact Sulfur-saving combinations</div>
+                <h2 class="card-title">💣 Raid Targets &amp; Sulfur-Saving Combos</h2>
+                <div class="card-subtitle">Real boom &amp; fire methods only — zero slow melee illusions. Click any target to compare exact Sulfur-saving combos.</div>
               </div>
-              <div id="raidCategoryPills" class="filter-pills">
+            </div>
+
+            <div class="raid-toolbar">
+              <div class="filter-pills" id="raidCategoryPills">
                 <button class="filter-pill active" data-cat="All">All</button>
                 <button class="filter-pill" data-cat="Doors">Doors</button>
-                <button class="filter-pill" data-cat="Walls & Floors">Walls & Floors</button>
+                <button class="filter-pill" data-cat="Walls & Floors">Walls &amp; Floors</button>
                 <button class="filter-pill" data-cat="Windows & Grills">Windows</button>
-                <button class="filter-pill" data-cat="Traps & Turrets">Turrets & Traps</button>
-                <button class="filter-pill" data-cat="Deployables & External">TC & External</button>
+                <button class="filter-pill" data-cat="Traps & Turrets">Turrets &amp; Traps</button>
+                <button class="filter-pill" data-cat="Deployables & External">TC &amp; External</button>
+              </div>
+            </div>
+
+            <div class="raid-toolbar">
+              <input type="search" id="raidTargetSearch" class="input raid-search-input" placeholder="Search door, wall, turret, sam..." />
+              <div class="filter-pills" id="raidWbPills">
+                <button class="filter-pill wb-pill active" data-wb="All">All Workbenches</button>
+                <button class="filter-pill wb-pill" data-wb="T1">Max T1</button>
+                <button class="filter-pill wb-pill" data-wb="T2">Max T2</button>
+                <button class="filter-pill wb-pill" data-wb="T3">T3 Meta</button>
               </div>
             </div>
 
             <div id="raidTargetGrid" class="target-grid"></div>
-
-            <!-- Selected Target Detail Inspector -->
-            <div id="selectedTargetInspector" style="border-top: 1px solid var(--border-subtle); padding-top: 16px;"></div>
+            <div id="selectedTargetInspector"></div>
           </div>
 
-          <!-- Dynamic Damaged Target / Remainder HP Calculator -->
-          <div class="panel">
-            <div class="panel-header">
+          <!-- Custom Partial-HP Solver -->
+          <div class="card">
+            <div class="card-header">
               <div>
-                <div class="panel-title">🧮 Custom Damaged Target / Remaining HP Solver</div>
-                <div class="panel-subtitle">Already splashed a wall or door? Enter its remaining HP to find the exact cheapest finish combo</div>
+                <h3 class="card-title">🎯 Damaged Target / Remaining HP Solver</h3>
+                <div class="card-subtitle">Decaying or already hit by splash? Enter remaining HP for clean explosive &amp; fire finishes.</div>
               </div>
             </div>
-            <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
-              <div>
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">TARGET TYPE</label>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: end;">
+              <div style="flex: 2; min-width: 180px;">
+                <label class="text-xs text-muted" style="display:block; margin-bottom:4px;">STRUCTURE TYPE</label>
                 <select id="customHpTargetSelect" class="select"></select>
               </div>
-              <div>
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">REMAINING HP</label>
-                <input id="customHpInput" type="number" class="input" value="180" min="1" max="2500" style="width: 120px;" />
+              <div style="flex: 1; min-width: 120px;">
+                <label class="text-xs text-muted" style="display:block; margin-bottom:4px;">REMAINING HP</label>
+                <input type="number" id="customHpInput" class="input" min="1" max="2000" value="160" />
               </div>
-              <button id="solveCustomHpBtn" class="btn btn-primary">Calculate Cheapest Finish</button>
+              <button id="solveCustomHpBtn" class="btn btn-primary">Solve Finish</button>
             </div>
             <div id="customHpResult" style="margin-top: 14px;"></div>
           </div>
         </div>
 
-        <!-- Right Column: Multi-Target Squad Raid Planner & Sulfur Node Calculator -->
+        <!-- Right Column: Multi-Target Squad Raid Planner & Node Breakdown -->
         <div style="display: flex; flex-direction: column; gap: 20px;">
-          <div class="panel">
-            <div class="panel-header">
+          <div class="card">
+            <div class="card-header">
               <div>
-                <div class="panel-title">💣 Squad Multi-Target Raid Planner</div>
-                <div class="panel-subtitle">Synced live with your squad — build your full breach path & compare Combo vs Pure Sulfur</div>
+                <h2 class="card-title">📋 Squad Multi-Target Raid Planner</h2>
+                <div class="card-subtitle">Build your raid shopping list — live totals auto-sync with your squad room.</div>
               </div>
-              <div style="display:flex; gap:6px;">
-                <button id="discordRaidPlanBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Send to Discord</button>
-                <button id="clearRaidQueueBtn" class="btn btn-sm">Clear Plan</button>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button id="discordRaidPlanBtn" class="btn btn-sm">📋 Copy Discord Plan</button>
+                <button id="clearRaidQueueBtn" class="btn btn-sm btn-danger">Clear</button>
               </div>
             </div>
 
             <!-- Quick Add Bar -->
-            <div style="display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
-              <select id="quickAddTargetSelect" class="select" style="flex: 1; min-width: 170px;"></select>
-              <input id="quickAddQtyInput" type="number" class="input" value="1" min="1" max="50" style="width: 70px;" />
-              <select id="quickAddModeSelect" class="select">
-                <option value="combo">⚡ Best Sulfur-Saving Combo</option>
-                <option value="cheapest_single">💰 Cheapest Single Method</option>
-                <option value="fastest">🚀 Fastest Breach (C4/Rocket)</option>
-                <option value="t1">🧨 Tier 1 Only (Satchel/Beancan/Fire)</option>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle);">
+              <select id="quickAddTargetSelect" class="select" style="flex: 2; min-width: 160px;"></select>
+              <input type="number" id="quickAddQtyInput" class="input" min="1" max="50" value="1" style="width: 70px;" />
+              <select id="quickAddModeSelect" class="select" style="flex: 2; min-width: 170px;">
+                <option value="combo">Best Sulfur-Saver Combo</option>
+                <option value="explo_only">Explosive 5.56 Only (Silent)</option>
+                <option value="cheapest_single">Cheapest Single Boom / Fire</option>
+                <option value="fastest">Fastest Time (C4 / Rocket)</option>
+                <option value="t1">Tier 1 / Early Budget</option>
               </select>
-              <button id="quickAddRaidBtn" class="btn btn-primary">+ Add</button>
+              <button id="quickAddRaidBtn" class="btn btn-sulfur">+ Add</button>
             </div>
 
-            <!-- Queue List -->
-            <div id="raidQueueContainer"></div>
+            <div id="raidQueueContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;"></div>
 
-            <!-- Total Resources & Crafting Summary -->
-            <div id="raidTotalSummary" style="margin-top: 18px; border-top: 1px solid var(--border-subtle); padding-top: 16px;"></div>
-          </div>
-
-          <!-- Sulfur Node & Ore Tea Farming Calculator -->
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">⛏️ Sulfur Nodes & Ore Tea Yield Calculator</div>
-                <div class="panel-subtitle">How many Sulfur nodes your squad needs to hit for this raid</div>
-              </div>
-            </div>
+            <div id="raidTotalSummary"></div>
             <div id="sulfurNodeBreakdown"></div>
           </div>
         </div>
       </div>
     </section>
-
     <!-- ==================================================================
          TAB 2: MONUMENT GUIDE (KEYCARDS, FUSES, CRATES & RESPAWN TIMERS)
          ================================================================== -->
@@ -777,7 +776,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261113c"></script>
-  <script src="js/app.js?v=20261113c"></script>
+  <script src="js/data.js?v=20261113d"></script>
+  <script src="js/app.js?v=20261113d"></script>
 </body>
 </html>
