@@ -54,7 +54,7 @@
   <nav class="nav-bar">
     <div class="nav-inner">
       <button class="nav-tab active" data-tab="tab-basefinder">
-        📍 Base &amp; Trade Hub <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">MAP + RUST+</span>
+        📍 Tactical Map Hub <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">MAP + RUST+</span>
       </button>
       <button class="nav-tab" data-tab="tab-map">
         🏛️ Monuments <span class="nav-badge">KEYCARDS</span>
@@ -940,13 +940,12 @@
           </details>
         </div>
 
-        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips | Trades | Rust+) -->
+        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips | Rust+) -->
         <div class="panel">
           <div class="bf-subtabs">
             <button class="bf-subtab-btn active" data-bf-sub="spots">🏆 Build Spots</button>
             <button class="bf-subtab-btn" data-bf-sub="farming">⛏️ Farming <span id="bfFarmCountBadge" style="opacity:0.75;"></span></button>
             <button class="bf-subtab-btn" data-bf-sub="route">⚡ Route &amp; Tips</button>
-            <button class="bf-subtab-btn" data-bf-sub="trades">🛒 Trades <span id="shopCountBadge" style="opacity:0.75;"></span></button>
             <button class="bf-subtab-btn" data-bf-sub="rustplus">📡 Rust+</button>
           </div>
 
@@ -993,98 +992,6 @@
             </div>
           </div>
 
-          <div id="bfSubTrades" class="bf-subpanel">
-            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">
-              <input id="shopSearchInput" type="text" class="input" style="flex:2; min-width:160px; font-size:12px;" placeholder="🔍 Search item, cost, shop, grid..." />
-              <select id="shopCurrencySelect" class="select" style="min-width:115px; font-size:11.5px;">
-                <option value="all">💰 All Currencies</option>
-                <option value="Sulfur">🟡 Sulfur</option>
-                <option value="Scrap">⚙️ Scrap</option>
-                <option value="other">🪨 Other</option>
-              </select>
-              <select id="shopSortSelect" class="select" style="min-width:130px; font-size:11.5px;">
-                <option value="best">🏆 Best First</option>
-                <option value="cost_asc">📉 Lowest Cost</option>
-                <option value="cost_desc">📈 Highest Cost</option>
-                <option value="name_asc">🔤 Name A–Z</option>
-              </select>
-              <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer; padding:4px 7px; border-radius:4px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
-                <input id="shopInStockOnlyCb" type="checkbox" />
-                <span>📦 In Stock</span>
-              </label>
-              <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕</button>
-            </div>
-
-            <div id="shopFilterBar" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px;">
-              <button type="button" class="filter-pill active" data-sfilter="all">All</button>
-              <button type="button" class="filter-pill" data-sfilter="best">🏆 Best to Buy</button>
-              <button type="button" class="filter-pill" data-sfilter="player">👤 Player</button>
-              <button type="button" class="filter-pill" data-sfilter="custom">📌 Server</button>
-              <button type="button" class="filter-pill" data-sfilter="npc">🏛️ NPC</button>
-              <button type="button" class="filter-pill" data-sfilter="Outpost">🛡️ Outpost</button>
-              <button type="button" class="filter-pill" data-sfilter="Bandit Camp">🏴‍☠️ Bandit</button>
-              <button type="button" class="filter-pill" data-sfilter="Fishing Village">⚓ Fishing</button>
-              <button type="button" class="filter-pill" data-sfilter="Ranch / Barn">🐎 Ranch</button>
-              <button type="button" class="filter-pill" data-sfilter="Water Well">🚰 Well</button>
-            </div>
-
-            <div id="shopCategoryBar" style="display:flex; gap:5px; flex-wrap:wrap; padding-top:6px; margin-bottom:6px; border-top:1px solid var(--border-subtle);">
-              <button type="button" class="filter-pill active" data-scat="all">All</button>
-              <button type="button" class="filter-pill" data-scat="teas">🧪 Teas</button>
-              <button type="button" class="filter-pill" data-scat="progression">⚙️ WB/BPs</button>
-              <button type="button" class="filter-pill" data-scat="weapons">🔫 Guns</button>
-              <button type="button" class="filter-pill" data-scat="raid">💥 Raid</button>
-              <button type="button" class="filter-pill" data-scat="defense">🛡️ Defense</button>
-              <button type="button" class="filter-pill" data-scat="resources">⛏️ Fuel/Res</button>
-              <button type="button" class="filter-pill" data-scat="recycle">♻️ Recycle</button>
-              <button type="button" class="filter-pill" data-scat="tools">🛠️ Tools</button>
-              <button type="button" class="filter-pill" data-scat="vehicles">🚁 Vehicles</button>
-            </div>
-
-            <div id="shopWatchlistBar" style="display:flex; gap:5px; flex-wrap:wrap; align-items:center; padding:6px 0; margin-bottom:8px; border-top:1px dashed rgba(148,163,184,0.22); border-bottom:1px dashed rgba(148,163,184,0.22);">
-              <span style="font-size:10.5px; font-family:var(--font-mono); color:#86efac; font-weight:700;">🎯 WATCH:</span>
-              <input id="shopWatchQueryInput" type="text" class="input" style="width:140px; font-size:11px; padding:3px 7px;" placeholder="Item (Tea, Diesel...)" />
-              <input id="shopWatchMaxPriceInput" type="number" class="input" style="width:82px; font-size:11px; padding:3px 7px;" min="1" placeholder="Max cost" />
-              <button id="shopWatchAddBtn" type="button" class="btn btn-sm" style="border-color:#4ade80; color:#bbf7d0; padding:3px 8px;">🔔 Watch</button>
-              <div id="shopWatchlistPills" style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;"></div>
-            </div>
-
-            <div id="shopSelectedPinFilterBanner" style="display:none; margin-bottom:8px;"></div>
-            <div id="shopTradesList" class="monument-list" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:7px; margin-bottom:12px;"></div>
-
-            <div id="shopTradeCalcPanel" style="padding:10px 12px; border-radius:8px; background:rgba(15,23,42,0.65); border:1px solid var(--border-subtle);">
-              <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:#fff; margin-bottom:8px;">🧮 Deal Evaluator, Batch Calc &amp; Map Pin</div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:8px;">
-                <div style="flex:1; min-width:95px;">
-                  <label style="display:block; font-size:10px; color:var(--text-secondary); margin-bottom:3px;">BATCH (×)</label>
-                  <input id="shopBatchCountInput" type="number" class="input" value="1" min="1" max="500" style="width:100%; font-size:12px;" />
-                </div>
-                <div style="flex:1.4; min-width:120px;">
-                  <label id="shopBudgetLabel" style="display:block; font-size:10px; color:var(--text-secondary); margin-bottom:3px;">OR BUDGET</label>
-                  <input id="shopBudgetInput" type="number" class="input" value="" min="0" placeholder="e.g. 1000 Scrap / Sulfur" style="width:100%; font-size:12px;" />
-                </div>
-              </div>
-              <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer; margin-bottom:8px;">
-                <input id="shopDroneFeeCb" type="checkbox" />
-                <span>🚁 Drone Delivery (+20 Scrap per order, drone-eligible only)</span>
-              </label>
-
-              <div id="shopPriceCheckWrap" style="margin-bottom:8px; padding:8px; border-radius:6px; background:rgba(9,14,22,0.55); border:1px solid var(--border-subtle);">
-                <label style="display:block; font-size:10.5px; font-family:var(--font-mono); color:#fde047; margin-bottom:5px;">
-                  ⚖️ GRADE SHOP PRICE &amp; PIN ON MAP:
-                </label>
-                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                  <input id="shopAskingPriceInput" type="number" class="input" min="1" placeholder="Seller price (e.g. 250)" style="flex:2; min-width:120px; font-size:11.5px;" />
-                  <input id="shopAskingGridInput" type="text" class="input" placeholder="Grid (M14)" style="width:78px; font-size:11.5px;" />
-                  <button id="pinDealShopBtn" type="button" class="btn btn-sm" style="border-color:#a855f7; color:#e9d5ff;">📌 Pin Deal</button>
-                </div>
-                <div id="shopDealVerdictBox" style="margin-top:6px;"></div>
-              </div>
-
-              <div id="shopTradeCalcResult"></div>
-            </div>
-          </div>
-
           <div id="bfSubRustPlus" class="bf-subpanel">
             <div style="display:flex; flex-direction:column; gap:10px;">
               <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
@@ -1093,7 +1000,7 @@
                 </select>
                 <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔄 Sync Now</button>
                 <button id="rpSyncCloudBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;">📡 Pairings</button>
-                <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm" title="Clear live Rust+ feed">🗑️</button>
+                <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm" title="Clear live Rust+ telemetry">🗑️</button>
               </div>
 
               <div style="display:flex; flex-direction:column; gap:4px;">
@@ -1102,12 +1009,12 @@
                   <span>🔄 Auto-poll Rust+ every 15s (Squad GPS, Chat, Clock &amp; Alarms)</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
-                  <input id="rpShopDiscordStealCb" type="checkbox" checked />
-                  <span>📣 Alert Discord Bot / Webhook on S-Tier Shop Steals &amp; Watchlist</span>
+                  <input id="rpChatBotCb" type="checkbox" checked />
+                  <span>🤖 In-Game Team Chat Bot (auto-reply to <code>!time</code>, <code>!pop</code>, <code>!upkeep</code>, <code>!timers</code>)</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
                   <input id="rpShopDiscordEventsCb" type="checkbox" checked />
-                  <span>🚨 Alert Discord on Base Smart Alarms &amp; World Events</span>
+                  <span>🚨 Alert Discord on Base Smart Alarms, Low Upkeep &amp; Events</span>
                 </label>
               </div>
 
@@ -1119,9 +1026,12 @@
 
               <details id="rpTeamChatDrawer" open style="padding:8px 10px; border-radius:6px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
                 <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#bae6fd; display:flex; justify-content:space-between; align-items:center;">
-                  <span>💬 In-Game Team Chat &amp; Quick Callouts</span>
+                  <span>💬 In-Game Team Chat &amp; Bot Commands</span>
                   <span id="rpTeamChatCountBadge" style="font-size:10px; font-family:var(--font-mono); color:#7dd3fc;"></span>
                 </summary>
+                <div style="font-size:10px; font-family:var(--font-mono); color:#c4b5fd; margin-top:4px;">
+                  Bot cmds in-game: <code>!time</code> • <code>!pop</code> • <code>!upkeep</code> • <code>!timers</code> • <code>!help</code>
+                </div>
                 <div id="rpTeamChatList" style="max-height:135px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;">
                   <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Countering — backup needed!">⚔️ Counter</button>

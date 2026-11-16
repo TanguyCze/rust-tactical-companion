@@ -68,7 +68,7 @@
     lastHistoryNotificationId: 0,
     useProxy: false,
     autoPoll: false,
-    discordAlertSteals: true,
+    chatBotEnabled: true,
     discordAlertEvents: true,
     lastPolledAt: 0,
     lastStatus: '',
@@ -80,7 +80,6 @@
     time: null,
     mapMeta: null,
     liveEvents: [],
-    vendingPins: [],
     teamMembers: [],
     recentDeaths: [],
     mapNotes: [],
@@ -116,8 +115,6 @@
     raidStash: { ...DEFAULT_RAID_STASH },
     discordWebhookUrl: '',
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
-    customShops: [],
-    shopWatchlist: [],
     squadPins: [],
     rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
     rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY },
@@ -144,13 +141,6 @@
   let selectedMonumentFilter = 'all';
   let selectedMonumentId = 'launch_site';
   let selectedCloneCropFilter = 'Hemp';
-  let selectedShopFilter = 'all';
-  let selectedShopCategory = 'all';
-  let selectedShopCurrency = 'all';
-  let selectedShopSort = 'best';
-  let shopInStockOnly = false;
-  let shopSearchQuery = '';
-  let selectedShopTradeId = 'player_pure_ore_tea';
 
   // Load local fallback first
   try {
@@ -162,8 +152,7 @@
         ...parsedSaved,
         raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
         discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
-        rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(parsedSaved.rustPlusShopConfig || {}) },
-        customShops: Array.isArray(parsedSaved.customShops) ? parsedSaved.customShops : appState.customShops
+        rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(parsedSaved.rustPlusShopConfig || {}) }
       };
     }
   } catch (_) {}
@@ -235,8 +224,6 @@
               discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
               rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(appState.rustPlusShopConfig || {}), ...(msg.state.rustPlusShopConfig || {}) },
               rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), ...(msg.state.rustPlusTelemetry || {}) },
-              customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || []),
-              shopWatchlist: Array.isArray(msg.state.shopWatchlist) ? msg.state.shopWatchlist : (appState.shopWatchlist || []),
               squadPins: Array.isArray(msg.state.squadPins) ? msg.state.squadPins : (appState.squadPins || [])
             };
             saveLocalFallback();
@@ -6486,7 +6473,6 @@
       spots: 'bfSubSpots',
       farming: 'bfSubFarming',
       route: 'bfSubRoute',
-      trades: 'bfSubTrades',
       rustplus: 'bfSubRustPlus'
     };
     document.querySelectorAll('.bf-subpanel').forEach((p) => p.classList.remove('active'));
@@ -7680,7 +7666,6 @@
 
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
     const hasRustPlusMapData = Boolean(
-      (tel.vendingPins && tel.vendingPins.length > 0) ||
       (tel.liveEvents && tel.liveEvents.length > 0) ||
       (tel.teamMembers && tel.teamMembers.length > 0) ||
       (Array.isArray(appState.squadPins) && appState.squadPins.length > 0) ||
@@ -7692,7 +7677,7 @@
       ctx.fillStyle = '#64748b';
       ctx.font = '600 15px "Inter", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Paste a RustMaps URL or connect Rust+ to view the live map, shops & build spots', W / 2, H / 2);
+      ctx.fillText('Paste a RustMaps URL or connect Rust+ to view the live map, team & build spots', W / 2, H / 2);
       return;
     }
 
@@ -7746,14 +7731,10 @@
           toPx,
           scale,
           mapSize,
-          showVending: rpOn,
           showTeam: rpOn,
           showEvents: rpOn,
           showDeaths: deathsOn,
           showPins: pinsOn,
-          inStockOnly: shopInStockOnly,
-          highlightedIds: lastShopMatchedMarkerIds,
-          selectedShopPinId: selectedShopMapPinId,
           pinOut: bfRenderedPins
         });
       }
@@ -8118,7 +8099,7 @@
       });
     });
 
-    // 6. Live Rust+ & Shared Squad Pins Overlay (Vending Pins, Squad GPS, Deaths, Team Stashes/Pins, World Events)
+    // 6. Live Rust+ & Shared Squad Pins Overlay (Squad GPS, Deaths, Team Stashes/Pins, World Events)
     const rpOn2 = document.getElementById('bfShowRustPlusCb')?.checked !== false;
     const pinsOn2 = document.getElementById('bfShowPinsCb')?.checked !== false;
     const deathsOn2 = document.getElementById('bfShowDeathsCb')?.checked !== false;
@@ -8127,14 +8108,10 @@
         toPx,
         scale,
         mapSize,
-        showVending: rpOn2,
         showTeam: rpOn2,
         showEvents: rpOn2,
         showDeaths: deathsOn2,
         showPins: pinsOn2,
-        inStockOnly: shopInStockOnly,
-        highlightedIds: lastShopMatchedMarkerIds,
-        selectedShopPinId: selectedShopMapPinId,
         pinOut: bfRenderedPins
       });
     }
@@ -8279,7 +8256,6 @@
     renderBaseFinderRoute();
     renderBaseFinderMap();
     renderMonumentAtlas();
-    renderShopsModule();
   }
 
   function renderBaseFinderFarming() {
@@ -8528,7 +8504,6 @@
     renderBaseFinderRoute();
     renderBaseFinderMap();
     renderMonumentAtlas();
-    renderShopsModule();
   }
 
   async function bfLoadHeatmapCanvas(key, data) {
@@ -9098,12 +9073,6 @@
           if (statusEl) {
             statusEl.textContent = `🎯 Ranked top build spots around ${mon.type} [${mon.grid}] — Best: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
           }
-        } else if (nearestActionPin.selectAction.type === 'vending') {
-          const nextId = String(nearestActionPin.selectAction.markerId || '');
-          selectedShopMapPinId = selectedShopMapPinId === nextId ? '' : nextId;
-          bfSwitchSubtab('trades');
-          renderShopsModule();
-          renderBaseFinderMap();
         } else if (['event', 'team', 'death'].includes(nearestActionPin.selectAction.type)) {
           setBfMapView(nearestActionPin.wx, nearestActionPin.wy, 1.9);
         }
@@ -9209,10 +9178,8 @@
   }
 
   // =========================================================================
-  // MODULE 8: IN-GAME PLAYER SHOPS, NPC VENDORS & BEST-TO-BUY EVALUATOR
+  // MODULE 8: RUST+ LIVE TELEMETRY, TACTICAL RADAR, CHAT BOT & SMART DEVICES
   // =========================================================================
-  let selectedShopMapPinId = '';
-  let lastShopMatchedMarkerIds = null;
   let cachedShopMapImg = null;
   let cachedShopMapImgUrl = '';
 
@@ -9344,15 +9311,10 @@
     toPx,
     scale,
     mapSize,
-    showVending = true,
     showTeam = true,
     showEvents = true,
     showDeaths = true,
     showPins = true,
-    stealsOnly = false,
-    inStockOnly = false,
-    highlightedIds = null,
-    selectedShopPinId = '',
     pinOut = []
   }) {
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
@@ -9541,103 +9503,7 @@
       });
     }
 
-    // C. Live Vending Machines & Pinned Squad Shop Deals
-    const combinedVendingPins = [...(Array.isArray(tel.vendingPins) ? tel.vendingPins : [])];
-    const manualPinned = (Array.isArray(appState.customShops) ? appState.customShops : []).filter(
-      (cs) => cs && cs.liveSource !== 'rustplus' && typeof cs.wx === 'number' && typeof cs.wy === 'number'
-    );
-    manualPinned.forEach((cs) => {
-      combinedVendingPins.push({
-        id: cs.id,
-        markerId: cs.id,
-        name: cs.shopName || `${cs.buyItem}`,
-        grid: cs.grid || bfWorldToGrid(cs.wx, cs.wy, mapSize),
-        wx: cs.wx,
-        wy: cs.wy,
-        inStockCount: 1,
-        totalOrders: 1,
-        stealCount: evaluateShopPriceVerdict({ ...cs, shopType: 'player' })?.tier === 'steal' ? 1 : 0,
-        orders: [{ id: cs.id, buyQty: cs.buyQty || 1, buyItem: cs.buyItem || 'Item', payQty: cs.payQty || 1, payItem: cs.payItem || 'Sulfur', inStock: 1, isSteal: false }]
-      });
-    });
-    if (showVending && combinedVendingPins.length > 0) {
-      const hasHighlightSet = highlightedIds instanceof Set;
-      combinedVendingPins.forEach((vp) => {
-        const isSel = selectedShopPinId && String(vp.markerId) === String(selectedShopPinId);
-        const hasSteal = (vp.stealCount || 0) > 0;
-        const hasStock = (vp.inStockCount || 0) > 0;
-        if (!isSel) {
-          if (stealsOnly && !hasSteal) return;
-          if (inStockOnly && !hasStock) return;
-        }
-        const isMatch = hasHighlightSet ? highlightedIds.has(String(vp.markerId)) : false;
-        const hasWatchHit = (vp.orders || []).some((o) => o.watchlistMatch);
-        const { px, py } = toPx(vp.wx, vp.wy);
-        const fill = hasSteal ? '#eab308' : hasStock ? '#22c55e' : '#64748b';
-        const ring = isSel ? '#38bdf8' : hasWatchHit ? '#4ade80' : isMatch ? '#38bdf8' : hasSteal ? '#c084fc' : hasStock ? '#4ade80' : '#475569';
-        const r = isSel ? 12 : hasSteal || hasWatchHit || isMatch ? 10.5 : 8.5;
-
-        ctx.save();
-        if (hasHighlightSet && !isMatch && !isSel) {
-          ctx.globalAlpha = 0.34;
-        }
-        if (hasSteal || isSel || isMatch || hasWatchHit) {
-          ctx.beginPath();
-          ctx.arc(px, py, r + 5.5, 0, Math.PI * 2);
-          ctx.fillStyle = isSel || isMatch ? 'rgba(56,189,248,0.28)' : hasWatchHit ? 'rgba(34,197,94,0.28)' : 'rgba(168,85,247,0.25)';
-          ctx.fill();
-          ctx.lineWidth = isSel || isMatch ? 2.4 : 1.7;
-          ctx.strokeStyle = ring;
-          ctx.stroke();
-        }
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fillStyle = fill;
-        ctx.fill();
-        ctx.lineWidth = 1.6;
-        ctx.strokeStyle = '#090b0e';
-        ctx.stroke();
-
-        ctx.font = '800 10px "Inter", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = hasSteal ? '#090b0e' : '#ffffff';
-        ctx.fillText(hasWatchHit ? '🎯' : hasSteal ? '★' : '🛒', px, py + 0.5);
-
-        ctx.textBaseline = 'alphabetic';
-        ctx.font = '700 9.5px "JetBrains Mono", monospace';
-        ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-        ctx.lineWidth = 3;
-        const tag = `[${vp.grid}] ${vp.name.slice(0, 18)}`;
-        ctx.strokeText(tag, px, py - (r + 5));
-        ctx.fillStyle = isMatch ? '#7dd3fc' : hasWatchHit ? '#4ade80' : hasSteal ? '#fde047' : hasStock ? '#bbf7d0' : '#94a3b8';
-        ctx.fillText(tag, px, py - (r + 5));
-        ctx.restore();
-
-        const distLine = formatPlayerDistanceBearing(vp.wx, vp.wy, myMember);
-        const orderLines = (vp.orders || []).slice(0, 5).map((o) => {
-          const stLbl = o.inStock > 0 ? `${o.inStock} left` : 'SOLD OUT';
-          return `${o.watchlistMatch ? '🎯 ' : o.isSteal ? '🔥 ' : '• '}${o.buyQty}× ${o.buyItem} ⇄ ${o.payQty} ${o.payItem} (${stLbl})`;
-        });
-        if (distLine) orderLines.push(distLine);
-        if (!orderLines.length) orderLines.push('Click to filter trades in list');
-        else orderLines.push('Click pin → Filter list to this shop');
-
-        pinOut.push({
-          px,
-          py,
-          r: r + 4,
-          wx: vp.wx,
-          wy: vp.wy,
-          title: `🛒 ${vp.name} [${vp.grid}] (${vp.inStockCount}/${vp.totalOrders} stocked)`,
-          color: ring,
-          lines: orderLines,
-          selectAction: { type: 'vending', markerId: vp.markerId, pin: vp }
-        });
-      });
-    }
-
-    // D. Live Squad Teammates GPS (highlighting "YOU" distinctively)
+    // C. Live Squad Teammates GPS (highlighting "YOU" distinctively)
     if (showTeam && Array.isArray(tel.teamMembers)) {
       tel.teamMembers.forEach((tm) => {
         const isMe = myMember && String(tm.steamId) === String(myMember.steamId);
@@ -9783,56 +9649,31 @@
     const info = tel.serverInfo || {};
     const eventsStrip = document.getElementById('shopLiveEventsStrip');
     const hasLiveData = Boolean(
-      (tel.vendingPins && tel.vendingPins.length > 0) ||
       (tel.liveEvents && tel.liveEvents.length > 0) ||
       (tel.teamMembers && tel.teamMembers.length > 0) ||
       tel.serverInfo
     );
 
-    // Live Alert Banner (Triggered Smart Alarm or Watchlist Match)
+    // Live Alert Banner (Triggered Smart Alarm)
     const alertBannerEl = document.getElementById('shopLiveAlertBanner');
     if (alertBannerEl) {
       const triggeredAlarms = (tel.smartDevices || []).filter((d) => d.entityType === 'alarm' && d.active);
       const quickSwitches = (tel.smartDevices || []).filter((d) => d.entityType === 'switch').slice(0, 3);
-      const watchMatches = (tel.vendingPins || []).flatMap((vp) =>
-        (vp.orders || [])
-          .filter((o) => o.watchlistMatch && o.inStock > 0)
-          .map((o) => ({ shop: vp.name, grid: vp.grid, wx: vp.wx, wy: vp.wy, markerId: vp.markerId, o }))
-      );
-      if (triggeredAlarms.length || watchMatches.length) {
+      if (triggeredAlarms.length) {
         const parts = [];
-        if (triggeredAlarms.length) {
-          const swPills = quickSwitches
-            .map(
-              (sw) =>
-                `<button type="button" class="filter-pill rp-alert-sw-btn" data-eid="${escapeHtml(sw.entityId)}" data-next="${sw.active ? '0' : '1'}" style="border-color:${sw.active ? '#ef4444' : '#4ade80'}; color:${sw.active ? '#fca5a5' : '#bbf7d0'};">⚡ ${escapeHtml(sw.name)}: ${sw.active ? 'Turn OFF' : 'Turn ON'}</button>`
-            )
-            .join('');
-          parts.push(
-            `<div style="padding:7px 10px; border-radius:6px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; color:#fecaca; font-size:12px; font-weight:700; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><span>🚨 RAID ALARM TRIGGERED: ${triggeredAlarms.map((a) => escapeHtml(a.name)).join(', ')}</span>${swPills}</div>`
-          );
-        }
-        if (watchMatches.length) {
-          const pills = watchMatches
-            .slice(0, 4)
-            .map(
-              (m) =>
-                `<button type="button" class="filter-pill shop-alert-focus-btn" data-wx="${m.wx}" data-wy="${m.wy}" data-mid="${escapeHtml(m.markerId)}" style="border-color:#4ade80; color:#bbf7d0;">🎯 ${escapeHtml(m.o.buyQty + '× ' + m.o.buyItem)} @ ${escapeHtml(m.o.payQty + ' ' + m.o.payItem)} [${escapeHtml(m.grid)}]</button>`
-            )
-            .join('');
-          parts.push(
-            `<div style="padding:6px 10px; border-radius:6px; background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.45); display:flex; gap:6px; align-items:center; flex-wrap:wrap;"><span style="font-size:11.5px; font-weight:700; color:#4ade80;">🎯 Watchlist In Stock:</span>${pills}</div>`
-          );
-        }
+        const swPills = quickSwitches
+          .map(
+            (sw) =>
+              `<button type="button" class="filter-pill rp-alert-sw-btn" data-eid="${escapeHtml(sw.entityId)}" data-next="${sw.active ? '0' : '1'}" style="border-color:${sw.active ? '#ef4444' : '#4ade80'}; color:${sw.active ? '#fca5a5' : '#bbf7d0'};">⚡ ${escapeHtml(sw.name)}: ${sw.active ? 'Turn OFF' : 'Turn ON'}</button>`
+          )
+          .join('');
+        parts.push(
+          `<div style="padding:7px 10px; border-radius:6px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; color:#fecaca; font-size:12px; font-weight:700; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><span>🚨 RAID ALARM TRIGGERED: ${triggeredAlarms.map((a) => escapeHtml(a.name)).join(', ')}</span>${swPills}</div>`
+        );
         alertBannerEl.style.display = 'flex';
         alertBannerEl.style.flexDirection = 'column';
         alertBannerEl.style.gap = '6px';
         alertBannerEl.innerHTML = parts.join('');
-        alertBannerEl.querySelectorAll('.shop-alert-focus-btn').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            focusShopOnLiveMap(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, btn.getAttribute('data-mid') || '');
-          });
-        });
         alertBannerEl.querySelectorAll('.rp-alert-sw-btn').forEach((btn) => {
           btn.addEventListener('click', async () => {
             const eid = btn.getAttribute('data-eid');
@@ -9902,7 +9743,7 @@
                 return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
               })
               .join('')
-          : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.vendingCount === 0 && tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts Shops &amp; World Events on the Rust+ API for most vanilla/community servers. Squad GPS, Map Notes, Chat, Clock &amp; Smart Devices stay live; pin spotted player shops by grid via "📌 Pin Deal".` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
+          : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts World Events on some servers. Squad GPS, Shared Pins, 15m Deaths, Team Chat Bot, Clock &amp; Smart Devices stay live.` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
         eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
           btn.addEventListener('click', () => {
             setBfMapView(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, 1.85);
@@ -9953,14 +9794,6 @@
     }
 
     renderBaseFinderMap();
-  }
-
-  function focusShopOnLiveMap(wx, wy, markerId = '') {
-    document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
-    if (markerId) selectedShopMapPinId = String(markerId);
-    renderShopsModule();
-    setBfMapView(Number(wx) || 0, Number(wy) || 0, 1.9);
-    document.getElementById('bfMapCanvas')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
   }
 
   function formatTcUpkeepRemaining(protectionExpirySec, hasProtection) {
@@ -10029,7 +9862,7 @@
     }
 
     if (pill) {
-      if (!info && (!tel.vendingPins || tel.vendingPins.length === 0) && activeAlarms.length === 0) {
+      if (!info && (!tel.liveEvents || tel.liveEvents.length === 0) && activeAlarms.length === 0) {
         pill.style.display = 'none';
       } else {
         pill.style.display = 'inline-flex';
@@ -10037,11 +9870,10 @@
         const phase = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted}${phaseNext}` : '';
         const qStr = info?.queuedPlayers > 0 ? ` 🚦Q:${info.queuedPlayers}` : '';
         const pop = info?.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}${qStr}` : '';
-        const shops = (tel.vendingPins || []).length ? `🛒 ${tel.vendingPins.length}` : '';
         const evts = (tel.liveEvents || []).length ? `⚡ ${tel.liveEvents.length}` : '';
         const alarmPrefix = activeAlarms.length ? `🚨 ALARM (${activeAlarms.length})` : `🟢 ${String(info?.name || 'Rust+').slice(0, 22)}`;
         pill.style.borderColor = activeAlarms.length ? '#ef4444' : '';
-        pill.textContent = [alarmPrefix, pop, phase, shops, evts]
+        pill.textContent = [alarmPrefix, pop, phase, evts]
           .filter(Boolean)
           .join(' • ');
       }
@@ -10307,926 +10139,8 @@
     }
   }
 
-  const SHOP_CATEGORY_LABELS = {
-    teas: '🧪 Teas & Clones',
-    progression: '⚙️ WB & BPs',
-    weapons: '🔫 Weapons',
-    raid: '💥 Raid & Boom',
-    defense: '🛡️ Doors & Turrets',
-    resources: '⛏️ Resources & Fuel',
-    recycle: '♻️ Scrap & Recycle',
-    tools: '🛠️ Tools & Elec',
-    vehicles: '🚁 Vehicles & Horses',
-    custom: '📌 Server Shop'
-  };
-
-  function normalizeShopItemKey(name) {
-    return String(name || '')
-      .toLowerCase()
-      .replace(/\(.*?\)/g, ' ')
-      .replace(/\bsar\b/g, 'semi automatic rifle')
-      .replace(/\bwb2\b|\bt2\b/g, 'workbench level 2')
-      .replace(/\bwb3\b|\bt3\b/g, 'workbench level 3')
-      .replace(/\bc4\b/g, 'timed explosive charge')
-      .replace(/\bexplo\b/g, 'explosive')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
-  }
-
-  function findMatchingShopBenchmark(buyItem) {
-    const key = normalizeShopItemKey(buyItem);
-    if (!key) return null;
-    const pool = (DATA.shopTrades || []).filter((t) => typeof t.fairMax === 'number');
-    let match = pool.find((t) => normalizeShopItemKey(t.buyItem) === key);
-    if (match) return match;
-    match = pool.find((t) => {
-      const tk = normalizeShopItemKey(t.buyItem);
-      return tk.includes(key) || key.includes(tk);
-    });
-    return match || null;
-  }
-
-  function formatSulfurNodesHint(amount, payItem) {
-    if (String(payItem || '').toLowerCase() !== 'sulfur' || !amount) return '';
-    const nodes = Math.max(0.1, amount / 300);
-    return `~${nodes >= 10 ? Math.round(nodes) : nodes.toFixed(1)} Sulfur ${nodes === 1 ? 'node' : 'nodes'}`;
-  }
-
-  function evaluateShopPriceVerdict(trade, overrideAskingPrice = null) {
-    if (!trade) return null;
-    const askingRaw =
-      overrideAskingPrice !== null && overrideAskingPrice !== '' && !Number.isNaN(Number(overrideAskingPrice))
-        ? Math.max(1, Number(overrideAskingPrice))
-        : Math.max(1, Number(trade.payQty) || 1);
-
-    const bench =
-      typeof trade.fairMax === 'number'
-        ? trade
-        : findMatchingShopBenchmark(trade.buyItem);
-
-    const payLower = String(trade.payItem || '').toLowerCase();
-
-    if (bench && typeof bench.fairMax === 'number') {
-      const qtyScale = (Number(bench.buyQty) || 1) / Math.max(1, Number(trade.buyQty) || 1);
-      let normalizedAsk = askingRaw * qtyScale;
-      let currencyNote = '';
-      if (String(bench.payItem || '').toLowerCase() === 'sulfur' && payLower === 'scrap') {
-        normalizedAsk = Math.round(normalizedAsk * 3.33);
-        currencyNote = ` (≈${normalizedAsk.toLocaleString()} Sulfur eq.)`;
-      } else if (payLower !== String(bench.payItem || '').toLowerCase()) {
-        return null;
-      }
-
-      const fairMin = bench.fairMin || Math.round(bench.fairMax * 0.6);
-      const fairMax = bench.fairMax;
-      const ripOffAt = bench.ripOffAt || Math.round(bench.fairMax * 1.45);
-      const nodeHint = formatSulfurNodesHint(askingRaw, trade.payItem);
-      const fairRange = `${fairMin.toLocaleString()}–${fairMax.toLocaleString()} ${bench.payItem}`;
-
-      if (normalizedAsk <= fairMin) {
-        return {
-          tier: 'steal',
-          shortTag: '🔥 STEAL',
-          title: `🔥 S-TIER STEAL — Buy Immediately!`,
-          detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote}${nodeHint ? ` (${nodeHint})` : ''} is well below typical fair value (${fairRange}).`,
-          fairRange,
-          color: '#4ade80',
-          bg: 'rgba(34,197,94,0.15)',
-          border: 'rgba(34,197,94,0.45)'
-        };
-      }
-      if (normalizedAsk <= fairMax) {
-        return {
-          tier: 'fair',
-          shortTag: '✅ GOOD BUY',
-          title: `✅ GOOD VALUE — Fair Server Price`,
-          detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote}${nodeHint ? ` (${nodeHint})` : ''} sits right inside the fair wipe range (${fairRange}).`,
-          fairRange,
-          color: '#38bdf8',
-          bg: 'rgba(56,189,248,0.14)',
-          border: 'rgba(56,189,248,0.42)'
-        };
-      }
-      if (normalizedAsk < ripOffAt) {
-        return {
-          tier: 'overpay',
-          shortTag: '⚠️ OVERPAY',
-          title: `⚠️ SLIGHT OVERPAY — Buy Only If Desperate`,
-          detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote} is above fair market (${fairRange}). Negotiate or wait under ${ripOffAt.toLocaleString()} ${bench.payItem}.`,
-          fairRange,
-          color: '#facc15',
-          bg: 'rgba(250,204,21,0.14)',
-          border: 'rgba(250,204,21,0.42)'
-        };
-      }
-      return {
-        tier: 'ripoff',
-        shortTag: '🚫 RIP-OFF',
-        title: `🚫 RIP-OFF / TRAP — Skip This Shop`,
-        detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote} exceeds the ${ripOffAt.toLocaleString()} ${bench.payItem} trap line (fair: ${fairRange}). Craft or pick another shop.`,
-        fairRange,
-        color: '#f87171',
-        bg: 'rgba(239,68,68,0.14)',
-        border: 'rgba(239,68,68,0.45)'
-      };
-    }
-
-    if (overrideAskingPrice !== null && overrideAskingPrice !== '') {
-      const ratio = askingRaw / Math.max(1, Number(trade.payQty) || 1);
-      if (ratio <= 0.85) {
-        return {
-          tier: 'steal',
-          shortTag: '🔥 BARGAIN',
-          title: `🔥 UNDER BENCHMARK (-${Math.round((1 - ratio) * 100)}%)`,
-          detail: `Cheaper than the ${trade.payQty.toLocaleString()} ${trade.payItem} reference price.`,
-          color: '#4ade80',
-          bg: 'rgba(34,197,94,0.15)',
-          border: 'rgba(34,197,94,0.45)'
-        };
-      }
-      if (ratio <= 1.2) {
-        return {
-          tier: 'fair',
-          shortTag: '✅ STANDARD',
-          title: `✅ STANDARD RATE`,
-          detail: `Matches the ${trade.payQty.toLocaleString()} ${trade.payItem} baseline.`,
-          color: '#38bdf8',
-          bg: 'rgba(56,189,248,0.14)',
-          border: 'rgba(56,189,248,0.42)'
-        };
-      }
-      return {
-        tier: 'ripoff',
-        shortTag: '🚫 OVERPRICED',
-        title: `🚫 OVERPRICED (+${Math.round((ratio - 1) * 100)}%)`,
-        detail: `${askingRaw.toLocaleString()} ${trade.payItem} is noticeably steeper than baseline (${trade.payQty.toLocaleString()} ${trade.payItem}).`,
-        color: '#f87171',
-        bg: 'rgba(239,68,68,0.14)',
-        border: 'rgba(239,68,68,0.45)'
-      };
-    }
-
-    return null;
-  }
-
-  function getAllNormalizedShopTrades() {
-    const base = (DATA.shopTrades || []).map((t) => ({
-      ...t,
-      isCustom: false,
-      shopType: t.shopType || 'npc',
-      tierRank: t.tierRank || (t.meta ? 'A' : 'B'),
-      bestToBuy: Boolean(t.bestToBuy)
-    }));
-    const custom = (Array.isArray(appState.customShops) ? appState.customShops : []).map((cs) => {
-      const bench = findMatchingShopBenchmark(cs.buyItem || cs.sellItem);
-      const isLive = Boolean(cs.liveSource);
-      const shopLabel = String(cs.shopName || '').trim();
-      const entry = {
-        id: cs.id,
-        markerId: cs.markerId || '',
-        wx: typeof cs.wx === 'number' ? cs.wx : undefined,
-        wy: typeof cs.wy === 'number' ? cs.wy : undefined,
-        isCustom: true,
-        liveSource: cs.liveSource || '',
-        shopName: shopLabel,
-        inStock: typeof cs.inStock === 'number' ? cs.inStock : undefined,
-        isBlueprint: Boolean(cs.isBlueprint),
-        buyShort: cs.buyShort || '',
-        payShort: cs.payShort || '',
-        stockDelta: cs.stockDelta || '',
-        watchlistMatch: Boolean(cs.watchlistMatch),
-        shopType: 'player',
-        monument: isLive ? 'Live Server Shop' : 'My Server Shop',
-        monumentId: 'custom',
-        vendor: shopLabel ? shopLabel : cs.grid ? `Player Vending [${cs.grid}]` : 'Player Vending',
-        grid: cs.grid || '',
-        category: cs.category || bench?.category || 'defense',
-        meta: true,
-        bestToBuy: Boolean(bench?.bestToBuy),
-        tierRank: bench?.tierRank || 'A',
-        drone: true,
-        buyItem: cs.buyItem || cs.sellItem || 'Item',
-        buyQty: Math.max(1, Number(cs.buyQty) || 1),
-        payItem: cs.payItem || cs.costText || 'Sulfur',
-        payQty: Math.max(1, Number(cs.payQty) || 1),
-        fairMin: bench?.fairMin,
-        fairMax: bench?.fairMax,
-        ripOffAt: bench?.ripOffAt,
-        altPriceHint: bench?.altPriceHint,
-        whyBest: bench?.whyBest,
-        notes: cs.notes || 'Player vending deal logged by squad on live server.'
-      };
-      const verdict = evaluateShopPriceVerdict(entry);
-      if (verdict && verdict.tier === 'steal') {
-        entry.tierRank = 'S';
-        entry.bestToBuy = true;
-      } else if (verdict && verdict.tier === 'ripoff') {
-        entry.tierRank = 'B';
-        entry.bestToBuy = false;
-      }
-      if (entry.inStock === 0) {
-        entry.bestToBuy = false;
-      }
-      return entry;
-    });
-    return [...custom, ...base];
-  }
-
-  function resolveShopGridBadge(trade) {
-    if (trade.isCustom) {
-      return trade.grid ? `[${trade.grid}]` : '[My Server]';
-    }
-    if (trade.shopType === 'player') {
-      return '[Check Map Drone UI]';
-    }
-    if (bfMapData && Array.isArray(bfMapData.monuments) && trade.monumentId) {
-      const selSpot = getSelectedBuildSpot();
-      const matches = bfMapData.monuments
-        .filter((rm) => bfDoesMonumentMatchAtlas(rm.type, { id: trade.monumentId }))
-        .map((rm) => ({
-          grid: bfWorldToGrid(rm.x, rm.y, bfMapData.size),
-          dist: selSpot ? Math.round(Math.hypot(rm.x - selSpot.wx, rm.y - selSpot.wy)) : null
-        }));
-      if (matches.length > 0) {
-        if (selSpot) matches.sort((a, b) => (a.dist ?? 99999) - (b.dist ?? 99999));
-        const uniqueGrids = Array.from(new Set(matches.map((m) => m.grid)));
-        const gridTag =
-          uniqueGrids.length <= 2
-            ? `[${uniqueGrids.join(', ')}]`
-            : `[${uniqueGrids.slice(0, 2).join(', ')} +${uniqueGrids.length - 2}]`;
-        const distTag = matches[0].dist !== null ? ` • ${matches[0].dist}m` : '';
-        return `${gridTag}${distTag}`;
-      }
-      return '[N/A on Map]';
-    }
-    return '';
-  }
-
-  function formatRecycleYieldLine(obj, batch, scale = 1) {
-    if (!obj) return '';
-    const parts = [];
-    const scaled = (v) => Math.round(v * scale) * batch;
-    if (obj.gp) parts.push(`💥 <strong>${scaled(obj.gp).toLocaleString()}</strong> Gunpowder`);
-    if (obj.metal) parts.push(`🔩 <strong>${scaled(obj.metal).toLocaleString()}</strong> Metal`);
-    if (obj.cloth) parts.push(`🌿 <strong>${scaled(obj.cloth).toLocaleString()}</strong> Cloth`);
-    if (obj.hqm) parts.push(`💎 <strong>${scaled(obj.hqm).toLocaleString()}</strong> HQM`);
-    if (obj.techTrash) parts.push(`⚡ <strong>${scaled(obj.techTrash).toLocaleString()}</strong> Tech Trash`);
-    return parts.join(' • ');
-  }
-
-  function renderSelectedShopCalculator(allTrades) {
-    const outEl = document.getElementById('shopTradeCalcResult');
-    if (!outEl) return;
-    const list = allTrades || getAllNormalizedShopTrades();
-    const sel = list.find((t) => t.id === selectedShopTradeId) || list[0];
-    if (!sel) {
-      outEl.innerHTML = `<div style="padding:14px; color:var(--text-muted); text-align:center;">Select any shop trade on the left to evaluate deals or calculate bulk batches.</div>`;
-      const verdictBox = document.getElementById('shopDealVerdictBox');
-      if (verdictBox) verdictBox.innerHTML = '';
-      return;
-    }
-
-    const budgetLabelEl = document.getElementById('shopBudgetLabel');
-    if (budgetLabelEl) {
-      budgetLabelEl.textContent = `OR AVAILABLE ${String(sel.payItem || 'BUDGET').toUpperCase()} BUDGET`;
-    }
-
-    const batchEl = document.getElementById('shopBatchCountInput');
-    const budgetEl = document.getElementById('shopBudgetInput');
-    const droneEl = document.getElementById('shopDroneFeeCb');
-    const askEl = document.getElementById('shopAskingPriceInput');
-    const verdictBox = document.getElementById('shopDealVerdictBox');
-
-    if (askEl) {
-      askEl.placeholder = `Seller price (${sel.payItem}, e.g. ${sel.payQty})`;
-    }
-    const rawAskVal = askEl && askEl.value !== '' ? askEl.value : null;
-    const activeVerdict = evaluateShopPriceVerdict(sel, rawAskVal);
-
-    if (verdictBox) {
-      if (activeVerdict) {
-        verdictBox.innerHTML = `
-          <div style="padding:8px 10px; border-radius:6px; background:${activeVerdict.bg}; border:1px solid ${activeVerdict.border};">
-            <div style="font-family:var(--font-mono); font-size:12px; font-weight:800; color:${activeVerdict.color};">${escapeHtml(activeVerdict.title)}</div>
-            <div style="font-size:11.5px; color:#e2e8f0; margin-top:3px;">${escapeHtml(activeVerdict.detail)}</div>
-            ${sel.altPriceHint ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">Alt Server Currency: <strong>${escapeHtml(sel.altPriceHint)}</strong></div>` : ''}
-          </div>
-        `;
-      } else if (sel.shopType === 'npc') {
-        verdictBox.innerHTML = `<div style="font-size:11px; color:var(--text-secondary);">🏛️ Fixed Monument NPC Rate${sel.bestToBuy ? ' — <strong style="color:#4ade80;">🏆 S-Tier Best NPC Trade</strong>' : ''}. Enter a number above to compare a Player Shop asking the same currency.</div>`;
-      } else {
-        verdictBox.innerHTML = `<div style="font-size:11px; color:var(--text-secondary);">Enter a player shop's asking price above to grade it vs benchmark (${sel.payQty.toLocaleString()} ${escapeHtml(sel.payItem)}).</div>`;
-      }
-    }
-
-    const rawBudget = budgetEl && budgetEl.value !== '' ? Math.max(0, parseInt(budgetEl.value, 10) || 0) : 0;
-    const useDrone = Boolean(droneEl?.checked);
-    const droneFee = useDrone && sel.drone ? 20 : 0;
-    const isScrapPay = String(sel.payItem || '').toLowerCase() === 'scrap';
-
-    let batch = Math.max(1, parseInt(batchEl?.value, 10) || 1);
-    let budgetNote = '';
-    if (budgetEl && budgetEl.value !== '') {
-      const availForTrade = isScrapPay ? Math.max(0, rawBudget - droneFee) : rawBudget;
-      const affordable = sel.payQty > 0 ? Math.floor(availForTrade / sel.payQty) : 0;
-      if (affordable <= 0) {
-        batch = 1;
-        budgetNote = `<div style="margin-top:6px; font-size:11.5px; color:#f87171;">⚠️ Budget (${rawBudget.toLocaleString()} ${escapeHtml(sel.payItem)}) is short — need at least ${sel.payQty.toLocaleString()} ${escapeHtml(sel.payItem)}${droneFee && isScrapPay ? ' (+ 20 Drone)' : ''}.</div>`;
-      } else {
-        batch = Math.min(500, affordable);
-        if (batchEl) batchEl.value = String(batch);
-        const spent = affordable * sel.payQty + (isScrapPay ? droneFee : 0);
-        const leftover = Math.max(0, rawBudget - spent);
-        budgetNote = `<div style="margin-top:6px; font-size:11.5px; color:#4ade80;">💰 With <strong>${rawBudget.toLocaleString()} ${escapeHtml(sel.payItem)}</strong>: buy <strong>${affordable}× batches</strong> (${leftover.toLocaleString()} ${escapeHtml(sel.payItem)} leftover).</div>`;
-      }
-    }
-
-    const unitPay =
-      rawAskVal !== null && Number(rawAskVal) > 0 && sel.shopType === 'player'
-        ? Math.max(1, Number(rawAskVal))
-        : sel.payQty;
-    const totalGet = sel.buyQty * batch;
-    const totalPay = unitPay * batch;
-    const nodeSummary = formatSulfurNodesHint(totalPay, sel.payItem);
-    const paySummary =
-      droneFee > 0 && isScrapPay
-        ? `${(totalPay + droneFee).toLocaleString()} Scrap <span style="font-size:11px; color:var(--text-secondary);">(${totalPay.toLocaleString()} + 20 Drone)</span>`
-        : droneFee > 0
-          ? `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)} + 20 Scrap <span style="font-size:11px; color:var(--text-secondary);">(Drone)</span>`
-          : `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)}${nodeSummary ? ` <span style="font-size:11px; color:#fde047;">(${nodeSummary})</span>` : ''}`;
-
-    const droneBanner =
-      useDrone && !sel.drone
-        ? `<div style="margin-top:6px; font-size:11px; color:#fbbf24;">🏃 In-Person Only — ${escapeHtml(sel.vendor)} cannot deliver by Marketplace Drone.</div>`
-        : '';
-
-    let recycleHtml = '';
-    if (sel.recycleTotals) {
-      const safeLine = formatRecycleYieldLine(sel.recycleTotals.safe, batch, 1);
-      const radLine = formatRecycleYieldLine(sel.recycleTotals.rad, batch, 1);
-      const redLine = formatRecycleYieldLine(sel.recycleTotals.rad, batch, 1.25);
-      const effectiveScrap = isScrapPay ? totalPay + droneFee : 0;
-      const gpRatioNote =
-        sel.recycleTotals.rad?.gp && effectiveScrap > 0
-          ? `<div style="margin-top:6px; font-size:11px; color:#93c5fd; font-family:var(--font-mono);">Ratio: ${((sel.recycleTotals.safe.gp * batch) / effectiveScrap).toFixed(2)} GP/Scrap (Safe) • ${((sel.recycleTotals.rad.gp * batch) / effectiveScrap).toFixed(2)} GP/Scrap (Rad)</div>`
-          : '';
-      recycleHtml = `
-        <div style="margin-top:12px; padding:10px 12px; border-radius:6px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.35);">
-          <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:#4ade80; margin-bottom:6px;">
-            ♻️ TOTAL RECYCLE YIELD FOR ${totalGet.toLocaleString()}× ${escapeHtml(sel.buyItem).toUpperCase()}:
-          </div>
-          <div style="display:flex; flex-direction:column; gap:5px; font-size:12px;">
-            <div>🛡️ <strong style="color:#facc15;">Safe Zone (40%):</strong> ${safeLine}</div>
-            <div>☢️ <strong style="color:#4ade80;">Monument Green (60%):</strong> ${radLine}</div>
-            <div>🔴 <strong style="color:#f87171;">Power Plant Red (75%):</strong> ${redLine}</div>
-          </div>
-          ${gpRatioNote}
-        </div>
-      `;
-    }
-
-    const locBadge = resolveShopGridBadge(sel);
-    const stockBadge =
-      typeof sel.inStock === 'number'
-        ? sel.inStock > 0
-          ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(34,197,94,0.45); font-weight:700;">📦 ${sel.inStock} in stock</span>`
-          : `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.45); font-weight:700;">❌ SOLD OUT</span>`
-        : '';
-    const sourceBadge = sel.liveSource
-      ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45);">📡 ${sel.liveSource === 'ocr' ? 'LIVE OCR' : 'LIVE RUST+'}</span>`
-      : sel.isCustom
-        ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.2); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 MY SERVER</span>`
-        : sel.shopType === 'player'
-          ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.15); color:#d8b4fe; border:1px solid rgba(168,85,247,0.35);">👤 PLAYER SHOP META</span>`
-          : `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(34,197,94,0.15); color:#86efac; border:1px solid rgba(34,197,94,0.35);">🏛️ NPC VENDOR</span>`;
-
-    outEl.innerHTML = `
-      <div style="background:var(--bg-card); border:1px solid var(--rust-orange); border-radius:8px; padding:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-            ${sourceBadge}
-            ${stockBadge}
-            <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
-              ${escapeHtml(sel.monument)} — ${escapeHtml(sel.vendor)}
-            </span>
-          </div>
-          ${locBadge ? `<span class="keycard-tag keycard-Fuse">${escapeHtml(locBadge)}</span>` : ''}
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0;">
-          <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.35); border-radius:6px; padding:8px 10px;">
-            <div style="font-size:10.5px; color:var(--text-secondary); font-family:var(--font-mono);">YOU RECEIVE (${batch}×)</div>
-            <div style="font-family:var(--font-mono); font-size:16px; font-weight:800; color:#4ade80;">+${totalGet.toLocaleString()} ${escapeHtml(sel.buyItem)}</div>
-          </div>
-          <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.35); border-radius:6px; padding:8px 10px;">
-            <div style="font-size:10.5px; color:var(--text-secondary); font-family:var(--font-mono);">TOTAL COST</div>
-            <div style="font-family:var(--font-mono); font-size:15px; font-weight:800; color:var(--sulfur-yellow);">${paySummary}</div>
-          </div>
-        </div>
-        ${sel.whyBest ? `<div style="margin-top:8px; padding:8px 10px; border-radius:6px; background:rgba(250,204,21,0.1); border:1px solid rgba(250,204,21,0.35); font-size:12px; color:#fef08a;">🏆 <strong>Why Best to Buy:</strong> ${escapeHtml(sel.whyBest)}</div>` : ''}
-        ${budgetNote}
-        ${droneBanner}
-        ${sel.notes ? `<div style="margin-top:8px; font-size:12px; color:var(--text-secondary);">${escapeHtml(sel.notes)}</div>` : ''}
-        ${recycleHtml}
-      </div>
-    `;
-  }
-
-  function renderShopWatchlistPills(allTrades) {
-    const container = document.getElementById('shopWatchlistPills');
-    if (!container) return;
-    const list = Array.isArray(appState.shopWatchlist) ? appState.shopWatchlist : [];
-    const liveTrades = (allTrades || []).filter((t) => t.liveSource && typeof t.inStock === 'number' && t.inStock > 0);
-    if (list.length === 0) {
-      container.innerHTML = `<span style="font-size:11px; color:var(--text-muted);">Quick watch:</span>` +
-        ['Pure Ore Tea', 'Diesel', 'Garage Door', 'Auto Turret']
-          .map((q) => `<button type="button" class="filter-pill shop-watch-preset-btn" data-wq="${escapeHtml(q)}" style="font-size:10.5px;">+ ${escapeHtml(q)}</button>`)
-          .join('');
-      container.querySelectorAll('.shop-watch-preset-btn').forEach((b) => {
-        b.addEventListener('click', () => {
-          const q = b.getAttribute('data-wq') || '';
-          if (!q) return;
-          appState.shopWatchlist = [...(appState.shopWatchlist || []), { id: 'wl-' + Date.now(), query: q, maxPrice: 0 }];
-          syncStateToServer();
-          renderShopsModule();
-        });
-      });
-      return;
-    }
-    container.innerHTML = list
-      .map((wl) => {
-        const qLower = String(wl.query || '').toLowerCase();
-        const maxP = Number(wl.maxPrice) || 0;
-        const hits = liveTrades.filter(
-          (t) => String(t.buyItem || '').toLowerCase().includes(qLower) && (!maxP || t.payQty <= maxP)
-        );
-        const hitStr = hits.length ? ` • ${hits.length} live` : '';
-        return `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:99px; font-size:11px; background:${hits.length ? 'rgba(34,197,94,0.2)' : 'rgba(30,41,59,0.75)'}; border:1px solid ${hits.length ? '#4ade80' : 'var(--border-subtle)'}; color:${hits.length ? '#bbf7d0' : '#cbd5e1'}; cursor:pointer;" class="shop-watch-filter-chip" data-wq="${escapeHtml(wl.query)}">🎯 ${escapeHtml(wl.query)}${maxP ? ` ≤${maxP}` : ''}${hitStr}<button type="button" class="shop-watch-del-btn" data-wid="${escapeHtml(wl.id)}" style="background:none; border:none; color:#fca5a5; cursor:pointer; padding:0 2px; font-size:11px;" title="Remove watch">✕</button></span>`;
-      })
-      .join('');
-    container.querySelectorAll('.shop-watch-filter-chip').forEach((chip) => {
-      chip.addEventListener('click', (e) => {
-        if (e.target.closest('.shop-watch-del-btn')) return;
-        const q = chip.getAttribute('data-wq') || '';
-        const sEl = document.getElementById('shopSearchInput');
-        if (sEl) sEl.value = q;
-        shopSearchQuery = q;
-        renderShopsModule();
-      });
-    });
-    container.querySelectorAll('.shop-watch-del-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const wid = btn.getAttribute('data-wid');
-        appState.shopWatchlist = (appState.shopWatchlist || []).filter((w) => w.id !== wid);
-        syncStateToServer();
-        renderShopsModule();
-      });
-    });
-  }
-
-  function matchesClientWatchlist(trade) {
-    if (!trade || (typeof trade.inStock === 'number' && trade.inStock <= 0)) return false;
-    if (trade.watchlistMatch) return true;
-    const list = Array.isArray(appState.shopWatchlist) ? appState.shopWatchlist : [];
-    const nameL = String(trade.buyItem || '').toLowerCase();
-    return list.some((wl) => {
-      const q = String(wl?.query || '').trim().toLowerCase();
-      if (!q || !nameL.includes(q)) return false;
-      const maxP = Number(wl.maxPrice) || 0;
-      return !maxP || trade.payQty <= maxP;
-    });
-  }
-
-  function renderShopsModule() {
-    const listEl = document.getElementById('shopTradesList');
-    const badgeEl = document.getElementById('shopCountBadge');
-    if (!listEl) return;
-
-    const allTrades = getAllNormalizedShopTrades();
-    renderShopWatchlistPills(allTrades);
-    const tokens = shopSearchQuery
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean);
-
-    const filtered = allTrades.filter((t) => {
-      if (selectedShopMapPinId && String(t.markerId || '') !== String(selectedShopMapPinId)) return false;
-      if (selectedShopFilter === 'best' && !t.bestToBuy) return false;
-      else if (selectedShopFilter === 'player' && t.shopType !== 'player') return false;
-      else if (selectedShopFilter === 'npc' && t.shopType !== 'npc') return false;
-      else if (selectedShopFilter === 'custom' && !t.isCustom) return false;
-      else if (
-        selectedShopFilter !== 'all' &&
-        selectedShopFilter !== 'best' &&
-        selectedShopFilter !== 'player' &&
-        selectedShopFilter !== 'npc' &&
-        selectedShopFilter !== 'custom' &&
-        t.monument !== selectedShopFilter
-      ) {
-        return false;
-      }
-
-      if (selectedShopCategory !== 'all' && t.category !== selectedShopCategory) return false;
-
-      if (selectedShopCurrency !== 'all') {
-        const payLower = String(t.payItem || '').toLowerCase();
-        if (selectedShopCurrency === 'Sulfur' && payLower !== 'sulfur' && payLower !== 'sulfur ore') return false;
-        if (selectedShopCurrency === 'Scrap' && payLower !== 'scrap') return false;
-        if (selectedShopCurrency === 'other' && (payLower === 'sulfur' || payLower === 'sulfur ore' || payLower === 'scrap')) return false;
-      }
-
-      if (shopInStockOnly && typeof t.inStock === 'number' && t.inStock <= 0) return false;
-
-      if (tokens.length === 0) return true;
-      const hay = [
-        t.buyItem,
-        t.payItem,
-        t.monument,
-        t.vendor,
-        t.shopName || '',
-        t.liveSource ? 'live real-time rustplus' : '',
-        typeof t.inStock === 'number' ? (t.inStock > 0 ? `${t.inStock} in stock` : 'sold out') : '',
-        t.category,
-        SHOP_CATEGORY_LABELS[t.category] || '',
-        t.shopType === 'player' ? 'player vending shop' : 'npc safe zone',
-        t.bestToBuy ? 'best to buy s-tier top meta' : '',
-        t.whyBest || '',
-        t.altPriceHint || '',
-        t.notes,
-        t.recycleSafe || '',
-        t.recycleRad || '',
-        t.grid || ''
-      ]
-        .join(' ')
-        .toLowerCase();
-      return tokens.every((tok) => hay.includes(tok));
-    });
-
-    const hasSearchHighlight = Boolean(
-      tokens.length > 0 ||
-      selectedShopCategory !== 'all' ||
-      selectedShopCurrency !== 'all' ||
-      ['best', 'custom'].includes(selectedShopFilter)
-    );
-    if (hasSearchHighlight) {
-      const matchedIds = new Set();
-      filtered.forEach((t) => {
-        if (t.markerId) matchedIds.add(String(t.markerId));
-      });
-      lastShopMatchedMarkerIds = matchedIds;
-    } else {
-      lastShopMatchedMarkerIds = null;
-    }
-    renderShopLiveMap();
-
-    const tierScore = (t) => (t.tierRank === 'S' ? 0 : t.tierRank === 'A' ? 1 : 2);
-    const soldOutScore = (t) => (typeof t.inStock === 'number' && t.inStock <= 0 ? 1 : 0);
-    filtered.sort((a, b) => {
-      if (selectedShopSort === 'cost_asc') {
-        return a.payQty - b.payQty || a.buyItem.localeCompare(b.buyItem);
-      }
-      if (selectedShopSort === 'cost_desc') {
-        return b.payQty - a.payQty || a.buyItem.localeCompare(b.buyItem);
-      }
-      if (selectedShopSort === 'name_asc') {
-        return a.buyItem.localeCompare(b.buyItem);
-      }
-      // Default 'best': in-stock custom/live server shops first (ordered S->B), then S-tier best-to-buy meta deals
-      return (
-        (a.isCustom === b.isCustom ? 0 : a.isCustom ? -1 : 1) ||
-        soldOutScore(a) - soldOutScore(b) ||
-        tierScore(a) - tierScore(b) ||
-        (a.bestToBuy === b.bestToBuy ? 0 : a.bestToBuy ? -1 : 1) ||
-        (a.shopType === b.shopType ? 0 : a.shopType === 'player' ? -1 : 1)
-      );
-    });
-
-    if (badgeEl) {
-      badgeEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'TRADE' : 'TRADES'}`;
-    }
-    const customFilterPill = document.querySelector('#shopFilterBar .filter-pill[data-sfilter="custom"]');
-    if (customFilterPill) {
-      const liveCnt = (appState.customShops || []).length;
-      customFilterPill.textContent = liveCnt > 0 ? `📌 My Server Shops (${liveCnt})` : '📌 My Server Shops';
-    }
-
-    const pinBanner = document.getElementById('shopSelectedPinFilterBanner');
-    if (pinBanner) {
-      if (selectedShopMapPinId) {
-        const pinObj = (appState.rustPlusTelemetry?.vendingPins || []).find((p) => String(p.markerId) === String(selectedShopMapPinId));
-        pinBanner.style.display = 'flex';
-        pinBanner.style.justifyContent = 'space-between';
-        pinBanner.style.alignItems = 'center';
-        pinBanner.style.padding = '6px 10px';
-        pinBanner.style.borderRadius = '6px';
-        pinBanner.style.background = 'rgba(56, 189, 248, 0.14)';
-        pinBanner.style.border = '1px solid rgba(56, 189, 248, 0.45)';
-        pinBanner.style.fontSize = '12px';
-        pinBanner.innerHTML = `<span>📍 Map Filter: <strong style="color:#bae6fd;">${escapeHtml(pinObj?.name || 'Selected Shop')} [${escapeHtml(pinObj?.grid || '')}]</strong></span><button id="clearShopMapPinFilterBtn" type="button" class="btn btn-sm">✕ Show All Shops</button>`;
-        document.getElementById('clearShopMapPinFilterBtn')?.addEventListener('click', () => {
-          selectedShopMapPinId = '';
-          renderShopsModule();
-          renderShopLiveMap();
-        });
-      } else {
-        pinBanner.style.display = 'none';
-      }
-    }
-
-    if (filtered.length > 0 && !filtered.some((t) => t.id === selectedShopTradeId)) {
-      selectedShopTradeId = filtered[0].id;
-    }
-
-    if (filtered.length === 0) {
-      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px;">No shop trades matched your search or filters. Click <strong>✕ Reset</strong> above or pin a Player Shop on the right.</div>`;
-    } else {
-      listEl.innerHTML = filtered
-        .map((t) => {
-          const isAct = t.id === selectedShopTradeId;
-          const locBadge = resolveShopGridBadge(t);
-          const verdict = t.isCustom || t.shopType === 'player' ? evaluateShopPriceVerdict(t) : null;
-          const isWatchHit = matchesClientWatchlist(t);
-          const myMember = findMyRustPlusTeamMember(appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY);
-          const distStr = typeof t.wx === 'number' && typeof t.wy === 'number'
-            ? formatPlayerDistanceBearing(t.wx, t.wy, myMember).replace('📏 ', '')
-            : '';
-          const typePill = t.liveSource
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45); font-weight:700;">📡 LIVE</span>`
-            : t.isCustom
-              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 Server Shop</span>`
-              : t.shopType === 'player'
-                ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.16); color:#d8b4fe;">👤 Player Shop</span>`
-                : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.14); color:#86efac;">🏛️ NPC</span>`;
-          const watchPill = isWatchHit
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.24); color:#86efac; border:1px solid #4ade80; font-weight:700;">🎯 WATCH</span>`
-            : '';
-          const deltaPill = t.stockDelta === 'new'
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.2); color:#bae6fd; font-weight:700;">✨ NEW</span>`
-            : t.stockDelta === 'priceDrop'
-              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.22); color:#fde047; font-weight:700;">💸 PRICE DROP</span>`
-              : t.stockDelta && t.stockDelta.startsWith('+')
-                ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.18); color:#4ade80; font-weight:700;">📦 ${escapeHtml(t.stockDelta)}</span>`
-                : '';
-          const stockPill =
-            typeof t.inStock === 'number'
-              ? t.inStock > 0
-                ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.16); color:#4ade80; border:1px solid rgba(34,197,94,0.4); font-weight:700;">📦 ${t.inStock} in stock</span>`
-                : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.16); color:#f87171; border:1px solid rgba(239,68,68,0.4); font-weight:700;">❌ SOLD OUT</span>`
-              : '';
-          const bestPill = t.bestToBuy
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.2); color:#fde047; font-weight:700; border:1px solid rgba(250,204,21,0.45);">🏆 BEST TO BUY</span>`
-            : t.tierRank === 'A'
-              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.14); color:#7dd3fc;">✅ A-Tier</span>`
-              : '';
-          const customVerdictPill =
-            t.isCustom && verdict
-              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:${verdict.bg}; color:${verdict.color}; border:1px solid ${verdict.border}; font-weight:700;">${escapeHtml(verdict.shortTag)}</span>`
-              : '';
-          const dronePill = t.drone
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.12); color:#7dd3fc;">🚁 Drone</span>`
-            : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(148,163,184,0.15); color:#cbd5e1;">🏃 In-Person</span>`;
-          const mapLocBtn =
-            typeof t.wx === 'number' && typeof t.wy === 'number'
-              ? `<button type="button" class="btn btn-sm shop-locate-btn" data-wx="${t.wx}" data-wy="${t.wy}" data-mid="${escapeHtml(t.markerId || '')}" style="padding:2px 7px; font-size:10.5px; border-color:rgba(56,189,248,0.45); color:#7dd3fc;" title="Focus this vending machine on Live Map">📍 Map</button>`
-              : '';
-          const delBtn = t.isCustom
-            ? `<button type="button" class="btn btn-sm shop-del-btn" data-del-shop="${escapeHtml(t.id)}" style="padding:2px 7px; font-size:10.5px;">✕</button>`
-            : '';
-          const catLabel = SHOP_CATEGORY_LABELS[t.category] || t.category;
-          const fairLine =
-            typeof t.fairMin === 'number' && typeof t.fairMax === 'number'
-              ? `<span style="color:#c4b5fd; font-family:var(--font-mono); font-size:10.5px;">Fair: ${t.fairMin.toLocaleString()}–${t.fairMax.toLocaleString()} ${escapeHtml(t.payItem)}${t.altPriceHint ? ` (${escapeHtml(t.altPriceHint)})` : ''}</span>`
-              : '';
-
-          return `
-            <div class="monument-item shop-trade-card ${isAct ? 'active' : ''}" data-shop-id="${escapeHtml(t.id)}">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-                <div style="font-family:var(--font-display); font-weight:700; font-size:14.5px; color:#fff; display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
-                  ${rustItemIconHtml(t.buyShort, t.buyItem, 20)}
-                  <span style="color:#4ade80;">${t.buyQty.toLocaleString()}× ${escapeHtml(t.buyItem)}</span>
-                  <span style="color:var(--text-muted); margin:0 2px;">⇄</span>
-                  ${rustItemIconHtml(t.payShort, t.payItem, 16)}
-                  <span style="color:var(--sulfur-yellow);">${t.payQty.toLocaleString()}× ${escapeHtml(t.payItem)}</span>
-                </div>
-                <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
-                  ${watchPill}
-                  ${deltaPill}
-                  ${bestPill}
-                  ${customVerdictPill}
-                  ${stockPill}
-                  ${typePill}
-                  ${dronePill}
-                  ${mapLocBtn}
-                  ${delBtn}
-                </div>
-              </div>
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:5px; font-size:11.5px; color:var(--text-secondary); flex-wrap:wrap;">
-                <span>📍 <strong style="color:#e2e8f0;">${escapeHtml(t.monument)}</strong> • ${escapeHtml(t.vendor)} • <span>${escapeHtml(catLabel)}</span> ${locBadge ? `<span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">${escapeHtml(locBadge)}</span>` : ''}${distStr ? ` • <span style="color:#7dd3fc;">📏 ${escapeHtml(distStr)}</span>` : ''}</span>
-                ${t.recycleSafe ? `<span style="color:#86efac; font-family:var(--font-mono); font-size:10.5px;">♻️ ${escapeHtml(t.recycleSafe)}</span>` : fairLine}
-              </div>
-              ${t.whyBest ? `<div style="font-size:11.5px; color:#fde68a; margin-top:4px;">💡 ${escapeHtml(t.whyBest)}</div>` : t.notes ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.notes)}</div>` : ''}
-            </div>
-          `;
-        })
-        .join('');
-    }
-
-    listEl.querySelectorAll('.shop-locate-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const wx = parseFloat(btn.getAttribute('data-wx')) || 0;
-        const wy = parseFloat(btn.getAttribute('data-wy')) || 0;
-        const mid = btn.getAttribute('data-mid') || '';
-        focusShopOnLiveMap(wx, wy, mid);
-      });
-    });
-
-    listEl.querySelectorAll('.shop-trade-card').forEach((card) => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.shop-del-btn') || e.target.closest('.shop-locate-btn')) return;
-        selectedShopTradeId = card.getAttribute('data-shop-id') || '';
-        const budgetEl = document.getElementById('shopBudgetInput');
-        if (budgetEl) budgetEl.value = '';
-        const batchEl = document.getElementById('shopBatchCountInput');
-        if (batchEl) batchEl.value = '1';
-        const askEl = document.getElementById('shopAskingPriceInput');
-        if (askEl) askEl.value = '';
-        renderShopsModule();
-      });
-    });
-
-    listEl.querySelectorAll('.shop-del-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const delId = btn.getAttribute('data-del-shop');
-        appState.customShops = (appState.customShops || []).filter((cs) => cs.id !== delId);
-        syncStateToServer();
-        renderShopsModule();
-      });
-    });
-
-    renderSelectedShopCalculator(allTrades);
-  }
-
-  function initShopsModule() {
-    const searchEl = document.getElementById('shopSearchInput');
-    const clearBtn = document.getElementById('shopClearSearchBtn');
-    const currencyEl = document.getElementById('shopCurrencySelect');
-    const sortEl = document.getElementById('shopSortSelect');
-
-    searchEl?.addEventListener('input', () => {
-      shopSearchQuery = searchEl.value.trim();
-      renderShopsModule();
-    });
-
-    currencyEl?.addEventListener('change', () => {
-      selectedShopCurrency = currencyEl.value || 'all';
-      renderShopsModule();
-    });
-
-    sortEl?.addEventListener('change', () => {
-      selectedShopSort = sortEl.value || 'best';
-      renderShopsModule();
-    });
-
-    const addShopWatchItem = () => {
-      const qEl = document.getElementById('shopWatchQueryInput');
-      const maxEl = document.getElementById('shopWatchMaxPriceInput');
-      const query = qEl?.value.trim() || '';
-      if (!query) return;
-      const maxPrice = maxEl && Number(maxEl.value) > 0 ? parseInt(maxEl.value, 10) : 0;
-      appState.shopWatchlist = [
-        ...(Array.isArray(appState.shopWatchlist) ? appState.shopWatchlist : []),
-        { id: 'wl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5), query, maxPrice }
-      ];
-      if (qEl) qEl.value = '';
-      if (maxEl) maxEl.value = '';
-      syncStateToServer();
-      renderShopsModule();
-    };
-    document.getElementById('shopWatchAddBtn')?.addEventListener('click', addShopWatchItem);
-    document.getElementById('shopWatchQueryInput')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addShopWatchItem();
-    });
-    document.getElementById('shopWatchMaxPriceInput')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addShopWatchItem();
-    });
-
-    const inStockCb = document.getElementById('shopInStockOnlyCb');
-    inStockCb?.addEventListener('change', () => {
-      shopInStockOnly = Boolean(inStockCb.checked);
-      renderShopsModule();
-    });
-
-    clearBtn?.addEventListener('click', () => {
-      if (searchEl) searchEl.value = '';
-      if (currencyEl) currencyEl.value = 'all';
-      if (sortEl) sortEl.value = 'best';
-      if (inStockCb) inStockCb.checked = false;
-      const askEl = document.getElementById('shopAskingPriceInput');
-      if (askEl) askEl.value = '';
-      const askGridEl = document.getElementById('shopAskingGridInput');
-      if (askGridEl) askGridEl.value = '';
-      shopSearchQuery = '';
-      selectedShopFilter = 'all';
-      selectedShopCategory = 'all';
-      selectedShopCurrency = 'all';
-      selectedShopSort = 'best';
-      shopInStockOnly = false;
-      document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
-        b.classList.toggle('active', b.getAttribute('data-sfilter') === 'all');
-      });
-      document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((b) => {
-        b.classList.toggle('active', b.getAttribute('data-scat') === 'all');
-      });
-      renderShopsModule();
-    });
-
-    document.querySelectorAll('#shopFilterBar .filter-pill').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        selectedShopFilter = btn.getAttribute('data-sfilter') || 'all';
-        renderShopsModule();
-      });
-    });
-
-    document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        selectedShopCategory = btn.getAttribute('data-scat') || 'all';
-        renderShopsModule();
-      });
-    });
-
-    document.getElementById('shopBatchCountInput')?.addEventListener('input', () => {
-      const budgetEl = document.getElementById('shopBudgetInput');
-      if (budgetEl) budgetEl.value = '';
-      renderSelectedShopCalculator();
-    });
-
-    document.getElementById('shopBudgetInput')?.addEventListener('input', () => {
-      renderSelectedShopCalculator();
-    });
-
-    document.getElementById('shopDroneFeeCb')?.addEventListener('change', () => {
-      renderSelectedShopCalculator();
-    });
-
-    document.getElementById('shopAskingPriceInput')?.addEventListener('input', () => {
-      renderSelectedShopCalculator();
-    });
-
-    const commitCustomShopEntry = (entry) => {
-      appState.customShops = [entry, ...(Array.isArray(appState.customShops) ? appState.customShops : [])];
-      selectedShopTradeId = entry.id;
-      if (!['all', 'player', 'custom'].includes(selectedShopFilter)) {
-        selectedShopFilter = 'player';
-        document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
-          b.classList.toggle('active', b.getAttribute('data-sfilter') === 'player');
-        });
-      }
-      if (selectedShopCategory !== 'all' && selectedShopCategory !== entry.category) {
-        selectedShopCategory = 'all';
-        document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((b) => {
-          b.classList.toggle('active', b.getAttribute('data-scat') === 'all');
-        });
-      }
-      syncStateToServer();
-      renderShopsModule();
-      document.querySelector('#shopTradesList .shop-trade-card.active')?.scrollIntoView?.({ block: 'nearest' });
-    };
-
-    document.getElementById('pinDealShopBtn')?.addEventListener('click', () => {
-      const allTrades = getAllNormalizedShopTrades();
-      const sel = allTrades.find((t) => t.id === selectedShopTradeId);
-      if (!sel) return;
-      const askEl = document.getElementById('shopAskingPriceInput');
-      const gridEl = document.getElementById('shopAskingGridInput');
-      const customPrice = askEl && Number(askEl.value) > 0 ? Math.max(1, parseInt(askEl.value, 10)) : sel.payQty;
-      const grid = gridEl?.value.trim().toUpperCase() || '';
-      const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || bfMapData?.size || appState.rustPlusShopConfig?.mapSize || 4250);
-      const coords = bfGridToWorld(grid, mapSize);
-      const id = 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5);
-      const entry = {
-        id,
-        markerId: id,
-        buyQty: sel.buyQty,
-        buyItem: sel.buyItem,
-        payQty: customPrice,
-        payItem: sel.payItem,
-        category: sel.category || 'defense',
-        grid,
-        ...(coords ? { wx: coords.wx, wy: coords.wy } : {}),
-        notes: `Pinned player deal${grid ? ` at [${grid}]` : ''} (checked vs benchmark).`
-      };
-      if (askEl) askEl.value = '';
-      if (gridEl) gridEl.value = '';
-      commitCustomShopEntry(entry);
-    });
-
-    // Rust+ Live Vending Machine Poller & Steam Popup Controls
+  function initRustPlusModule() {
+    // Rust+ Live Poller, Team Chat Bot, Smart Devices & Steam Popup Controls
     const jsonPasteEl = document.getElementById('rpShopJsonPasteInput');
     jsonPasteEl?.addEventListener('input', () => {
       const raw = jsonPasteEl.value.trim();
@@ -11247,7 +10161,6 @@
         appState = {
           ...appState,
           ...data.state,
-          customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
           rustPlusShopConfig: {
             ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
             ...(appState.rustPlusShopConfig || {}),
@@ -11284,7 +10197,7 @@
         playerId: document.getElementById('rpShopPlayerIdInput')?.value.trim() || '',
         playerToken: document.getElementById('rpShopTokenInput')?.value.trim() || '',
         autoPoll: Boolean(document.getElementById('rpShopAutoPollCb')?.checked),
-        discordAlertSteals: document.getElementById('rpShopDiscordStealCb')?.checked !== false,
+        chatBotEnabled: document.getElementById('rpChatBotCb')?.checked !== false,
         discordAlertEvents: document.getElementById('rpShopDiscordEventsCb')?.checked !== false
       };
     };
@@ -11297,7 +10210,7 @@
         return;
       }
       const targetDesc = cfg.ip ? `${cfg.ip}:${cfg.port}` : `Relay ${cfg.serverId.slice(0, 8)}...`;
-      if (statusEl) statusEl.textContent = `⏳ Syncing Rust+ map, shops, squad & events from ${targetDesc}...`;
+      if (statusEl) statusEl.textContent = `⏳ Syncing Rust+ map, squad, events & smart devices from ${targetDesc}...`;
       try {
         const resp = await fetch('/api/shops/rustplus/poll', {
           method: 'POST',
@@ -11312,7 +10225,7 @@
           throw new Error(data.error || `HTTP ${resp.status}`);
         }
         hydrateRustPlusStateFromResponse(data);
-        if (statusEl) statusEl.textContent = data.lastStatus || `✅ Synced ${data.ordersCount || 0} live orders across ${data.shopsCount || 0} shops.`;
+        if (statusEl) statusEl.textContent = data.lastStatus || `✅ Synced ${data.teamCount || 0} teammates & ${data.eventsCount || 0} events.`;
       } catch (err) {
         if (statusEl) statusEl.textContent = `❌ ${err.message}`;
       }
@@ -11555,19 +10468,15 @@
       saveLocalFallback();
     };
     document.getElementById('rpShopAutoPollCb')?.addEventListener('change', saveRustPlusPollSettings);
-    document.getElementById('rpShopDiscordStealCb')?.addEventListener('change', saveRustPlusPollSettings);
+    document.getElementById('rpChatBotCb')?.addEventListener('change', saveRustPlusPollSettings);
     document.getElementById('rpShopDiscordEventsCb')?.addEventListener('change', saveRustPlusPollSettings);
 
     document.getElementById('rpShopClearLiveBtn')?.addEventListener('click', () => {
-      appState.customShops = (Array.isArray(appState.customShops) ? appState.customShops : []).filter(
-        (cs) => !cs.liveSource
-      );
       appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY };
-      selectedShopMapPinId = '';
       cachedShopMapImg = null;
       cachedShopMapImgUrl = '';
       if (appState.rustPlusShopConfig) {
-        appState.rustPlusShopConfig.lastStatus = 'Live vending feed & telemetry cleared.';
+        appState.rustPlusShopConfig.lastStatus = 'Live Rust+ telemetry cleared.';
         appState.rustPlusShopConfig.autoPoll = false;
       }
       const autoCb = document.getElementById('rpShopAutoPollCb');
@@ -11577,11 +10486,10 @@
       renderAll();
     });
 
-    // HUD Rust+ Quick Jump Pill -> open Base & Trade Hub right to Rust+ / Trades
+    // HUD Rust+ Quick Jump Pill -> open Tactical Map Hub right to Rust+
     document.getElementById('hudRustPlusPill')?.addEventListener('click', () => {
       document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
-      const hasAlarm = (appState.rustPlusTelemetry?.smartDevices || []).some((d) => d.entityType === 'alarm' && d.active);
-      bfSwitchSubtab(hasAlarm ? 'rustplus' : 'trades');
+      bfSwitchSubtab('rustplus');
       renderShopLiveMap();
     });
 
@@ -11663,7 +10571,6 @@
     });
 
     syncRustPlusShopUiFromState();
-    renderShopsModule();
     startClientCloudWaitPoll();
   }
 
@@ -11696,8 +10603,8 @@
     }
     const autoCb = document.getElementById('rpShopAutoPollCb');
     if (autoCb) autoCb.checked = Boolean(cfg.autoPoll);
-    const alertCb = document.getElementById('rpShopDiscordStealCb');
-    if (alertCb) alertCb.checked = cfg.discordAlertSteals !== false;
+    const botCb = document.getElementById('rpChatBotCb');
+    if (botCb) botCb.checked = cfg.chatBotEnabled !== false;
     const evtAlertCb = document.getElementById('rpShopDiscordEventsCb');
     if (evtAlertCb) evtAlertCb.checked = cfg.discordAlertEvents !== false;
     const statusEl = document.getElementById('rpShopStatusText');
@@ -11723,7 +10630,6 @@
     renderRecyclerCalculator();
     renderDieselCalculator();
     renderDecayCalculator();
-    renderShopsModule();
     syncRustPlusShopUiFromState();
     renderShopLiveMap();
     renderRustPlusHeaderAndWidgets();
@@ -11745,7 +10651,7 @@
     safeRun(initTimerModule);
     safeRun(initGeneticsModule);
     safeRun(initRecyclerDieselDecayModule);
-    safeRun(initShopsModule);
+    safeRun(initRustPlusModule);
     safeRun(initBaseFinderModule);
     safeRun(renderAll);
     safeRun(initSquadSSE);

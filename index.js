@@ -90,7 +90,7 @@ const DEFAULT_STATE = {
     lastHistoryNotificationId: 0,
     useProxy: false,
     autoPoll: false,
-    discordAlertSteals: true,
+    chatBotEnabled: true,
     discordAlertEvents: true,
     lastPolledAt: 0,
     lastStatus: '',
@@ -101,7 +101,6 @@ const DEFAULT_STATE = {
     time: null,
     mapMeta: null,
     liveEvents: [],
-    vendingPins: [],
     teamMembers: [],
     recentDeaths: [],
     mapNotes: [],
@@ -1625,13 +1624,106 @@ async function sendRustPlusCommand(cfg, fieldNum, innerBytesOrObj = []) {
   );
 }
 
-const sentShopStealAlerts = new Set();
 const sentWorldEventAlerts = new Set();
-const sentWatchlistAlerts = new Set();
 const sentSmartAlarmAlerts = new Set();
 const sentLowUpkeepAlerts = new Set();
-let prevShopOrderSnapshot = new Map();
-let hasSeededShopSnapshot = false;
+const processedChatBotKeys = new Set();
+let hasSeededChatBot = false;
+let lastChatBotReplyAt = 0;
+
+function formatBotTcUpkeep(protectionExpirySec, hasProtection) {
+  if (!hasProtection && !protectionExpirySec) return 'No Upkeep';
+  const remSec = Number(protectionExpirySec || 0) - Math.floor(Date.now() / 1000);
+  if (remSec <= 0) return 'DECAYING!';
+  const d = Math.floor(remSec / 86400);
+  const h = Math.floor((remSec % 86400) / 3600);
+  const m = Math.floor((remSec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m!`;
+}
+
+async function processTeamChatBotCommands(teamChat, cfg, telemetry) {
+  if (cfg?.chatBotEnabled === false || !Array.isArray(teamChat) || teamChat.length === 0) return;
+  if (!hasSeededChatBot) {
+    for (const m of teamChat) {
+      processedChatBotKeys.add(`${m.steamId}:${m.time}:${m.message}`);
+    }
+    hasSeededChatBot = true;
+    return;
+  }
+  if (Date.now() - lastChatBotReplyAt < 4000) return;
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  for (const m of teamChat.slice(-8)) {
+    const rawMsg = String(m?.message || '').trim();
+    const key = `${m?.steamId}:${m?.time}:${rawMsg}`;
+    if (!rawMsg || processedChatBotKeys.has(key)) continue;
+    processedChatBotKeys.add(key);
+    if (processedChatBotKeys.size > 400) {
+      const firstKey = processedChatBotKeys.values().next().value;
+      if (firstKey) processedChatBotKeys.delete(firstKey);
+    }
+    if (rawMsg.startsWith('🤖') || !rawMsg.startsWith('!')) continue;
+    if (m.time && Math.abs(nowSec - Number(m.time)) > 180) continue;
+
+    const cmd = rawMsg.split(/\s+/)[0].toLowerCase();
+    let reply = '';
+    if (cmd === '!help' || cmd === '!bot') {
+      reply = '🤖 Commands: !time (day/night), !pop (players/queue/wipe), !upkeep (TC left), !timers (active timers)';
+    } else if (cmd === '!time' || cmd === '!day' || cmd === '!night') {
+      const t = telemetry?.time;
+      reply = t
+        ? `🤖 Clock: ${t.isDay ? 'Day' : 'Night'} ${t.formatted} — ${t.nextPhase} in ${t.minutesUntilChange}m`
+        : '🤖 Clock not synced yet.';
+    } else if (cmd === '!pop' || cmd === '!wipe') {
+      const info = telemetry?.serverInfo;
+      if (info) {
+        const wipeSec = info.wipeTime ? Math.max(0, nowSec - Number(info.wipeTime)) : 0;
+        const wipeStr = wipeSec > 0 ? ` • Wipe ${Math.floor(wipeSec / 86400)}d ${Math.floor((wipeSec % 86400) / 3600)}h` : '';
+        const qStr = info.queuedPlayers > 0 ? ` (Q:${info.queuedPlayers})` : '';
+        reply = `🤖 ${String(info.name || 'Server').slice(0, 32)}: ${info.players ?? '?'}/${info.maxPlayers ?? '?'}${qStr}${wipeStr}`;
+      } else {
+        reply = '🤖 Server info not synced yet.';
+      }
+    } else if (cmd === '!upkeep' || cmd === '!tc') {
+      const tcs = (telemetry?.smartDevices || []).filter((d) => d.entityType === 'storage');
+      reply = tcs.length
+        ? `🤖 TC Upkeep: ${tcs.slice(0, 4).map((tc) => `${tc.name}: ${formatBotTcUpkeep(tc.protectionExpiry, tc.hasProtection)}`).join(' | ')}`
+        : '🤖 No TC Storage Monitors linked yet.';
+    } else if (cmd === '!timers') {
+      const nowMs = Date.now();
+      const live = (Array.isArray(squadState.activeTimers) ? squadState.activeTimers : [])
+        .filter((t) => !t.paused && t.endsAt > nowMs)
+        .sort((a, b) => a.endsAt - b.endsAt)
+        .slice(0, 3);
+      reply = live.length
+        ? `🤖 Timers: ${live
+            .map((t) => {
+              const s = Math.max(0, Math.round((t.endsAt - nowMs) / 1000));
+              return `${String(t.name).slice(0, 22)} (${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s)`;
+            })
+            .join(' | ')}`
+        : '🤖 No active monument/crate timers.';
+    }
+
+    if (reply) {
+      lastChatBotReplyAt = Date.now();
+      try {
+        await sendRustPlusCommand(cfg, 13, encodeRustPlusSendMessage(reply));
+        squadState.rustPlusTelemetry.teamChat = [
+          ...(squadState.rustPlusTelemetry.teamChat || []),
+          { steamId: cfg.steamId || cfg.playerId || '0', name: '🤖 Companion', message: reply, color: '#a855f7', time: Math.floor(Date.now() / 1000) }
+        ].slice(-30);
+        saveState(squadState);
+        broadcastState('state_update');
+      } catch (err) {
+        console.log('[Rust+ Bot] Chat reply skipped:', err.message);
+      }
+      break;
+    }
+  }
+}
 let rustPlusShopInterval = null;
 let isRustPlusPolling = false;
 
@@ -1710,128 +1802,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     const tk = String(m?.type ?? 'u');
     byType[tk] = (byType[tk] || 0) + 1;
   }
-  const vmMarkers = rawMarkers.filter((m) => m.type === 3);
-
-  const liveShops = [];
-  const vendingPins = [];
-  const newSteals = [];
-  const newWatchlistHits = [];
-  const nextOrderSnapshot = new Map();
-  const watchlist = Array.isArray(squadState.shopWatchlist) ? squadState.shopWatchlist : [];
   const nowTs = Date.now();
-
-  for (const mk of vmMarkers) {
-    const nx = Math.min(1, Math.max(0, mk.x / mapSize));
-    const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
-    const wx = Number((mk.x - mapSize / 2).toFixed(1));
-    const wy = Number((mk.y - mapSize / 2).toFixed(1));
-    const grid = worldGridLabelFromRustPlus(mk.x, mk.y, mapSize);
-    const shopName = String(mk.name || '').trim() || `Vending [${grid}]`;
-    const pinOrders = [];
-    let inStockCount = 0;
-    let stealCount = 0;
-
-    for (const so of mk.sellOrders || []) {
-      const buyInfo = resolveRustItemInfo(so.itemId);
-      const buyItem = so.itemIsBlueprint ? `${buyInfo.name} (BP)` : buyInfo.name;
-      const buyQty = Math.max(1, Number(so.quantity) || 1);
-      const payInfo = resolveRustItemInfo(so.currencyId);
-      const payItem = payInfo.name;
-      const payQty = Math.max(1, Number(so.costPerItem) || 1);
-      const inStock = Math.max(0, Number(so.amountInStock) || 0);
-      if (inStock > 0) inStockCount++;
-      const id = `rp-${mk.id}-${so.itemId}-${so.currencyId}`;
-
-      const prevOrder = prevShopOrderSnapshot.get(id);
-      nextOrderSnapshot.set(id, { inStock, payQty });
-      let stockDelta = '';
-      if (hasSeededShopSnapshot) {
-        if (!prevOrder && inStock > 0) stockDelta = 'new';
-        else if (prevOrder && inStock > prevOrder.inStock) stockDelta = `+${inStock - prevOrder.inStock}`;
-        else if (prevOrder && inStock < prevOrder.inStock && inStock > 0) stockDelta = `${inStock - prevOrder.inStock}`;
-        else if (prevOrder && payQty < prevOrder.payQty) stockDelta = 'priceDrop';
-      }
-
-      let isSteal = false;
-      const lowerName = buyItem.toLowerCase();
-      if (inStock > 0 && (payItem === 'Sulfur' || payItem === 'Sulfur Ore')) {
-        const rule = BACKEND_STEAL_LIMITS.find((r) => lowerName.includes(r.match));
-        const effectiveSulfur = payItem === 'Sulfur Ore' ? payQty * 0.9 : payQty;
-        if (rule && effectiveSulfur / buyQty <= rule.maxSulfur) {
-          isSteal = true;
-          stealCount++;
-          const stealKey = `${shopName}:${grid}:${buyItem}:${payQty}:${payItem}`;
-          if (!sentShopStealAlerts.has(stealKey)) {
-            sentShopStealAlerts.add(stealKey);
-            newSteals.push({ id, shopName, grid, buyQty, buyItem, payQty, payItem, inStock, why: rule.why });
-          }
-        }
-      }
-
-      let watchlistMatch = false;
-      if (inStock > 0 && watchlist.length > 0) {
-        for (const wl of watchlist) {
-          const q = String(wl?.query || '').trim().toLowerCase();
-          if (!q || !lowerName.includes(q)) continue;
-          const maxP = Number(wl.maxPrice) || 0;
-          if (maxP > 0 && payQty > maxP) continue;
-          watchlistMatch = true;
-          const wlKey = `${serverKey}:${id}:${payQty}:${q}`;
-          if (!sentWatchlistAlerts.has(wlKey)) {
-            sentWatchlistAlerts.add(wlKey);
-            newWatchlistHits.push({ query: wl.query, shopName, grid, buyQty, buyItem, payQty, payItem, inStock });
-          }
-          break;
-        }
-      }
-
-      const entry = {
-        id,
-        markerId: String(mk.id),
-        liveSource: 'rustplus',
-        shopName,
-        buyQty,
-        buyItem,
-        buyShort: buyInfo.shortname,
-        payQty,
-        payItem,
-        payShort: payInfo.shortname,
-        inStock,
-        stockDelta,
-        watchlistMatch,
-        wx,
-        wy,
-        nx: Number(nx.toFixed(4)),
-        ny: Number(ny.toFixed(4)),
-        isBlueprint: Boolean(so.itemIsBlueprint),
-        category: inferShopCategoryFromName(buyItem),
-        grid,
-        updatedAt: nowTs,
-        notes: `Live Rust+ vending "${shopName}" at [${grid}] — ${inStock > 0 ? `${inStock} in stock` : 'SOLD OUT'}.`
-      };
-      liveShops.push(entry);
-      pinOrders.push({ id, buyQty, buyItem, payQty, payItem, inStock, isSteal, watchlistMatch });
-    }
-
-    vendingPins.push({
-      id: `rp-pin-${mk.id}`,
-      markerId: String(mk.id),
-      name: shopName,
-      grid,
-      wx,
-      wy,
-      nx: Number(nx.toFixed(4)),
-      ny: Number(ny.toFixed(4)),
-      inStockCount,
-      totalOrders: pinOrders.length,
-      stealCount,
-      orders: pinOrders
-    });
-  }
-  if (vmMarkers.length > 0) {
-    prevShopOrderSnapshot = nextOrderSnapshot;
-    hasSeededShopSnapshot = true;
-  }
 
   // Decode Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Travelling Vendor, Named Event Zones)
   const liveEvents = [];
@@ -2025,27 +1996,20 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     mapSize
   };
 
-  const manualShops = (Array.isArray(squadState.customShops) ? squadState.customShops : []).filter(
-    (cs) => cs && cs.liveSource !== 'rustplus'
-  );
   const markerSummary = {
     total: rawMarkers.length,
     byType,
-    vendingCount: vmMarkers.length,
-    ordersCount: liveShops.length,
     eventsCount: liveEvents.length,
     mode: snapshot?.mode || 'auto',
     markerError: snapshot?.markerError || '',
     updatedAt: nowTs
   };
 
-  squadState.customShops = [...liveShops, ...manualShops];
   squadState.rustPlusTelemetry = {
     serverInfo: nextServerInfo,
     time: timeSummary,
     mapMeta: prevMapMeta,
     liveEvents,
-    vendingPins,
     teamMembers,
     recentDeaths,
     mapNotes,
@@ -2060,11 +2024,13 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     mapSize,
     ...(nextServerInfo.name ? { serverName: nextServerInfo.name } : {}),
     lastPolledAt: nowTs,
-    lastStatus: `🟢 Live Rust+ (${snapshot?.mode || 'relay'}) • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • 🛒 ${vmMarkers.length} shops (${liveShops.length} deals) • ⚡ ${liveEvents.length} events • 📍 ${rawMarkers.length} markers`
+    lastStatus: `🟢 Live Rust+ (${snapshot?.mode || 'relay'}) • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • ⚡ ${liveEvents.length} events • 📍 ${rawMarkers.length} markers`
   };
-  console.log(`[Rust+] Sync OK (${snapshot?.mode}): server=${nextServerInfo.name || serverKey} markers=${rawMarkers.length} byType=${JSON.stringify(byType)} shops=${vmMarkers.length} orders=${liveShops.length} events=${liveEvents.length} team=${teamMembers.length}`);
+  console.log(`[Rust+] Sync OK (${snapshot?.mode}): server=${nextServerInfo.name || serverKey} markers=${rawMarkers.length} byType=${JSON.stringify(byType)} events=${liveEvents.length} team=${teamMembers.length}`);
   saveState(squadState);
   broadcastState('state_update');
+
+  await processTeamChatBotCommands(teamChat, squadState.rustPlusShopConfig, squadState.rustPlusTelemetry);
 
   const settings = resolveDiscordSettings();
   const hasTarget = Boolean(
@@ -2072,34 +2038,12 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
       (settings.botToken && (settings.channelId || settings.dmUserId))
   );
   if (hasTarget) {
-    if (squadState.rustPlusShopConfig.discordAlertSteals && newSteals.length > 0) {
-      const topList = newSteals
-        .slice(0, 5)
-        .map((s) => `• **${s.buyQty}× ${s.buyItem}** for **${s.payQty} ${s.payItem}** at **[${s.grid}]** ("${s.shopName}" • ${s.inStock} stock)`)
-        .join('\n');
-      sendDiscordNotification({
-        title: `🔥 S-Tier Player Shop Steal Live on Map!`,
-        description: `${topList}\n\nOpen **📍 Base & Trade Hub → 🛒 Trades** to review deals.`,
-        color: 0xa855f7
-      }).catch(() => {});
-    }
     if (squadState.rustPlusShopConfig.discordAlertEvents && newEvents.length > 0) {
       const evtLines = newEvents.slice(0, 4).map((e) => `• ${e.icon} **${e.label}** spotted at **[${e.grid}]**`).join('\n');
       sendDiscordNotification({
         title: `📡 Live Rust+ World Event Alert`,
         description: `${evtLines}${nextServerInfo.name ? `\n\nServer: **${nextServerInfo.name}**` : ''}`,
         color: 0x38bdf8
-      }).catch(() => {});
-    }
-    if (newWatchlistHits.length > 0) {
-      const wlLines = newWatchlistHits
-        .slice(0, 5)
-        .map((w) => `• **[${w.query}]** → **${w.buyQty}× ${w.buyItem}** for **${w.payQty} ${w.payItem}** at **[${w.grid}]** ("${w.shopName}", ${w.inStock} left)`)
-        .join('\n');
-      sendDiscordNotification({
-        title: `🎯 Shop Watchlist Item Live on Map!`,
-        description: `${wlLines}`,
-        color: 0x22c55e
       }).catch(() => {});
     }
     if (triggeredAlarms.length > 0) {
@@ -2122,11 +2066,8 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
 
   return {
     ok: true,
-    shopsCount: vmMarkers.length,
-    ordersCount: liveShops.length,
     eventsCount: liveEvents.length,
     teamCount: teamMembers.length,
-    stealsCount: newSteals.length,
     lastStatus: squadState.rustPlusShopConfig.lastStatus
   };
 }
@@ -3235,7 +3176,7 @@ const server = http.createServer(async (req, res) => {
         playerToken: String(body.playerToken ?? squadState.rustPlusShopConfig?.playerToken ?? '').trim(),
         useProxy: Boolean(body.useProxy),
         autoPoll: Boolean(body.autoPoll),
-        discordAlertSteals: body.discordAlertSteals !== false,
+        chatBotEnabled: body.chatBotEnabled !== false,
         discordAlertEvents: body.discordAlertEvents !== false
       };
       configureRustPlusShopPoller();
@@ -3445,7 +3386,7 @@ const server = http.createServer(async (req, res) => {
         ...(body.playerToken !== undefined ? { playerToken: String(body.playerToken).trim() } : {}),
         ...(body.useProxy !== undefined ? { useProxy: Boolean(body.useProxy) } : {}),
         ...(body.autoPoll !== undefined ? { autoPoll: Boolean(body.autoPoll) } : {}),
-        ...(body.discordAlertSteals !== undefined ? { discordAlertSteals: Boolean(body.discordAlertSteals) } : {}),
+        ...(body.chatBotEnabled !== undefined ? { chatBotEnabled: Boolean(body.chatBotEnabled) } : {}),
         ...(body.discordAlertEvents !== undefined ? { discordAlertEvents: Boolean(body.discordAlertEvents) } : {})
       };
       try {
