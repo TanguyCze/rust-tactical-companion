@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116d" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116e" />
 </head>
 <body>
 
@@ -63,6 +63,9 @@
       </button>
       <button class="nav-tab" data-tab="tab-recycler">
         ♻️ Recycler &amp; Decay <span class="nav-badge">SCRAP + BOOM</span>
+      </button>
+      <button class="nav-tab" data-tab="tab-shops">
+        🛒 Shops &amp; Trades <span class="nav-badge">VENDORS</span>
       </button>
       <button class="nav-tab" data-tab="tab-genetics">
         🌱 Genetics &amp; Tea <span class="nav-badge">6-GENE</span>
@@ -754,6 +757,95 @@
     </section>
 
     <!-- ==================================================================
+         TAB 6: IN-GAME SHOPS, VENDING TRADES & RECYCLE PROFIT SEARCH
+         ================================================================== -->
+    <section id="tab-shops" class="tab-panel">
+      <div class="panel" style="margin-bottom: 16px;">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">🛒 In-Game Shops &amp; NPC Vending Machine Trades</div>
+            <div class="panel-subtitle">Search any Rust shop trade across Outpost, Bandit Camp, Fishing Village, Ranch &amp; Water Wells — includes live map grids &amp; recycle loops</div>
+          </div>
+          <span id="shopCountBadge" class="target-tier-tag">47 TRADES</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+          <input id="shopSearchInput" type="text" class="input" style="flex: 1; min-width: 260px;" placeholder="🔍 Search any item, resource, weapon, vehicle, or shop (e.g. Jackhammer, Wood, F1 Grenade, Minicopter, Fertilizer, Sub)..." />
+          <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕ Clear</button>
+        </div>
+
+        <div id="shopFilterBar" style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="filter-pill active" data-sfilter="all">All Trades</button>
+          <button type="button" class="filter-pill" data-sfilter="meta">⭐ Meta &amp; Recycle Loops</button>
+          <button type="button" class="filter-pill" data-sfilter="Outpost">🛡️ Outpost</button>
+          <button type="button" class="filter-pill" data-sfilter="Bandit Camp">🏴‍☠️ Bandit Camp</button>
+          <button type="button" class="filter-pill" data-sfilter="Fishing Village">⚓ Fishing Village</button>
+          <button type="button" class="filter-pill" data-sfilter="Ranch / Barn">🐎 Ranch / Barn</button>
+          <button type="button" class="filter-pill" data-sfilter="Water Well">🚰 Water Well</button>
+          <button type="button" class="filter-pill" data-sfilter="custom">📌 Player Shops</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="align-items: start;">
+        <!-- Left Column: Filterable Trades List -->
+        <div class="panel">
+          <div class="panel-header" style="margin-bottom: 10px;">
+            <div>
+              <div class="panel-title">🏪 Matching Vendor Trades</div>
+              <div class="panel-subtitle">Click any trade to calculate batch quantities &amp; recycle yields</div>
+            </div>
+          </div>
+          <div id="shopTradesList" class="monument-list" style="max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+
+        <!-- Right Column: Batch Calculator + Custom Player Shops -->
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div id="shopTradeCalcPanel" class="panel">
+            <div class="panel-header" style="margin-bottom: 10px;">
+              <div>
+                <div class="panel-title">🧮 Batch Trade &amp; Recycle Loop Calculator</div>
+                <div class="panel-subtitle">Calculate bulk trades or check max amount your currency budget buys</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px;">
+              <div style="flex: 1; min-width: 130px;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATCH MULTIPLIER (×)</label>
+                <input id="shopBatchCountInput" type="number" class="input" value="1" min="1" max="500" style="width: 100%;" />
+              </div>
+              <div style="flex: 1; min-width: 160px;">
+                <label id="shopBudgetLabel" style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">OR AVAILABLE BUDGET</label>
+                <input id="shopBudgetInput" type="number" class="input" value="" min="0" placeholder="e.g. 1000 Scrap / Stone" style="width: 100%;" />
+              </div>
+            </div>
+            <label style="display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; margin-bottom: 12px;">
+              <input id="shopDroneFeeCb" type="checkbox" />
+              <span>🚁 Drone Marketplace Delivery (+20 Scrap per order, drone-eligible shops only)</span>
+            </label>
+            <div id="shopTradeCalcResult"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header" style="margin-bottom: 10px;">
+              <div>
+                <div class="panel-title">📌 Squad Server Player Shops Tracker</div>
+                <div class="panel-subtitle">Log player-run vending deals spotted on your server — synced &amp; searchable above</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+              <input id="customShopSellInput" type="text" class="input" style="flex: 2; min-width: 140px;" placeholder="Selling (e.g. Garage Door)" />
+              <input id="customShopCostInput" type="text" class="input" style="flex: 2; min-width: 130px;" placeholder="Cost (e.g. 300 Sulfur)" />
+              <input id="customShopGridInput" type="text" class="input" style="width: 82px;" placeholder="Grid (M14)" />
+              <button id="addCustomShopBtn" type="button" class="btn btn-primary btn-sm">+ Save Shop</button>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              Note: Facepunch vanilla Dynamic Pricing shifts NPC prices slightly by supply/demand across wipe days.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================
          TAB 7: RUSTMAPS BASE SPOT ANALYZER
          ================================================================== -->
     <section id="tab-basefinder" class="tab-panel active">
@@ -1002,7 +1094,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116d"></script>
-  <script src="js/app.js?v=20261116d"></script>
+  <script src="js/data.js?v=20261116e"></script>
+  <script src="js/app.js?v=20261116e"></script>
 </body>
 </html>

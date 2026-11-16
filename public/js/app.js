@@ -83,6 +83,7 @@
     raidStash: { ...DEFAULT_RAID_STASH },
     discordWebhookUrl: '',
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
+    customShops: [],
     savedClones: [
       { id: 'c1', crop: 'Hemp', genes: 'YGYWGG' },
       { id: 'c2', crop: 'Hemp', genes: 'GGYYXW' },
@@ -121,6 +122,9 @@
   let selectedMonumentFilter = 'all';
   let selectedMonumentId = 'launch_site';
   let selectedCloneCropFilter = 'Hemp';
+  let selectedShopFilter = 'all';
+  let shopSearchQuery = '';
+  let selectedShopTradeId = 'outpost_stone_wood';
 
   // Load local fallback first
   try {
@@ -131,7 +135,8 @@
         ...appState,
         ...parsedSaved,
         raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
-        discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) }
+        discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
+        customShops: Array.isArray(parsedSaved.customShops) ? parsedSaved.customShops : appState.customShops
       };
     }
   } catch (_) {}
@@ -194,7 +199,8 @@
               ...appState,
               ...msg.state,
               raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) },
-              discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) }
+              discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
+              customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || [])
             };
             saveLocalFallback();
             if (firstHydrate) {
@@ -6392,6 +6398,10 @@
         return rt.includes('outpost') && !rt.includes('mining');
       case 'bandit_camp':
         return rt.includes('bandit');
+      case 'fishing_village':
+        return rt.includes('fishing village');
+      case 'ranch':
+        return rt.includes('ranch') || rt.includes('large barn') || rt.includes('stables');
       default: {
         const mn = String(atlasItem.name || '').toLowerCase();
         return !rt.includes('cave') && (rt.includes(mn) || mn.includes(rt));
@@ -7937,6 +7947,7 @@
     renderBaseFinderRoute();
     renderBaseFinderMap();
     renderMonumentAtlas();
+    renderShopsModule();
   }
 
   function renderBaseFinderFarming() {
@@ -8185,6 +8196,7 @@
     renderBaseFinderRoute();
     renderBaseFinderMap();
     renderMonumentAtlas();
+    renderShopsModule();
   }
 
   async function bfLoadHeatmapCanvas(key, data) {
@@ -8583,6 +8595,368 @@
   }
 
   // =========================================================================
+  // MODULE 8: IN-GAME SHOPS, VENDING TRADES & RECYCLE PROFIT SEARCH
+  // =========================================================================
+  function getAllNormalizedShopTrades() {
+    const npc = (DATA.shopTrades || []).map((t) => ({ ...t, isCustom: false }));
+    const custom = (Array.isArray(appState.customShops) ? appState.customShops : []).map((cs) => ({
+      id: cs.id,
+      isCustom: true,
+      monument: 'Player Shop',
+      monumentId: 'custom',
+      vendor: cs.grid ? `Vending [${cs.grid}]` : 'Player Vending',
+      grid: cs.grid || '',
+      category: 'custom',
+      meta: false,
+      drone: true,
+      buyItem: cs.buyItem || cs.sellItem || 'Item',
+      buyQty: Math.max(1, Number(cs.buyQty) || 1),
+      payItem: cs.payItem || cs.costText || 'Scrap',
+      payQty: Math.max(1, Number(cs.payQty) || 1),
+      notes: cs.notes || 'Player vending deal logged by squad.'
+    }));
+    return [...custom, ...npc];
+  }
+
+  function resolveShopGridBadge(trade) {
+    if (trade.isCustom) {
+      return trade.grid ? `[${trade.grid}]` : '[Server Map]';
+    }
+    if (bfMapData && Array.isArray(bfMapData.monuments) && trade.monumentId) {
+      const selSpot = getSelectedBuildSpot();
+      const matches = bfMapData.monuments
+        .filter((rm) => bfDoesMonumentMatchAtlas(rm.type, { id: trade.monumentId }))
+        .map((rm) => ({
+          grid: bfWorldToGrid(rm.x, rm.y, bfMapData.size),
+          dist: selSpot ? Math.round(Math.hypot(rm.x - selSpot.wx, rm.y - selSpot.wy)) : null
+        }));
+      if (matches.length > 0) {
+        if (selSpot) matches.sort((a, b) => (a.dist ?? 99999) - (b.dist ?? 99999));
+        const uniqueGrids = Array.from(new Set(matches.map((m) => m.grid)));
+        const gridTag =
+          uniqueGrids.length <= 2
+            ? `[${uniqueGrids.join(', ')}]`
+            : `[${uniqueGrids.slice(0, 2).join(', ')} +${uniqueGrids.length - 2}]`;
+        const distTag = matches[0].dist !== null ? ` • ${matches[0].dist}m` : '';
+        return `${gridTag}${distTag}`;
+      }
+      return '[N/A on Map]';
+    }
+    return '';
+  }
+
+  function formatRecycleYieldLine(obj, batch, scale = 1) {
+    if (!obj) return '';
+    const parts = [];
+    const scaled = (v) => Math.round(v * scale) * batch;
+    if (obj.gp) parts.push(`💥 <strong>${scaled(obj.gp).toLocaleString()}</strong> Gunpowder`);
+    if (obj.metal) parts.push(`🔩 <strong>${scaled(obj.metal).toLocaleString()}</strong> Metal`);
+    if (obj.cloth) parts.push(`🌿 <strong>${scaled(obj.cloth).toLocaleString()}</strong> Cloth`);
+    if (obj.hqm) parts.push(`💎 <strong>${scaled(obj.hqm).toLocaleString()}</strong> HQM`);
+    if (obj.techTrash) parts.push(`⚡ <strong>${scaled(obj.techTrash).toLocaleString()}</strong> Tech Trash`);
+    return parts.join(' • ');
+  }
+
+  function renderSelectedShopCalculator(allTrades) {
+    const outEl = document.getElementById('shopTradeCalcResult');
+    if (!outEl) return;
+    const list = allTrades || getAllNormalizedShopTrades();
+    const sel = list.find((t) => t.id === selectedShopTradeId) || list[0];
+    if (!sel) {
+      outEl.innerHTML = `<div style="padding:14px; color:var(--text-muted); text-align:center;">Select any shop trade on the left to calculate bulk trades.</div>`;
+      return;
+    }
+
+    const budgetLabelEl = document.getElementById('shopBudgetLabel');
+    if (budgetLabelEl) {
+      budgetLabelEl.textContent = `OR AVAILABLE ${String(sel.payItem || 'BUDGET').toUpperCase()} BUDGET`;
+    }
+
+    const batchEl = document.getElementById('shopBatchCountInput');
+    const budgetEl = document.getElementById('shopBudgetInput');
+    const droneEl = document.getElementById('shopDroneFeeCb');
+    const rawBudget = budgetEl && budgetEl.value !== '' ? Math.max(0, parseInt(budgetEl.value, 10) || 0) : 0;
+    const useDrone = Boolean(droneEl?.checked);
+    const droneFee = useDrone && sel.drone ? 20 : 0;
+    const isScrapPay = String(sel.payItem || '').toLowerCase() === 'scrap';
+
+    let batch = Math.max(1, parseInt(batchEl?.value, 10) || 1);
+    let budgetNote = '';
+    if (budgetEl && budgetEl.value !== '') {
+      const availForTrade = isScrapPay ? Math.max(0, rawBudget - droneFee) : rawBudget;
+      const affordable = sel.payQty > 0 ? Math.floor(availForTrade / sel.payQty) : 0;
+      if (affordable <= 0) {
+        batch = 1;
+        budgetNote = `<div style="margin-top:6px; font-size:11.5px; color:#f87171;">⚠️ Budget (${rawBudget.toLocaleString()} ${escapeHtml(sel.payItem)}) is short — need at least ${sel.payQty.toLocaleString()} ${escapeHtml(sel.payItem)}${droneFee && isScrapPay ? ' (+ 20 Drone)' : ''}.</div>`;
+      } else {
+        batch = Math.min(500, affordable);
+        if (batchEl) batchEl.value = String(batch);
+        const spent = affordable * sel.payQty + (isScrapPay ? droneFee : 0);
+        const leftover = Math.max(0, rawBudget - spent);
+        budgetNote = `<div style="margin-top:6px; font-size:11.5px; color:#4ade80;">💰 With <strong>${rawBudget.toLocaleString()} ${escapeHtml(sel.payItem)}</strong>: buy <strong>${affordable}× batches</strong> (${leftover.toLocaleString()} ${escapeHtml(sel.payItem)} leftover).</div>`;
+      }
+    }
+
+    const totalGet = sel.buyQty * batch;
+    const totalPay = sel.payQty * batch;
+    const paySummary =
+      droneFee > 0 && isScrapPay
+        ? `${(totalPay + droneFee).toLocaleString()} Scrap <span style="font-size:11px; color:var(--text-secondary);">(${totalPay.toLocaleString()} + 20 Drone)</span>`
+        : droneFee > 0
+          ? `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)} + 20 Scrap <span style="font-size:11px; color:var(--text-secondary);">(Drone)</span>`
+          : `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)}`;
+
+    const droneBanner =
+      useDrone && !sel.drone
+        ? `<div style="margin-top:6px; font-size:11px; color:#fbbf24;">🏃 In-Person Only — ${escapeHtml(sel.vendor)} cannot deliver by Marketplace Drone.</div>`
+        : '';
+
+    let recycleHtml = '';
+    if (sel.recycleTotals) {
+      const safeLine = formatRecycleYieldLine(sel.recycleTotals.safe, batch, 1);
+      const radLine = formatRecycleYieldLine(sel.recycleTotals.rad, batch, 1);
+      const redLine = formatRecycleYieldLine(sel.recycleTotals.rad, batch, 1.25);
+      const effectiveScrap = isScrapPay ? totalPay + droneFee : 0;
+      const gpRatioNote =
+        sel.recycleTotals.rad?.gp && effectiveScrap > 0
+          ? `<div style="margin-top:6px; font-size:11px; color:#93c5fd; font-family:var(--font-mono);">Ratio: ${( (sel.recycleTotals.safe.gp * batch) / effectiveScrap ).toFixed(2)} GP/Scrap (Safe) • ${((sel.recycleTotals.rad.gp * batch) / effectiveScrap).toFixed(2)} GP/Scrap (Rad)</div>`
+          : '';
+      recycleHtml = `
+        <div style="margin-top:12px; padding:10px 12px; border-radius:6px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.35);">
+          <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:#4ade80; margin-bottom:6px;">
+            ♻️ TOTAL RECYCLE YIELD FOR ${totalGet.toLocaleString()}× ${escapeHtml(sel.buyItem).toUpperCase()}:
+          </div>
+          <div style="display:flex; flex-direction:column; gap:5px; font-size:12px;">
+            <div>🛡️ <strong style="color:#facc15;">Safe Zone (40%):</strong> ${safeLine}</div>
+            <div>☢️ <strong style="color:#4ade80;">Monument Green (60%):</strong> ${radLine}</div>
+            <div>🔴 <strong style="color:#f87171;">Power Plant Red (75%):</strong> ${redLine}</div>
+          </div>
+          ${gpRatioNote}
+        </div>
+      `;
+    }
+
+    const locBadge = resolveShopGridBadge(sel);
+    outEl.innerHTML = `
+      <div style="background:var(--bg-card); border:1px solid var(--rust-orange); border-radius:8px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+          <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
+            ${escapeHtml(sel.monument)} — ${escapeHtml(sel.vendor)}
+          </span>
+          ${locBadge ? `<span class="keycard-tag keycard-Fuse">${escapeHtml(locBadge)}</span>` : ''}
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0;">
+          <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.35); border-radius:6px; padding:8px 10px;">
+            <div style="font-size:10.5px; color:var(--text-secondary); font-family:var(--font-mono);">YOU RECEIVE (${batch}×)</div>
+            <div style="font-family:var(--font-mono); font-size:16px; font-weight:800; color:#4ade80;">+${totalGet.toLocaleString()} ${escapeHtml(sel.buyItem)}</div>
+          </div>
+          <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.35); border-radius:6px; padding:8px 10px;">
+            <div style="font-size:10.5px; color:var(--text-secondary); font-family:var(--font-mono);">TOTAL COST</div>
+            <div style="font-family:var(--font-mono); font-size:15px; font-weight:800; color:var(--sulfur-yellow);">${paySummary}</div>
+          </div>
+        </div>
+        ${budgetNote}
+        ${droneBanner}
+        ${sel.notes ? `<div style="margin-top:8px; font-size:12px; color:var(--text-secondary);">${escapeHtml(sel.notes)}</div>` : ''}
+        ${recycleHtml}
+      </div>
+    `;
+  }
+
+  function renderShopsModule() {
+    const listEl = document.getElementById('shopTradesList');
+    const badgeEl = document.getElementById('shopCountBadge');
+    if (!listEl) return;
+
+    const allTrades = getAllNormalizedShopTrades();
+    const tokens = shopSearchQuery
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    const filtered = allTrades.filter((t) => {
+      if (selectedShopFilter === 'meta' && !t.meta) return false;
+      else if (selectedShopFilter === 'custom' && !t.isCustom) return false;
+      else if (
+        selectedShopFilter !== 'all' &&
+        selectedShopFilter !== 'meta' &&
+        selectedShopFilter !== 'custom' &&
+        t.monument !== selectedShopFilter
+      ) {
+        return false;
+      }
+      if (tokens.length === 0) return true;
+      const hay = [
+        t.buyItem,
+        t.payItem,
+        t.monument,
+        t.vendor,
+        t.category,
+        t.notes,
+        t.recycleSafe || '',
+        t.recycleRad || '',
+        t.grid || ''
+      ]
+        .join(' ')
+        .toLowerCase();
+      return tokens.every((tok) => hay.includes(tok));
+    });
+
+    if (badgeEl) {
+      badgeEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'TRADE' : 'TRADES'}`;
+    }
+
+    if (filtered.length > 0 && !filtered.some((t) => t.id === selectedShopTradeId)) {
+      selectedShopTradeId = filtered[0].id;
+    }
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px;">No shop trades matched "<strong>${escapeHtml(shopSearchQuery)}</strong>". Try clearing filters or log a Player Shop on the right.</div>`;
+    } else {
+      listEl.innerHTML = filtered
+        .map((t) => {
+          const isAct = t.id === selectedShopTradeId;
+          const locBadge = resolveShopGridBadge(t);
+          const dronePill = t.drone
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.14); color:#7dd3fc;">🚁 Drone OK</span>`
+            : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(148,163,184,0.16); color:#cbd5e1;">🏃 In-Person</span>`;
+          const metaPill = t.meta
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.16); color:#fde047;">⭐ Meta</span>`
+            : '';
+          const delBtn = t.isCustom
+            ? `<button type="button" class="btn btn-sm shop-del-btn" data-del-shop="${escapeHtml(t.id)}" style="padding:2px 7px; font-size:10.5px;">✕</button>`
+            : '';
+          return `
+            <div class="monument-item shop-trade-card ${isAct ? 'active' : ''}" data-shop-id="${escapeHtml(t.id)}">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                <div style="font-family:var(--font-display); font-weight:700; font-size:14.5px; color:#fff;">
+                  <span style="color:#4ade80;">${t.buyQty.toLocaleString()}× ${escapeHtml(t.buyItem)}</span>
+                  <span style="color:var(--text-muted); margin:0 5px;">⇄</span>
+                  <span style="color:var(--sulfur-yellow);">${t.payQty.toLocaleString()}× ${escapeHtml(t.payItem)}</span>
+                </div>
+                <div style="display:flex; gap:5px; align-items:center;">
+                  ${metaPill}
+                  ${dronePill}
+                  ${delBtn}
+                </div>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:5px; font-size:11.5px; color:var(--text-secondary); flex-wrap:wrap;">
+                <span>📍 <strong style="color:#e2e8f0;">${escapeHtml(t.monument)}</strong> • ${escapeHtml(t.vendor)} ${locBadge ? `<span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">${escapeHtml(locBadge)}</span>` : ''}</span>
+                ${t.recycleSafe ? `<span style="color:#86efac; font-family:var(--font-mono); font-size:10.5px;">♻️ ${escapeHtml(t.recycleSafe)}</span>` : ''}
+              </div>
+              ${t.notes ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.notes)}</div>` : ''}
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    listEl.querySelectorAll('.shop-trade-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.shop-del-btn')) return;
+        selectedShopTradeId = card.getAttribute('data-shop-id') || '';
+        const budgetEl = document.getElementById('shopBudgetInput');
+        if (budgetEl) budgetEl.value = '';
+        const batchEl = document.getElementById('shopBatchCountInput');
+        if (batchEl) batchEl.value = '1';
+        renderShopsModule();
+      });
+    });
+
+    listEl.querySelectorAll('.shop-del-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const delId = btn.getAttribute('data-del-shop');
+        appState.customShops = (appState.customShops || []).filter((cs) => cs.id !== delId);
+        syncStateToServer();
+        renderShopsModule();
+      });
+    });
+
+    renderSelectedShopCalculator(allTrades);
+  }
+
+  function initShopsModule() {
+    const searchEl = document.getElementById('shopSearchInput');
+    const clearBtn = document.getElementById('shopClearSearchBtn');
+
+    searchEl?.addEventListener('input', () => {
+      shopSearchQuery = searchEl.value.trim();
+      renderShopsModule();
+    });
+
+    clearBtn?.addEventListener('click', () => {
+      if (searchEl) searchEl.value = '';
+      shopSearchQuery = '';
+      renderShopsModule();
+    });
+
+    document.querySelectorAll('#shopFilterBar .filter-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedShopFilter = btn.getAttribute('data-sfilter') || 'all';
+        renderShopsModule();
+      });
+    });
+
+    document.getElementById('shopBatchCountInput')?.addEventListener('input', () => {
+      const budgetEl = document.getElementById('shopBudgetInput');
+      if (budgetEl) budgetEl.value = '';
+      renderSelectedShopCalculator();
+    });
+
+    document.getElementById('shopBudgetInput')?.addEventListener('input', () => {
+      renderSelectedShopCalculator();
+    });
+
+    document.getElementById('shopDroneFeeCb')?.addEventListener('change', () => {
+      renderSelectedShopCalculator();
+    });
+
+    const addCustomShop = () => {
+      const sellEl = document.getElementById('customShopSellInput');
+      const costEl = document.getElementById('customShopCostInput');
+      const gridEl = document.getElementById('customShopGridInput');
+      const rawSell = sellEl?.value.trim() || '';
+      const rawCost = costEl?.value.trim() || '';
+      const grid = gridEl?.value.trim().toUpperCase() || '';
+      if (!rawSell || !rawCost) return;
+
+      const sellMatch = rawSell.match(/^(\d+)\s+(.+)$/);
+      const costMatch = rawCost.match(/^(\d+)\s+(.+)$/);
+      const entry = {
+        id: 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        buyQty: sellMatch ? parseInt(sellMatch[1], 10) : 1,
+        buyItem: sellMatch ? sellMatch[2].trim() : rawSell,
+        payQty: costMatch ? parseInt(costMatch[1], 10) : 1,
+        payItem: costMatch ? costMatch[2].trim() : rawCost,
+        grid,
+        notes: 'Logged by squad on live server.'
+      };
+      appState.customShops = [entry, ...(Array.isArray(appState.customShops) ? appState.customShops : [])];
+      selectedShopTradeId = entry.id;
+      if (sellEl) sellEl.value = '';
+      if (costEl) costEl.value = '';
+      if (gridEl) gridEl.value = '';
+      syncStateToServer();
+      renderShopsModule();
+    };
+
+    document.getElementById('addCustomShopBtn')?.addEventListener('click', addCustomShop);
+    ['customShopSellInput', 'customShopCostInput', 'customShopGridInput'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addCustomShop();
+        }
+      });
+    });
+
+    renderShopsModule();
+  }
+
+  // =========================================================================
   // MASTER RENDER & INITIALIZATION
   // =========================================================================
   function renderAll() {
@@ -8601,6 +8975,7 @@
     renderRecyclerCalculator();
     renderDieselCalculator();
     renderDecayCalculator();
+    renderShopsModule();
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -8618,6 +8993,7 @@
     safeRun(initTimerModule);
     safeRun(initGeneticsModule);
     safeRun(initRecyclerDieselDecayModule);
+    safeRun(initShopsModule);
     safeRun(initBaseFinderModule);
     safeRun(renderAll);
     safeRun(initSquadSSE);

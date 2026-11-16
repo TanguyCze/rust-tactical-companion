@@ -90,6 +90,7 @@ const DEFAULT_STATE = {
     notifyOnComplete: true,
     notifyOn60s: false
   },
+  customShops: [],
   updatedAt: Date.now()
 };
 
