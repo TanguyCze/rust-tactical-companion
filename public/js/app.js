@@ -9,6 +9,16 @@
   'use strict';
 
   const DATA = window.RUST_DATA;
+  const BASE_DOC_TITLE = document.title;
+
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   // =========================================================================
   // APPLICATION STATE & SQUAD REAL-TIME SYNC
@@ -105,17 +115,21 @@
     return localStorage.getItem(BM_TOKEN_KEY) || '';
   }
 
+  let lastSyncedStateJson = '';
+
   async function syncStateToServer() {
     saveLocalFallback();
     if (!isServerConnected) return;
     try {
+      const payloadJson = JSON.stringify(appState);
+      lastSyncedStateJson = payloadJson;
       const res = await fetch('/api/state', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Squad-Pin': getSquadPin()
         },
-        body: JSON.stringify(appState)
+        body: payloadJson
       });
       if (res.status === 403) {
         alert('Squad PIN required or invalid! Click "⚙️ SQUAD / PIN" in the top bar to enter your Squad PIN.');
@@ -129,15 +143,31 @@
       return;
     }
 
+    let firstHydrate = true;
     try {
       const es = new EventSource('/api/events');
       es.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
           if (msg.state) {
+            const { updatedAt, ...remoteClean } = msg.state;
+            let localClean = null;
+            if (lastSyncedStateJson) {
+              try {
+                const { updatedAt: _u, ...rest } = JSON.parse(lastSyncedStateJson);
+                localClean = JSON.stringify(rest);
+              } catch (_) {}
+            }
+            const isEcho = !firstHydrate && localClean && localClean === JSON.stringify(remoteClean);
             appState = { ...appState, ...msg.state, raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) } };
             saveLocalFallback();
-            renderAll();
+            if (firstHydrate) {
+              seedTimerAlertSets(appState.activeTimers, { seedSub60: true, seedDone: true });
+              firstHydrate = false;
+            }
+            if (!isEcho) {
+              renderAll();
+            }
           }
           isServerConnected = true;
           updateSyncBadge(true, 'LIVE SQUAD SYNC');
@@ -196,17 +226,18 @@
   // =========================================================================
   // NAVIGATION & HEADER CONTROLS
   // =========================================================================
-  function initNavigation() {
+  function switchAppTab(targetId) {
     const tabs = document.querySelectorAll('.nav-tab');
     const panels = document.querySelectorAll('.tab-panel');
+    tabs.forEach((t) => t.classList.toggle('active', t.getAttribute('data-tab') === targetId));
+    panels.forEach((p) => p.classList.toggle('active', p.id === targetId));
+  }
+
+  function initNavigation() {
+    const tabs = document.querySelectorAll('.nav-tab');
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => {
-        const targetId = tab.getAttribute('data-tab');
-        tabs.forEach((t) => t.classList.remove('active'));
-        panels.forEach((p) => p.classList.remove('active'));
-        tab.classList.add('active');
-        const panel = document.getElementById(targetId);
-        if (panel) panel.classList.add('active');
+        switchAppTab(tab.getAttribute('data-tab'));
       });
     });
 
@@ -804,8 +835,8 @@
     const nodesNormal = Math.ceil(grandSulfur / 300);
     const nodesPureTea = Math.ceil(grandSulfur / 450);
     const gpNeeded = Math.floor(grandSulfur * 0.45);
-    const electricFurnaces = Math.max(1, Math.min(18, Math.ceil(grandSulfur / 2400)));
-    const cookMins = grandSulfur > 0 ? Math.max(1, Math.ceil((grandSulfur / (electricFurnaces * 120)))) : 0;
+    const electricFurnaces = Math.max(1, Math.min(18, Math.ceil(grandSulfur / 1800)));
+    const cookMins = grandSulfur > 0 ? Math.max(1, Math.ceil((grandSulfur / (electricFurnaces * 60)))) : 0;
 
     nodeContainer.innerHTML = `
       <div style="margin-top:14px; padding:12px; background:rgba(234,179,8,0.06); border:1px solid rgba(234,179,8,0.25); border-radius:6px;">
@@ -1428,21 +1459,28 @@
 
     // Uncooked Sulfur Ore Smelting Time & Wood Calculation
     let smeltInfoHtml = '';
+    let smeltTimerMeta = null;
     if (stash.sulfur_ore > 0) {
       let smeltLine = '';
       let freeCharcoalFromSmelt = 0;
       if (furnaceChoice.startsWith('large')) {
         const numLarge = parseInt(furnaceChoice.replace('large', ''), 10) || 1;
-        // Large furnace: ~2.5s per ore per slot (~15 parallel ore slots -> ~360 ore/min), 1 Wood cooks ~1.5 Ore & makes ~0.75 Charcoal
-        const woodForOre = Math.ceil(stash.sulfur_ore / 1.5);
+        // Vanilla Large Furnace: 5 ore slots (~180 Sulfur Ore/min = 3/s total), burns 1 Wood/2s -> ~6 Ore/Wood & ~0.75 Charcoal/Wood
+        const smeltSec = Math.max(10, Math.round(stash.sulfur_ore / (numLarge * 3)));
+        const mins = Math.max(1, Math.ceil(smeltSec / 60));
+        const woodForOre = Math.ceil(stash.sulfur_ore / 6);
         freeCharcoalFromSmelt = Math.round(woodForOre * 0.75);
-        const mins = Math.max(1, Math.ceil(stash.sulfur_ore / (numLarge * 360)));
-        smeltLine = `<strong>${numLarge} Large Furnace${numLarge > 1 ? 's' : ''}:</strong> ~${mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`} • Needs <strong>${woodForOre.toLocaleString()} Wood</strong> (creates <strong>+${freeCharcoalFromSmelt.toLocaleString()} free Charcoal</strong>!)`;
+        const furnaceLabel = `${numLarge} Large Furnace${numLarge > 1 ? 's' : ''}`;
+        smeltTimerMeta = { sec: smeltSec, label: `🔥 Smelt ${stash.sulfur_ore.toLocaleString()} Ore (${furnaceLabel})` };
+        smeltLine = `<strong>${furnaceLabel}:</strong> ~${mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`} (${formatDuration(smeltSec)}) • Needs <strong>${woodForOre.toLocaleString()} Wood</strong> (creates <strong>+${freeCharcoalFromSmelt.toLocaleString()} Charcoal</strong>)`;
       } else {
         const numElec = parseInt(furnaceChoice, 10) || 6;
-        // Electric furnace: 1 Sulfur Ore/sec = 60 Ore/min per furnace (0 Wood, 0 Charcoal)
-        const mins = Math.max(1, Math.ceil(stash.sulfur_ore / (numElec * 60)));
-        smeltLine = `<strong>${numElec} Elec. Furnaces:</strong> ~${mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`} • <strong>0 Wood</strong> (produces 0 Charcoal)`;
+        // Vanilla Electric Furnace: 1 Sulfur Ore/sec = 60 Ore/min per furnace (0 Wood, 0 Charcoal)
+        const smeltSec = Math.max(10, Math.round(stash.sulfur_ore / numElec));
+        const mins = Math.max(1, Math.ceil(smeltSec / 60));
+        const furnaceLabel = `${numElec} Elec. Furnace${numElec > 1 ? 's' : ''}`;
+        smeltTimerMeta = { sec: smeltSec, label: `⚡ Smelt ${stash.sulfur_ore.toLocaleString()} Ore (${furnaceLabel})` };
+        smeltLine = `<strong>${furnaceLabel}:</strong> ~${mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`} (${formatDuration(smeltSec)}) • <strong>0 Wood</strong> (produces 0 Charcoal)`;
       }
 
       const netCharcoalGap = Math.max(0, estCharcoalNeeded - stash.charcoal - freeCharcoalFromSmelt);
@@ -1450,8 +1488,11 @@
 
       smeltInfoHtml = `
         <div style="margin-top:8px; padding:7px 9px; border-radius:5px; background:rgba(217,119,6,0.12); border:1px solid rgba(217,119,6,0.35); font-size:11.5px; color:#fde68a; line-height:1.45;">
-          🪨 <strong>Uncooked Ore Smelt (${stash.sulfur_ore.toLocaleString()} Ore):</strong> ${smeltLine}
-          ${estCharcoalNeeded > 0 ? `<br/>🔥 <strong>Charcoal for GP:</strong> Need ${estCharcoalNeeded.toLocaleString()} Charcoal (have ${stash.charcoal.toLocaleString()}${freeCharcoalFromSmelt > 0 ? ` + ${freeCharcoalFromSmelt.toLocaleString()} from smelting` : ''})${netCharcoalGap > 0 ? ` → <strong style="color:#fb923c;">short ${netCharcoalGap.toLocaleString()} Charcoal (~${extraWoodForCharcoal.toLocaleString()} Wood)</strong>` : ' → <strong style="color:#4ade80;">Charcoal covered!</strong>'}` : ''}
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <div>🪨 <strong>Uncooked Ore Smelt (${stash.sulfur_ore.toLocaleString()} Ore):</strong> ${smeltLine}</div>
+            <button id="startSmeltTimerBtn" type="button" class="btn btn-sm" style="padding:2px 8px; font-size:11px; border-color:rgba(245,158,11,0.6); color:#fcd34d;">⏱️ Start Smelt Timer</button>
+          </div>
+          ${estCharcoalNeeded > 0 ? `<div style="margin-top:3px;">🔥 <strong>Charcoal for GP:</strong> Need ${estCharcoalNeeded.toLocaleString()} Charcoal (have ${stash.charcoal.toLocaleString()}${freeCharcoalFromSmelt > 0 ? ` + ${freeCharcoalFromSmelt.toLocaleString()} from smelting` : ''})${netCharcoalGap > 0 ? ` → <strong style="color:#fb923c;">short ${netCharcoalGap.toLocaleString()} Charcoal (~${extraWoodForCharcoal.toLocaleString()} Wood)</strong>` : ' → <strong style="color:#4ade80;">Charcoal covered!</strong>'}</div>` : ''}
         </div>
       `;
     } else if (charcoalGap > 0 && rawSulfurAvailable > 0) {
@@ -1513,6 +1554,12 @@
         ${smeltInfoHtml}
       </div>
     `;
+
+    if (smeltTimerMeta) {
+      readinessEl.querySelector('#startSmeltTimerBtn')?.addEventListener('click', () => {
+        startSquadTimer(smeltTimerMeta.label, smeltTimerMeta.sec, '#f59e0b');
+      });
+    }
 
     const benchmarkTargets = [
       { id: 'sheet_metal_door', short: 'Sheet Metal Door', cost: 1575, via: '63 Explo / 1 Rkt+8' },
@@ -3097,11 +3144,13 @@
             })
           : [];
       const selSpot = getSelectedBuildSpot();
+      const resolvedGrids = realMatches.map((rm) => bfWorldToGrid(rm.x, rm.y, bfMapData.size));
+      const activeGrid = resolvedGrids[0] || m.defaultPos.grid;
       const gridBadgeText =
         realMatches.length > 0
           ? realMatches
-              .map((rm) => {
-                const g = bfWorldToGrid(rm.x, rm.y, bfMapData.size);
+              .map((rm, idx) => {
+                const g = resolvedGrids[idx];
                 const d = selSpot ? ` (${Math.round(Math.hypot(rm.x - selSpot.wx, rm.y - selSpot.wy))}m)` : '';
                 return `[${g}]${d}`;
               })
@@ -3121,7 +3170,7 @@
               </div>
             </div>
             <button class="btn btn-primary btn-sm" id="startMonumentTimerBtn" data-mid="${m.id}">
-              ⏱️ Completed! Start ${m.respawnMin}m Timer
+              ${m.safeZone ? `🚨 Safe Zone Hostile (${m.respawnMin}m)` : `⏱️ Completed! Start ${m.respawnMin}m Timer`}
             </button>
           </div>
 
@@ -3148,7 +3197,9 @@
       `;
 
       detailEl.querySelector('#startMonumentTimerBtn')?.addEventListener('click', () => {
-        startSquadTimer(`${m.name} [${m.defaultPos.grid}] — Respawn`, m.respawnMin * 60, '#3b82f6');
+        const suffix = m.safeZone ? 'Safe Zone Hostile' : 'Respawn';
+        const color = m.safeZone ? '#ef4444' : '#3b82f6';
+        startSquadTimer(`${m.name} [${activeGrid}] — ${suffix}`, m.respawnMin * 60, color);
       });
     }
 
@@ -3210,6 +3261,14 @@
   // =========================================================================
   const alerted60sIds = new Set();
   const alertedDoneIds = new Set();
+  const DESKTOP_NOTIFY_KEY = 'rust_desktop_notify_enabled';
+  let selectedTimerPresetFilter = 'all';
+  let desktopNotificationsEnabled =
+    typeof Notification !== 'undefined' &&
+    Notification.permission === 'granted' &&
+    localStorage.getItem(DESKTOP_NOTIFY_KEY) === '1';
+  let lastHudStructureSig = '';
+  let lastCardsStructureSig = '';
 
   function formatDuration(sec) {
     const s = Math.max(0, Math.floor(sec));
@@ -3222,17 +3281,165 @@
     return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   }
 
+  function getTimerRemainingMs(timer, now = Date.now()) {
+    if (!timer) return 0;
+    if (timer.paused && typeof timer.pausedRemMs === 'number') {
+      return Math.max(0, timer.pausedRemMs);
+    }
+    return Math.max(0, (timer.endsAt || 0) - now);
+  }
+
+  function formatEndClock(ts) {
+    if (!ts || !Number.isFinite(ts)) return '--:--';
+    try {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch (_) {
+      const d = new Date(ts);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+  }
+
+  function seedTimerAlertSets(timers, opts = {}) {
+    const now = Date.now();
+    const seedSub60 = opts.seedSub60 !== false;
+    const seedDone = opts.seedDone !== false;
+    (timers || []).forEach((t) => {
+      if (!t || !t.id) return;
+      const remSec = Math.ceil(getTimerRemainingMs(t, now) / 1000);
+      if (seedDone && remSec <= 0) {
+        alerted60sIds.add(t.id);
+        alertedDoneIds.add(t.id);
+      } else if (seedSub60 && remSec > 0 && remSec <= 60) {
+        alerted60sIds.add(t.id);
+      }
+    });
+  }
+
+  function fireTimerNotification(title, body) {
+    if (!desktopNotificationsEnabled || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    try {
+      const notif = new Notification(title, { body, tag: `rust-timer-${title}` });
+      setTimeout(() => {
+        try {
+          notif.close();
+        } catch (_) {}
+      }, 8000);
+    } catch (_) {}
+  }
+
+  function syncDesktopNotifyBtn() {
+    const btn = document.getElementById('desktopNotifyBtn');
+    if (!btn) return;
+    if (typeof Notification === 'undefined') {
+      btn.textContent = '🔔 Desktop Notify: N/A';
+      btn.disabled = true;
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      desktopNotificationsEnabled = false;
+      btn.textContent = '🔔 Desktop Notify: BLOCKED';
+      btn.style.borderColor = '';
+      return;
+    }
+    if (desktopNotificationsEnabled && Notification.permission === 'granted') {
+      btn.textContent = '🔔 Desktop Notify: ON';
+      btn.style.borderColor = '#22c55e';
+    } else {
+      desktopNotificationsEnabled = false;
+      btn.textContent = '🔔 Desktop Notify: OFF';
+      btn.style.borderColor = '';
+    }
+  }
+
   function startSquadTimer(name, durationSec, color = '#cd412b') {
+    const cleanDur = Math.max(1, Math.round(Number(durationSec) || 0));
     const now = Date.now();
     const timer = {
       id: 't-' + now + '-' + Math.random().toString(36).slice(2, 6),
-      name,
-      durationSec,
+      name: String(name || 'Squad Timer'),
+      durationSec: cleanDur,
       startedAt: now,
-      endsAt: now + durationSec * 1000,
+      endsAt: now + cleanDur * 1000,
+      paused: false,
+      pausedRemMs: null,
       color
     };
+    if (cleanDur <= 60) {
+      alerted60sIds.add(timer.id);
+    }
     appState.activeTimers.unshift(timer);
+    syncStateToServer();
+    renderTimersTick();
+  }
+
+  function adjustSquadTimer(id, deltaSec) {
+    const t = (appState.activeTimers || []).find((item) => item.id === id);
+    if (!t) return;
+    const now = Date.now();
+    const nextRemMs = Math.max(0, getTimerRemainingMs(t, now) + deltaSec * 1000);
+    const nextRemSec = Math.ceil(nextRemMs / 1000);
+    if (t.paused) {
+      t.pausedRemMs = nextRemMs;
+    } else {
+      t.startedAt = now;
+      t.endsAt = now + nextRemMs;
+    }
+    if (nextRemSec > (t.durationSec || 0)) {
+      t.durationSec = nextRemSec;
+    }
+    if (nextRemSec > 60) {
+      alerted60sIds.delete(t.id);
+      alertedDoneIds.delete(t.id);
+    } else if (nextRemSec > 0) {
+      alerted60sIds.add(t.id);
+      alertedDoneIds.delete(t.id);
+    }
+    syncStateToServer();
+    renderTimersTick();
+  }
+
+  function togglePauseSquadTimer(id) {
+    const t = (appState.activeTimers || []).find((item) => item.id === id);
+    if (!t) return;
+    const now = Date.now();
+    if (t.paused) {
+      const remMs = Math.max(0, typeof t.pausedRemMs === 'number' ? t.pausedRemMs : (t.durationSec || 0) * 1000);
+      t.paused = false;
+      t.pausedRemMs = null;
+      t.endsAt = now + remMs;
+    } else {
+      const remMs = getTimerRemainingMs(t, now);
+      if (remMs <= 0) return;
+      t.paused = true;
+      t.pausedRemMs = remMs;
+    }
+    syncStateToServer();
+    renderTimersTick();
+  }
+
+  function restartSquadTimer(id) {
+    const t = (appState.activeTimers || []).find((item) => item.id === id);
+    if (!t) return;
+    const now = Date.now();
+    const dur = Math.max(1, Number(t.durationSec) || 60);
+    t.paused = false;
+    t.pausedRemMs = null;
+    t.startedAt = now;
+    t.endsAt = now + dur * 1000;
+    alertedDoneIds.delete(t.id);
+    if (dur <= 60) {
+      alerted60sIds.add(t.id);
+    } else {
+      alerted60sIds.delete(t.id);
+    }
+    syncStateToServer();
+    renderTimersTick();
+  }
+
+  function removeSquadTimer(id) {
+    appState.activeTimers = (appState.activeTimers || []).filter((t) => t.id !== id);
+    alerted60sIds.delete(id);
+    alertedDoneIds.delete(id);
     syncStateToServer();
     renderTimersTick();
   }
@@ -3241,34 +3448,30 @@
     const grid = document.getElementById('timerPresetsGrid');
     if (!grid) return;
 
-    grid.innerHTML = DATA.timerPresets
-      .map(
-        (p) => `
-        <div class="target-card preset-timer-card" data-pid="${p.id}" style="border-left: 3px solid ${p.color};">
+    const presets = (DATA.timerPresets || []).filter(
+      (p) => selectedTimerPresetFilter === 'all' || p.group === selectedTimerPresetFilter
+    );
+
+    grid.innerHTML = presets
+      .map((p) => {
+        const safeColor = /^[#a-zA-Z0-9(),.\s%-]+$/.test(String(p.color || '')) ? p.color : '#cd412b';
+        return `
+        <div class="target-card preset-timer-card" data-pid="${escapeHtml(p.id)}" style="border-left: 3px solid ${safeColor};">
           <div class="target-card-top">
-            <span class="target-tier-tag">${p.category}</span>
+            <span class="target-tier-tag">${escapeHtml(p.category)}</span>
             <span style="font-family:var(--font-mono); font-size:12px; color:#fff; font-weight:700;">
               ${formatDuration(p.durationSec)}
             </span>
           </div>
-          <div class="target-name">${p.name}</div>
+          <div class="target-name">${escapeHtml(p.name)}</div>
+          ${p.hint ? `<div class="timer-preset-hint">${escapeHtml(p.hint)}</div>` : ''}
           <div style="font-size:11px; color:var(--sulfur-yellow); font-family:var(--font-mono);">
             ▶ Click to Start Live Timer
           </div>
         </div>
-      `
-      )
+      `;
+      })
       .join('');
-
-    grid.querySelectorAll('.preset-timer-card').forEach((card) => {
-      card.addEventListener('click', () => {
-        const pid = card.getAttribute('data-pid');
-        const preset = DATA.timerPresets.find((p) => p.id === pid);
-        if (preset) {
-          startSquadTimer(preset.name, preset.durationSec, preset.color);
-        }
-      });
-    });
   }
 
   function renderTimersTick() {
@@ -3280,90 +3483,312 @@
     const timers = appState.activeTimers || [];
     if (navCount) navCount.textContent = String(timers.length);
 
-    // Check audio alerts
-    timers.forEach((t) => {
-      const remSec = Math.ceil((t.endsAt - now) / 1000);
-      if (remSec <= 60 && remSec > 0 && !alerted60sIds.has(t.id)) {
-        alerted60sIds.add(t.id);
-        playAlertSound('urgent');
+    let soonestActive = null;
+    let soonestRemSec = Infinity;
+    let readyCount = 0;
+
+    // Evaluate live states & fire transition alerts (never on paused timers)
+    const snapshots = timers.map((t) => {
+      const remMs = getTimerRemainingMs(t, now);
+      const remSec = Math.max(0, Math.ceil(remMs / 1000));
+      const isPaused = Boolean(t.paused && remSec > 0);
+      const isCompleted = remSec <= 0;
+      const isUrgent = !isPaused && remSec > 0 && remSec <= 60;
+
+      if (!isPaused) {
+        if (isUrgent && !alerted60sIds.has(t.id)) {
+          alerted60sIds.add(t.id);
+          playAlertSound('urgent');
+          fireTimerNotification('⏳ 60s Warning', `${t.name} has ${formatDuration(remSec)} left`);
+        }
+        if (isCompleted && !alertedDoneIds.has(t.id)) {
+          alertedDoneIds.add(t.id);
+          playAlertSound('complete');
+          fireTimerNotification('✅ Timer Ready', `${t.name} completed / respawned!`);
+        }
       }
-      if (remSec <= 0 && !alertedDoneIds.has(t.id)) {
-        alertedDoneIds.add(t.id);
-        playAlertSound('complete');
+
+      if (isCompleted) {
+        readyCount++;
+      } else if (!isPaused && remSec < soonestRemSec) {
+        soonestRemSec = remSec;
+        soonestActive = t;
       }
+
+      return { timer: t, remSec, isPaused, isCompleted, isUrgent };
     });
 
-    // Update Header HUD Strip
+    // Live browser tab countdown
+    if (soonestActive) {
+      const shortName = soonestActive.name.length > 26 ? soonestActive.name.slice(0, 24) + '…' : soonestActive.name;
+      document.title = `[${formatDuration(soonestRemSec)}] ${shortName} — ${BASE_DOC_TITLE}`;
+    } else if (readyCount > 0) {
+      document.title = `[READY x${readyCount}] — ${BASE_DOC_TITLE}`;
+    } else {
+      document.title = BASE_DOC_TITLE;
+    }
+
+    // Update Header HUD Strip without thrashing active nodes
     if (hudStrip) {
-      if (timers.length === 0) {
-        hudStrip.innerHTML = `<span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">No active monument timers — start one in Map or Timers</span>`;
-      } else {
-        hudStrip.innerHTML = timers
-          .slice(0, 4)
-          .map((t) => {
-            const remSec = Math.max(0, Math.ceil((t.endsAt - now) / 1000));
-            const isUrgent = remSec <= 60;
-            return `
-              <div class="hud-timer-pill ${isUrgent ? 'urgent' : ''}" data-tid="${t.id}">
-                <span style="color:${t.color || '#cd412b'};">●</span>
-                <span>${t.name}</span>
-                <strong style="color:#fff;">${remSec <= 0 ? 'READY!' : formatDuration(remSec)}</strong>
-              </div>
-            `;
-          })
-          .join('');
+      const visibleSnaps = snapshots.slice(0, 4);
+      const extraCount = Math.max(0, snapshots.length - visibleSnaps.length);
+      const hudSig =
+        snapshots.length === 0
+          ? 'empty'
+          : visibleSnaps.map((s) => `${s.timer.id}:${s.timer.name}:${s.timer.color}`).join('|') +
+            (extraCount > 0 ? `|+${extraCount}` : '');
+
+      if (hudSig !== lastHudStructureSig) {
+        lastHudStructureSig = hudSig;
+        if (snapshots.length === 0) {
+          hudStrip.innerHTML = `<span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">No active monument timers — start one in Map or Timers</span>`;
+        } else {
+          const pillsHtml = visibleSnaps
+            .map(({ timer: t }) => {
+              const safeColor = /^[#a-zA-Z0-9(),.\s%-]+$/.test(String(t.color || '')) ? t.color : '#cd412b';
+              return `
+                <div class="hud-timer-pill" data-tid="${escapeHtml(t.id)}" title="Click to open Timers tab">
+                  <span style="color:${safeColor};">●</span>
+                  <span>${escapeHtml(t.name)}</span>
+                  <strong class="hud-timer-countdown" style="color:#fff;">--:--</strong>
+                </div>
+              `;
+            })
+            .join('');
+          const moreHtml =
+            extraCount > 0 ? `<button type="button" class="hud-timer-more" title="View all active timers">+${extraCount} more</button>` : '';
+          hudStrip.innerHTML = pillsHtml + moreHtml;
+        }
+      }
+
+      if (snapshots.length > 0) {
+        const pills = hudStrip.querySelectorAll('.hud-timer-pill');
+        visibleSnaps.forEach((snap, idx) => {
+          const pill = pills[idx];
+          if (!pill) return;
+          pill.classList.toggle('urgent', snap.isUrgent);
+          pill.classList.toggle('completed', snap.isCompleted);
+          pill.classList.toggle('paused', snap.isPaused);
+          const countEl = pill.querySelector('.hud-timer-countdown');
+          if (countEl) {
+            if (snap.isCompleted) {
+              countEl.textContent = 'READY!';
+              countEl.style.color = '#4ade80';
+            } else if (snap.isPaused) {
+              countEl.textContent = `${formatDuration(snap.remSec)} ⏸`;
+              countEl.style.color = '#facc15';
+            } else {
+              countEl.textContent = formatDuration(snap.remSec);
+              countEl.style.color = snap.isUrgent ? '#fca5a5' : '#fff';
+            }
+          }
+        });
       }
     }
 
-    // Update Main Timers Tab
+    // Update Main Timers Tab without rebuilding nodes during 1s ticks
     if (!container) return;
-    if (timers.length === 0) {
-      container.innerHTML = `
-        <div style="grid-column: 1 / -1; padding: 26px; text-align: center; background: var(--bg-card); border-radius: 8px; color: var(--text-secondary);">
-          No active countdowns running. Click any Monument / Oil Rig / Cargo / Bradley preset below to start a shared squad timer!
-        </div>
-      `;
-      return;
-    }
+    const cardsSig =
+      snapshots.length === 0
+        ? 'empty'
+        : snapshots.map((s) => `${s.timer.id}:${s.timer.name}:${s.timer.color}`).join('|');
 
-    container.innerHTML = timers
-      .map((t) => {
-        const remSec = Math.max(0, Math.ceil((t.endsAt - now) / 1000));
-        const pct = Math.min(100, Math.max(0, (remSec / (t.durationSec || 1)) * 100));
-        const isUrgent = remSec <= 60;
-        return `
-          <div class="timer-card ${isUrgent ? 'urgent' : ''}">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-              <div style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
-                ${t.name}
-              </div>
-              <button class="btn btn-sm remove-timer-btn" data-tid="${t.id}">✕</button>
-            </div>
-            <div class="timer-countdown" style="color:${remSec <= 0 ? '#4ade80' : isUrgent ? '#f87171' : '#fff'};">
-              ${remSec <= 0 ? 'COMPLETED / RESPAWNED!' : formatDuration(remSec)}
-            </div>
-            <div class="timer-progress-bar">
-              <div class="timer-progress-fill" style="width:${pct}%; background:${t.color || '#cd412b'};"></div>
-            </div>
+    if (cardsSig !== lastCardsStructureSig) {
+      lastCardsStructureSig = cardsSig;
+      if (snapshots.length === 0) {
+        container.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 26px; text-align: center; background: var(--bg-card); border-radius: 8px; color: var(--text-secondary);">
+            No active countdowns running. Click any Monument / Oil Rig / Cargo / Bradley preset below to start a shared squad timer!
           </div>
         `;
-      })
-      .join('');
+        return;
+      }
 
-    container.querySelectorAll('.remove-timer-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-tid');
-        appState.activeTimers = appState.activeTimers.filter((t) => t.id !== id);
-        syncStateToServer();
-        renderTimersTick();
-      });
+      container.innerHTML = snapshots
+        .map(({ timer: t }) => {
+          const safeColor = /^[#a-zA-Z0-9(),.\s%-]+$/.test(String(t.color || '')) ? t.color : '#cd412b';
+          const safeId = escapeHtml(t.id);
+          return `
+            <div class="timer-card" data-tid="${safeId}" style="border-top: 2px solid ${safeColor};">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                <div style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
+                  ${escapeHtml(t.name)}
+                </div>
+                <button type="button" class="btn btn-sm remove-timer-btn" data-tact="remove" data-tid="${safeId}" title="Remove timer">✕</button>
+              </div>
+              <div class="timer-meta-row">
+                <span class="timer-status-text">LIVE</span>
+                <span class="timer-eta-text">Ready --:--</span>
+              </div>
+              <div class="timer-countdown">--:--</div>
+              <div class="timer-progress-bar">
+                <div class="timer-progress-fill" style="width:100%; background:${safeColor};"></div>
+              </div>
+              <div class="timer-actions-row">
+                <button type="button" class="btn btn-sm timer-btn-mini" data-tact="sub60" data-tid="${safeId}">-1m</button>
+                <button type="button" class="btn btn-sm timer-btn-mini" data-tact="add60" data-tid="${safeId}">+1m</button>
+                <button type="button" class="btn btn-sm timer-btn-mini timer-pause-btn" data-tact="pause" data-tid="${safeId}">⏸ Pause</button>
+                <button type="button" class="btn btn-sm timer-btn-mini" data-tact="restart" data-tid="${safeId}">↻ Reset</button>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+    }
+
+    if (snapshots.length === 0) return;
+
+    const cards = container.querySelectorAll('.timer-card');
+    snapshots.forEach((snap, idx) => {
+      const card = cards[idx];
+      if (!card) return;
+      const t = snap.timer;
+      card.classList.toggle('urgent', snap.isUrgent);
+      card.classList.toggle('completed', snap.isCompleted);
+      card.classList.toggle('paused', snap.isPaused);
+
+      const statusEl = card.querySelector('.timer-status-text');
+      if (statusEl) {
+        statusEl.textContent = snap.isCompleted
+          ? 'COMPLETED / RESPAWNED'
+          : snap.isPaused
+          ? 'PAUSED'
+          : snap.isUrgent
+          ? 'URGENT (<60s)'
+          : 'LIVE';
+      }
+
+      const etaEl = card.querySelector('.timer-eta-text');
+      if (etaEl) {
+        etaEl.textContent = snap.isCompleted
+          ? 'Ready now'
+          : snap.isPaused
+          ? 'Paused'
+          : `Ready ${formatEndClock(t.endsAt)}`;
+      }
+
+      const countEl = card.querySelector('.timer-countdown');
+      if (countEl) {
+        if (snap.isCompleted) {
+          countEl.textContent = 'COMPLETED / RESPAWNED!';
+          countEl.style.color = '#4ade80';
+        } else if (snap.isPaused) {
+          countEl.textContent = `${formatDuration(snap.remSec)} ⏸`;
+          countEl.style.color = '#facc15';
+        } else if (snap.isUrgent) {
+          countEl.textContent = formatDuration(snap.remSec);
+          countEl.style.color = '#f87171';
+        } else {
+          countEl.textContent = formatDuration(snap.remSec);
+          countEl.style.color = '#fff';
+        }
+      }
+
+      const fillEl = card.querySelector('.timer-progress-fill');
+      if (fillEl) {
+        const pct = t.durationSec > 0 ? Math.min(100, Math.max(0, (snap.remSec / t.durationSec) * 100)) : 0;
+        fillEl.style.width = `${pct}%`;
+      }
+
+      const pauseBtn = card.querySelector('.timer-pause-btn');
+      if (pauseBtn) {
+        pauseBtn.textContent = snap.isPaused ? '▶ Resume' : '⏸ Pause';
+        pauseBtn.disabled = snap.isCompleted && !snap.isPaused;
+      }
     });
   }
 
   function initTimerModule() {
+    seedTimerAlertSets(appState.activeTimers, { seedSub60: true, seedDone: true });
     renderTimerPresets();
     renderTimersTick();
+    syncDesktopNotifyBtn();
     setInterval(renderTimersTick, 1000);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) renderTimersTick();
+    });
+
+    document.getElementById('desktopNotifyBtn')?.addEventListener('click', () => {
+      if (typeof Notification === 'undefined') return;
+      if (desktopNotificationsEnabled) {
+        desktopNotificationsEnabled = false;
+        localStorage.setItem(DESKTOP_NOTIFY_KEY, '0');
+        syncDesktopNotifyBtn();
+        return;
+      }
+      if (Notification.permission === 'granted') {
+        desktopNotificationsEnabled = true;
+        localStorage.setItem(DESKTOP_NOTIFY_KEY, '1');
+        syncDesktopNotifyBtn();
+        fireTimerNotification('🔔 Rust Companion Ready', 'Desktop timer notifications are active.');
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        syncDesktopNotifyBtn();
+        alert('Notifications are blocked in your browser site settings. Allow notifications for this site to enable them.');
+        return;
+      }
+      Notification.requestPermission().then((perm) => {
+        desktopNotificationsEnabled = perm === 'granted';
+        localStorage.setItem(DESKTOP_NOTIFY_KEY, desktopNotificationsEnabled ? '1' : '0');
+        syncDesktopNotifyBtn();
+        if (desktopNotificationsEnabled) {
+          fireTimerNotification('🔔 Rust Companion Ready', 'Desktop timer notifications are active.');
+        }
+      });
+    });
+
+    document.getElementById('hudTimersStrip')?.addEventListener('click', (e) => {
+      if (e.target.closest('.hud-timer-pill, .hud-timer-more')) {
+        switchAppTab('tab-timers');
+      }
+    });
+
+    document.getElementById('activeTimersContainer')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tact]');
+      if (!btn) return;
+      const tact = btn.getAttribute('data-tact');
+      const tid = btn.getAttribute('data-tid');
+      if (!tid) return;
+      if (tact === 'remove') removeSquadTimer(tid);
+      else if (tact === 'sub60') adjustSquadTimer(tid, -60);
+      else if (tact === 'add60') adjustSquadTimer(tid, 60);
+      else if (tact === 'pause') togglePauseSquadTimer(tid);
+      else if (tact === 'restart') restartSquadTimer(tid);
+    });
+
+    document.getElementById('timerPresetsGrid')?.addEventListener('click', (e) => {
+      const card = e.target.closest('.preset-timer-card');
+      if (!card) return;
+      const pid = card.getAttribute('data-pid');
+      const preset = (DATA.timerPresets || []).find((p) => p.id === pid);
+      if (preset) {
+        startSquadTimer(preset.name, preset.durationSec, preset.color);
+      }
+    });
+
+    document.getElementById('timerPresetFilterBar')?.addEventListener('click', (e) => {
+      const pill = e.target.closest('[data-tfilter]');
+      if (!pill) return;
+      selectedTimerPresetFilter = pill.getAttribute('data-tfilter') || 'all';
+      document.querySelectorAll('#timerPresetFilterBar .filter-pill').forEach((b) => {
+        b.classList.toggle('active', b === pill);
+      });
+      renderTimerPresets();
+    });
+
+    document.getElementById('customQuickDurationBar')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.timer-quick-dur');
+      if (!btn) return;
+      const secTotal = Math.max(0, parseInt(btn.getAttribute('data-sec'), 10) || 0);
+      const hEl = document.getElementById('customTimerHour');
+      const mEl = document.getElementById('customTimerMin');
+      const sEl = document.getElementById('customTimerSec');
+      if (hEl) hEl.value = String(Math.floor(secTotal / 3600));
+      if (mEl) mEl.value = String(Math.floor((secTotal % 3600) / 60));
+      if (sEl) sEl.value = String(secTotal % 60);
+    });
 
     document.getElementById('testAudioAlarmBtn')?.addEventListener('click', () => {
       playAlertSound('complete');
@@ -3371,18 +3796,22 @@
 
     document.getElementById('clearAllTimersBtn')?.addEventListener('click', () => {
       appState.activeTimers = [];
+      alerted60sIds.clear();
+      alertedDoneIds.clear();
       syncStateToServer();
       renderTimersTick();
     });
 
     document.getElementById('startCustomTimerBtn')?.addEventListener('click', () => {
-      const label = document.getElementById('customTimerLabel')?.value.trim() || 'Custom Squad Timer';
-      const mins = parseInt(document.getElementById('customTimerMin')?.value, 10) || 0;
-      const secs = parseInt(document.getElementById('customTimerSec')?.value, 10) || 0;
-      const total = mins * 60 + secs;
+      const labelEl = document.getElementById('customTimerLabel');
+      const label = labelEl?.value.trim() || 'Custom Squad Timer';
+      const hrs = Math.max(0, parseInt(document.getElementById('customTimerHour')?.value, 10) || 0);
+      const mins = Math.max(0, parseInt(document.getElementById('customTimerMin')?.value, 10) || 0);
+      const secs = Math.max(0, parseInt(document.getElementById('customTimerSec')?.value, 10) || 0);
+      const total = hrs * 3600 + mins * 60 + secs;
       if (total <= 0) return;
       startSquadTimer(label, total, '#eab308');
-      document.getElementById('customTimerLabel').value = '';
+      if (labelEl) labelEl.value = '';
     });
   }
 
@@ -4104,23 +4533,37 @@
 
     if (teasContainer) {
       teasContainer.innerHTML = DATA.teaRecipes
-        .map(
-          (t) => `
+        .map((t) => {
+          const durMins = parseInt(String(t.duration || '30'), 10) || 30;
+          return `
           <div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px; padding:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-              <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">🧪 ${t.name}</span>
-              <span class="combo-badge">${t.recipe}</span>
+              <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">🧪 ${escapeHtml(t.name)}</span>
+              <span class="combo-badge">${escapeHtml(t.recipe)}</span>
             </div>
             <div style="display:flex; gap:12px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:12px;">
-              <span style="color:#60a5fa;">Basic: ${t.basic}</span>
-              <span style="color:#c084fc;">Adv: ${t.advanced}</span>
-              <span style="color:#4ade80; font-weight:700;">Pure: ${t.pure}</span>
+              <span style="color:#60a5fa;">Basic: ${escapeHtml(t.basic)}</span>
+              <span style="color:#c084fc;">Adv: ${escapeHtml(t.advanced)}</span>
+              <span style="color:#4ade80; font-weight:700;">Pure: ${escapeHtml(t.pure)}</span>
             </div>
-            <div style="font-size:12px; color:var(--text-secondary);">${t.notes}</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px;">
+              <div style="font-size:12px; color:var(--text-secondary); flex:1; min-width:200px;">${escapeHtml(t.notes)}</div>
+              <button type="button" class="btn btn-sm tea-timer-btn" data-tname="${escapeHtml(t.name)}" data-tmins="${durMins}">
+                ⏱️ Start ${durMins}m Buff Timer
+              </button>
+            </div>
           </div>
-        `
-        )
+        `;
+        })
         .join('');
+
+      teasContainer.querySelectorAll('.tea-timer-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const name = btn.getAttribute('data-tname') || 'Berry Tea Buff';
+          const mins = Math.max(1, parseInt(btn.getAttribute('data-tmins'), 10) || 30);
+          startSquadTimer(`🧪 ${name}`, mins * 60, '#22c55e');
+        });
+      });
     }
   }
 
@@ -5813,24 +6256,34 @@
 
   function renderDecayCalculator() {
     const tierId = document.getElementById('decayTierSelect')?.value || 'metal';
-    const curHp = Math.max(1, parseInt(document.getElementById('decayCurrentHpInput')?.value, 10) || 180);
+    const hpEl = document.getElementById('decayCurrentHpInput');
+    const parsedHp = parseInt(hpEl?.value, 10);
+    const rawHp = Number.isFinite(parsedHp) ? parsedHp : 180;
     const grid = document.getElementById('decayGridInput')?.value.trim().toUpperCase() || 'Q14';
+    const exposure = document.getElementById('decayExposureSelect')?.value === 'inside' ? 'inside' : 'outside';
     const out = document.getElementById('decayResultBox');
     if (!out) return;
 
     const rate = (DATA.decayRates || []).find((r) => r.id === tierId) || DATA.decayRates[0];
-    const clampedHp = Math.min(rate.maxHp, curHp);
-    const hpPerSecond = rate.maxHp / (rate.fullDecayHours * 3600);
+    const isInside = exposure === 'inside';
+    const exposureScale = isInside ? 0.1 : 1;
+    const exposureLabel = isInside ? 'Sheltered (0.1×)' : 'Exposed (1×)';
+    const clampedHp = Math.min(rate.maxHp, Math.max(1, rawHp));
+    const hpPerHour = (rate.maxHp / rate.fullDecayHours) * exposureScale;
+    const hpPerSecond = hpPerHour / 3600;
     const secondsRemaining = Math.round(clampedHp / hpPerSecond);
+    const hpPerHourStr = hpPerHour >= 10 ? String(Math.round(hpPerHour * 10) / 10) : hpPerHour.toFixed(1);
+    const readyAt = formatEndClock(Date.now() + secondsRemaining * 1000);
 
     out.innerHTML = `
       <div style="background:var(--bg-card); border:1px solid var(--rust-orange); border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
           <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-            ${rate.name} (${clampedHp} / ${rate.maxHp} HP) at [${grid}]
+            ${escapeHtml(rate.name)} (${clampedHp} / ${rate.maxHp} HP) • ${exposureLabel} • ${hpPerHourStr} HP/hr • at [${escapeHtml(grid)}]
           </div>
           <div style="font-family:var(--font-display); font-size:20px; font-weight:700; color:#fff;">
             💥 Crumbles in <span style="color:var(--sulfur-yellow);">${formatDuration(secondsRemaining)}</span>
+            <span style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); font-weight:500;">(Ready ${readyAt})</span>
           </div>
         </div>
         <button id="startDecayTimerBtn" class="btn btn-primary btn-sm">
@@ -5840,11 +6293,12 @@
     `;
 
     out.querySelector('#startDecayTimerBtn')?.addEventListener('click', () => {
-      startSquadTimer(`🏚️ Decaying ${rate.name} [${grid}]`, secondsRemaining, '#eab308');
+      const shelTag = isInside ? ' [Sheltered]' : '';
+      startSquadTimer(`🏚️ Decaying ${rate.name} [${grid}]${shelTag}`, secondsRemaining, '#eab308');
       if (appState.discordWebhookUrl) {
         sendDiscordAlert(
           `🏚️ Decaying Base Tracked at [${grid}]`,
-          `**${rate.name}** (${clampedHp}/${rate.maxHp} HP) will crumble in **${formatDuration(secondsRemaining)}**!`,
+          `**${rate.name}** (${clampedHp}/${rate.maxHp} HP, ${exposureLabel}) will crumble in **${formatDuration(secondsRemaining)}**!`,
           0xeab308
         );
       }
@@ -5864,15 +6318,27 @@
     });
 
     const decaySel = document.getElementById('decayTierSelect');
+    const hpInput = document.getElementById('decayCurrentHpInput');
     if (decaySel && DATA.decayRates) {
       decaySel.innerHTML = DATA.decayRates
-        .map((r) => `<option value="${r.id}">${r.name} (Max ${r.maxHp} HP • ${r.fullDecayHours}h Decay)</option>`)
+        .map((r) => `<option value="${r.id}">${escapeHtml(r.name)} (Max ${r.maxHp} HP • ${r.fullDecayHours}h Decay)</option>`)
         .join('');
       decaySel.value = 'metal';
     }
-    decaySel?.addEventListener('change', renderDecayCalculator);
-    document.getElementById('decayCurrentHpInput')?.addEventListener('input', renderDecayCalculator);
+    decaySel?.addEventListener('change', () => {
+      const rate = (DATA.decayRates || []).find((r) => r.id === decaySel.value) || DATA.decayRates[0];
+      if (hpInput && rate) {
+        hpInput.max = String(rate.maxHp);
+        const cur = parseInt(hpInput.value, 10);
+        if (Number.isFinite(cur) && cur > rate.maxHp) {
+          hpInput.value = String(rate.maxHp);
+        }
+      }
+      renderDecayCalculator();
+    });
+    hpInput?.addEventListener('input', renderDecayCalculator);
     document.getElementById('decayGridInput')?.addEventListener('input', renderDecayCalculator);
+    document.getElementById('decayExposureSelect')?.addEventListener('change', renderDecayCalculator);
 
     renderRecyclerCalculator();
     renderDieselCalculator();

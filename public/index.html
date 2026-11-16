@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261113l" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116a" />
 </head>
 <body>
 
@@ -361,6 +361,7 @@
             <div class="panel-subtitle">Synced live across all connected squadmates — plays an audio alert at 60s remaining and upon completion</div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="desktopNotifyBtn" class="btn btn-sm" title="Enable Desktop Notifications when timers hit 60s or finish">🔔 Desktop Notify: OFF</button>
             <button id="testAudioAlarmBtn" class="btn btn-sm">🔊 Test Alarm Sound</button>
             <button id="clearAllTimersBtn" class="btn btn-sm">🗑️ Clear All Timers</button>
           </div>
@@ -378,6 +379,13 @@
               <div class="panel-subtitle">Click immediately after swiping a card, hacking Oil Rig crate, or taking Bradley APC</div>
             </div>
           </div>
+          <div id="timerPresetFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+            <button class="filter-pill active" data-tfilter="all">All</button>
+            <button class="filter-pill" data-tfilter="hacks">Crates &amp; Cargo</button>
+            <button class="filter-pill" data-tfilter="events">Bradley, Heli &amp; Rig</button>
+            <button class="filter-pill" data-tfilter="puzzles">Card Puzzles</button>
+            <button class="filter-pill" data-tfilter="world">Day/Night, Safe Zone &amp; Fuse</button>
+          </div>
           <div id="timerPresetsGrid" class="target-grid"></div>
         </div>
 
@@ -394,7 +402,11 @@
               <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">TIMER LABEL & GRID</label>
               <input id="customTimerLabel" type="text" class="input" placeholder="e.g., Decaying Clan Compound [Q14] or 20x Diesel Excavator" style="width: 100%;" />
             </div>
-            <div style="display: flex; gap: 12px;">
+            <div style="display: flex; gap: 10px;">
+              <div style="flex: 1;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">HOURS</label>
+                <input id="customTimerHour" type="number" class="input" value="0" min="0" max="48" style="width: 100%;" />
+              </div>
               <div style="flex: 1;">
                 <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">MINUTES</label>
                 <input id="customTimerMin" type="number" class="input" value="30" min="0" max="720" style="width: 100%;" />
@@ -403,6 +415,15 @@
                 <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SECONDS</label>
                 <input id="customTimerSec" type="number" class="input" value="0" min="0" max="59" style="width: 100%;" />
               </div>
+            </div>
+            <div id="customQuickDurationBar" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+              <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Quick set:</span>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="240">4m</button>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="600">10m</button>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="900">15m</button>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="1800">30m</button>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="2700">45m</button>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="3600">1h</button>
             </div>
             <button id="startCustomTimerBtn" class="btn btn-primary" style="width: 100%; padding: 11px;">
               ⏱️ Start Shared Squad Timer
@@ -710,6 +731,13 @@
                 <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">GRID COORD</label>
                 <input id="decayGridInput" type="text" class="input" value="Q14" placeholder="Q14" style="width: 80px;" />
               </div>
+              <div style="flex: 1; min-width: 170px;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">PLACEMENT</label>
+                <select id="decayExposureSelect" class="select" style="width: 100%;">
+                  <option value="outside" selected>Outside / Exposed (1×)</option>
+                  <option value="inside">Inside / Sheltered (0.1× / 10× slower)</option>
+                </select>
+              </div>
             </div>
             <div id="decayResultBox"></div>
           </div>
@@ -924,7 +952,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261113l"></script>
-  <script src="js/app.js?v=20261113l"></script>
+  <script src="js/data.js?v=20261116a"></script>
+  <script src="js/app.js?v=20261116a"></script>
 </body>
 </html>

@@ -1611,13 +1611,13 @@ window.RUST_DATA = {
       cardsFound: ['Green'],
       fusesNeeded: 1,
       radRequired: '0 RAD',
-      respawnMin: 65,
+      respawnMin: 30,
       crates: { locked: 1, elite: 1, military: 5, normal: 10, diesel: 0 },
       utilities: ['No Recycler', '15m Hackable Locked Crate', '15x Scientists + 6x Heavy Scientists', 'CCTV: OILRIG1DOCK/HELI/L1-L4'],
       steps: [
         'Clear 15x Oil Rig Scientists across levels L1–L4 (No Recycler on site).',
         'Green Card room gives 3x Normal Crates; Blue Card + 1x Fuse room gives 2x Military Crates.',
-        'Red Card + 1x Fuse room on top helipad unlocks 1x Locked Crate (15m hack) + 1x Elite Crate + 1x Military Crate + 1x Green Keycard and calls in 6x Heavy Scientists (all puzzles reset every 65m).'
+        'Red Card + 1x Fuse room on top helipad unlocks 1x Locked Crate (15m hack) + 1x Elite Crate + 1x Military Crate + 1x Green Keycard and calls in 6x Heavy Scientists (~25–30m reset after all scientists/heavies die, crate clears & NO players remain nearby).'
       ]
     },
     {
@@ -1631,13 +1631,13 @@ window.RUST_DATA = {
       cardsFound: ['Green'],
       fusesNeeded: 1,
       radRequired: '0 RAD',
-      respawnMin: 65,
+      respawnMin: 30,
       crates: { locked: 1, elite: 2, military: 8, normal: 10, diesel: 4 },
       utilities: ['No Recycler', 'Research Table', '15m Hackable Locked Crate', '27x Scientists + 12x Heavy Scientists', 'CCTV: OILRIG2DOCK/EXHAUST/HELI/L1-L6'],
       steps: [
         'Clear 27x Oil Rig Scientists and collect 4x Diesel Fuel barrels (Research Table on site, No Recycler).',
         'Green, Blue, and 1x Fuse puzzles unlock extra Military/Normal Crates and 1x Green Keycard.',
-        'Swiping the Red Keycard spawns 12x Heavy Scientists (with M249s, SPAS-12s, Miniguns, or Flamethrowers) and unlocks 1x Locked Crate (15m hack) + 2x Elite Crates + 4x Normal Crates (65m reset).'
+        'Swiping the Red Keycard spawns 12x Heavy Scientists (with M249s, SPAS-12s, Miniguns, or Flamethrowers) and unlocks 1x Locked Crate (15m hack) + 2x Elite Crates + 4x Normal Crates (~30m reset once all heavies die, crate clears & nobody remains on/near the rig).'
       ]
     },
     {
@@ -1646,18 +1646,19 @@ window.RUST_DATA = {
       rusthelpUrl: 'https://rusthelp.com/monument/outpost',
       tier: 0,
       biome: 'Safe Zone',
+      safeZone: true,
       defaultPos: { x: 0.48, y: 0.42, grid: 'M10' },
       cardsNeeded: [],
       cardsFound: ['Blue'],
       fusesNeeded: 0,
       radRequired: '0 RAD (Safe Zone)',
-      respawnMin: 15,
+      respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['3x Yellow Recyclers (40% Safe)', '2x Tier 1 Workbenches', 'Research Table & Repair Bench', '7x NPC Vending Shops (Blue Card = 100 Scrap)', 'Missions: CZ-721 & Vagabond'],
       steps: [
         'Safe Zone with 3x Yellow Recyclers, 2x T1 Workbenches, Research Table, and Repair Bench.',
         'Buy a Blue Keycard for 100 Scrap, Jackhammer for 150 Scrap, or trade Stone/Wood/Scrap at the 7 Vending Shops.',
-        'Talk to NPC CZ-721 for Outpost Validation (unlocks a permanent Outpost spawn point!) and the 200 Scrap Oil Rig mission.'
+        'Talk to NPC CZ-721 for Outpost Validation (unlocks a permanent Outpost spawn point!) and the 200 Scrap Oil Rig mission (Hostile Safe Zone aggro = 30m).'
       ]
     },
     {
@@ -1666,42 +1667,58 @@ window.RUST_DATA = {
       rusthelpUrl: 'https://rusthelp.com/monument/bandit-camp',
       tier: 0,
       biome: 'Safe Zone',
+      safeZone: true,
       defaultPos: { x: 0.38, y: 0.56, grid: 'J14' },
       cardsNeeded: [],
       cardsFound: [],
       fusesNeeded: 0,
       radRequired: '0 RAD (Safe Zone)',
-      respawnMin: 15,
+      respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['2x Yellow Recyclers (40% Safe)', 'Tier 1 Workbench & Clan Table', 'Research Table & Repair Bench', 'Airwolf Heli Vendor & Casino', 'CCTV: AIRWOLF, CASINO, TOWNWEAPONS'],
       steps: [
         'Safe Zone with 2x Yellow Recyclers, T1 Workbench, Research Table, Repair Bench, and Clan Table.',
-        'Trade Fertilizer for Scrap, buy Minicopters/Scrap Helis at Airwolf, or gamble Scrap on the Big Wheel & Slot Machines.'
+        'Trade Fertilizer for Scrap, buy Minicopters/Scrap Helis at Airwolf, or gamble Scrap on the Big Wheel & Slot Machines (Hostile Safe Zone aggro = 30m).'
       ]
     }
   ],
 
   // =========================================================================
-  // 4. MONUMENT & EVENT TIMER PRESETS (RUSTHELP VERIFIED RESET TIMES)
+  // 4. MONUMENT & EVENT TIMER PRESETS (VERIFIED VANILLA TIMINGS)
   // =========================================================================
   timerPresets: [
-    { id: 'small_rig_hack', name: 'Small Oil Rig — Crate Hack', category: 'Hack (15m)', durationSec: 15 * 60, color: '#ef4444' },
-    { id: 'large_rig_hack', name: 'Large Oil Rig — Crate Hack', category: 'Hack (15m)', durationSec: 15 * 60, color: '#ef4444' },
-    { id: 'chinook_hack', name: 'Chinook CH47 — Crate Hack', category: 'Hack (15m)', durationSec: 15 * 60, color: '#f97316' },
-    { id: 'small_rig_respawn', name: 'Small Oil Rig — Puzzle Reset (65m)', category: 'Respawn', durationSec: 65 * 60, color: '#3b82f6' },
-    { id: 'large_rig_respawn', name: 'Large Oil Rig — Puzzle Reset (65m)', category: 'Respawn', durationSec: 65 * 60, color: '#3b82f6' },
-    { id: 'silo_puzzle', name: 'Missile Silo — Red Card Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#ef4444' },
-    { id: 'launch_puzzle', name: 'Launch Site — Puzzle Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#ef4444' },
-    { id: 'miltuns_puzzle', name: 'Military Tunnel — Puzzle Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#ef4444' },
-    { id: 'bradley_respawn', name: 'Bradley APC — Respawn', category: 'Respawn', durationSec: 60 * 60, color: '#eab308' },
-    { id: 'bradley_fire', name: 'Bradley Crates — Fire Cooldown', category: 'Cooldown', durationSec: 5 * 60, color: '#f97316' },
-    { id: 'cargo_active', name: 'Cargo Ship — Active Duration', category: 'Event', durationSec: 50 * 60, color: '#22c55e' },
-    { id: 'heli_respawn', name: 'Patrol Helicopter — Window', category: 'Respawn', durationSec: 120 * 60, color: '#a855f7' },
-    { id: 'train_puzzle', name: 'Train Yard — Puzzle Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#3b82f6' },
-    { id: 'water_puzzle', name: 'Water Treatment — Puzzle Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#3b82f6' },
-    { id: 'dome_puzzle', name: 'The Dome — Green Card Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#22c55e' },
-    { id: 'radtown_puzzle', name: 'Radtown — Green Card Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#22c55e' },
-    { id: 'sewer_puzzle', name: 'Sewer Branch — Puzzle Reset (30m)', category: 'Puzzle (30m)', durationSec: 30 * 60, color: '#22c55e' }
+    { id: 'small_rig_hack', name: 'Small Oil Rig — Crate Hack', category: 'Hack (15m)', group: 'hacks', durationSec: 15 * 60, color: '#ef4444', hint: 'Default 900s (15m) locked crate hack' },
+    { id: 'large_rig_hack', name: 'Large Oil Rig — Crate Hack', category: 'Hack (15m)', group: 'hacks', durationSec: 15 * 60, color: '#ef4444', hint: 'Default 900s (15m) + 12x Heavy Scientists' },
+    { id: 'chinook_hack', name: 'Chinook CH47 — Crate Hack', category: 'Hack (15m)', group: 'hacks', durationSec: 15 * 60, color: '#f97316', hint: 'Default 900s (15m) locked crate unlock' },
+    { id: 'cargo_next_crate', name: 'Cargo Ship — Next Crate Spawn', category: 'Cargo (10m)', group: 'hacks', durationSec: 10 * 60, color: '#22c55e', hint: 'Horn sounds ~10m for each additional locked crate' },
+    { id: 'cargo_harbor_dock', name: 'Cargo Ship — Harbor Dock Stay', category: 'Harbor (10m)', group: 'events', durationSec: 10 * 60, color: '#14b8a6', hint: 'Stays docked ~10m; horn blows 60s before leaving' },
+    { id: 'cargo_active', name: 'Cargo Ship — Map Duration', category: 'Event (50m)', group: 'events', durationSec: 50 * 60, color: '#22c55e', hint: 'Default cargoship.event_duration_minutes = 50 (spawns ~2–4h)' },
+    { id: 'bradley_fire', name: 'Bradley APC — Crates Fire Cooldown', category: 'Fire (4m)', group: 'events', durationSec: 4 * 60, color: '#f97316', hint: 'Crates cool at ~4m (body ~5m); instant if in water' },
+    { id: 'heli_fire', name: 'Patrol Heli — Crash Crate Fire', category: 'Fire (5m)', group: 'events', durationSec: 5 * 60, color: '#f97316', hint: 'Crates burn ~3–5m unless extinguished in water' },
+    { id: 'bradley_respawn', name: 'Bradley APC — Respawn', category: 'Respawn (60m)', group: 'events', durationSec: 60 * 60, color: '#eab308', hint: 'Vanilla bradley.respawndelayminutes = 60' },
+    { id: 'heli_active', name: 'Patrol Helicopter — Patrol Stay', category: 'Event (30m)', group: 'events', durationSec: 30 * 60, color: '#a855f7', hint: 'Vanilla heli.lifetimeminutes = 30 if unengaged' },
+    { id: 'heli_respawn', name: 'Patrol Helicopter — 2–4h Window', category: 'Window (2–4h)', group: 'events', durationSec: 120 * 60, color: '#a855f7', hint: 'Vanilla spawns randomly every ~2–4 hours (2h min alert)' },
+    { id: 'small_rig_respawn', name: 'Small Oil Rig — Clear Reset (~30m)', category: 'Reset (~30m)', group: 'events', durationSec: 30 * 60, color: '#3b82f6', hint: 'Freezes while players or stuck heavies remain on rig' },
+    { id: 'large_rig_respawn', name: 'Large Oil Rig — Clear Reset (~30m)', category: 'Reset (~30m)', group: 'events', durationSec: 30 * 60, color: '#3b82f6', hint: 'Starts when crate clears, heavies die & area is empty' },
+    { id: 'silo_puzzle', name: 'Missile Silo — Red Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#ef4444', hint: 'Up to 30m low-pop (~15m high-pop) once clear' },
+    { id: 'launch_puzzle', name: 'Launch Site — Red Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#ef4444', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'miltuns_puzzle', name: 'Military Tunnel — Puzzle Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#ef4444', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'power_plant_puzzle', name: 'Power Plant — Blue Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#3b82f6', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'airfield_puzzle', name: 'Airfield — Blue Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#3b82f6', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'train_puzzle', name: 'Train Yard — Blue Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#3b82f6', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'water_puzzle', name: 'Water Treatment — Blue Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#3b82f6', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'arctic_puzzle', name: 'Arctic Research — Blue Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#3b82f6', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'underwater_puzzle', name: 'Underwater Lab — Puzzle Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#3b82f6', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'harbor_puzzle', name: 'Harbor / Ferry — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'dome_puzzle', name: 'The Dome — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'radtown_puzzle', name: 'Radtown — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'sewer_puzzle', name: 'Sewer Branch — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'sat_puzzle', name: 'Satellite Dish — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
+    { id: 'day_cycle', name: 'Daylight Phase (Day → Sunset)', category: 'World (~45m)', group: 'world', durationSec: 45 * 60, color: '#eab308', hint: 'Vanilla 60m cycle: ~45m Day / ~15m Night' },
+    { id: 'night_cycle', name: 'Nighttime Phase (Night → Dawn)', category: 'World (~15m)', group: 'world', durationSec: 15 * 60, color: '#6366f1', hint: 'Vanilla 60m cycle: ~15m Night' },
+    { id: 'safezone_hostile', name: 'Safe Zone Hostile Timer', category: 'Aggro (30m)', group: 'world', durationSec: 30 * 60, color: '#ef4444', hint: 'Outpost/Bandit aggro (resets to 30m if spotted)' },
+    { id: 'electric_fuse', name: 'Electric Fuse Burnout', category: 'Fuse (3m20s)', group: 'world', durationSec: 200, color: '#60a5fa', hint: '200s per 100% durability Electric Fuse in fuse box' },
+    { id: 'excavator_5diesel', name: 'Giant Excavator — 5x Diesel Airdrop', category: 'Excavator (10m)', group: 'world', durationSec: 10 * 60, color: '#eab308', hint: '2m/diesel -> 5 barrels (10m) reaches 100% signal' }
   ],
 
   // =========================================================================
@@ -1893,11 +1910,13 @@ window.RUST_DATA = {
   // 8. BUILDING DECAY RATES & GIANT EXCAVATOR DIESEL YIELDS
   // =========================================================================
   decayRates: [
+    { id: 'twig', name: 'Twig Frame / Wall', maxHp: 10, fullDecayHours: 1 },
+    { id: 'wood', name: 'Wood Wall / Foundation', maxHp: 250, fullDecayHours: 3 },
     { id: 'stone', name: 'Stone Wall / Foundation', maxHp: 500, fullDecayHours: 5 },
     { id: 'metal', name: 'Sheet Metal Wall / Foundation', maxHp: 1000, fullDecayHours: 8 },
     { id: 'armored', name: 'Armored (HQM) Wall / Foundation', maxHp: 2000, fullDecayHours: 12 },
-    { id: 'wood', name: 'Wood Wall / Foundation', maxHp: 250, fullDecayHours: 3 },
     { id: 'garage_door', name: 'Garage Door', maxHp: 600, fullDecayHours: 8 },
-    { id: 'sheet_door', name: 'Sheet Metal Door', maxHp: 250, fullDecayHours: 8 }
+    { id: 'sheet_door', name: 'Sheet Metal Door', maxHp: 250, fullDecayHours: 8 },
+    { id: 'armored_door', name: 'Armored Door', maxHp: 1000, fullDecayHours: 12 }
   ]
 };
