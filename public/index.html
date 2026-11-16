@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116e" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116f" />
 </head>
 <body>
 
@@ -757,32 +757,59 @@
     </section>
 
     <!-- ==================================================================
-         TAB 6: IN-GAME SHOPS, VENDING TRADES & RECYCLE PROFIT SEARCH
+         TAB 6: IN-GAME PLAYER SHOPS, NPC VENDORS & BEST-TO-BUY EVALUATOR
          ================================================================== -->
     <section id="tab-shops" class="tab-panel">
       <div class="panel" style="margin-bottom: 16px;">
         <div class="panel-header">
           <div>
-            <div class="panel-title">🛒 In-Game Shops &amp; NPC Vending Machine Trades</div>
-            <div class="panel-subtitle">Search any Rust shop trade across Outpost, Bandit Camp, Fishing Village, Ranch &amp; Water Wells — includes live map grids &amp; recycle loops</div>
+            <div class="panel-title">🛒 In-Game Player Shops, NPC Vendors &amp; Best-to-Buy Guide</div>
+            <div class="panel-subtitle">Search Player Vending Machine meta deals &amp; live Monument NPC trades — filter by shop source, category, payment currency, or ROI rank</div>
           </div>
-          <span id="shopCountBadge" class="target-tier-tag">47 TRADES</span>
+          <span id="shopCountBadge" class="target-tier-tag">76 TRADES</span>
         </div>
 
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
-          <input id="shopSearchInput" type="text" class="input" style="flex: 1; min-width: 260px;" placeholder="🔍 Search any item, resource, weapon, vehicle, or shop (e.g. Jackhammer, Wood, F1 Grenade, Minicopter, Fertilizer, Sub)..." />
-          <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕ Clear</button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
+          <input id="shopSearchInput" type="text" class="input" style="flex: 2; min-width: 240px;" placeholder="🔍 Search item, cost, shop, grid, or benefit (e.g. Pure Ore Tea, Garage Door, SAR, Diesel, Jackhammer)..." />
+          <select id="shopCurrencySelect" class="select" style="min-width: 175px;">
+            <option value="all">💰 All Currencies</option>
+            <option value="Sulfur">🟡 Pay: Sulfur (Player Meta)</option>
+            <option value="Scrap">⚙️ Pay: Scrap (NPC &amp; Player)</option>
+            <option value="other">🪨 Pay: Stone / Fert / Fish / Other</option>
+          </select>
+          <select id="shopSortSelect" class="select" style="min-width: 185px;">
+            <option value="best">🏆 Sort: Best to Buy First (S → B)</option>
+            <option value="cost_asc">📉 Sort: Lowest Cost First</option>
+            <option value="cost_desc">📈 Sort: Highest Cost First</option>
+            <option value="name_asc">🔤 Sort: Item Name (A–Z)</option>
+          </select>
+          <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕ Reset</button>
         </div>
 
-        <div id="shopFilterBar" style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <div id="shopFilterBar" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
           <button type="button" class="filter-pill active" data-sfilter="all">All Trades</button>
-          <button type="button" class="filter-pill" data-sfilter="meta">⭐ Meta &amp; Recycle Loops</button>
+          <button type="button" class="filter-pill" data-sfilter="best">🏆 Best to Buy</button>
+          <button type="button" class="filter-pill" data-sfilter="player">👤 Player Shops (Meta &amp; Server)</button>
+          <button type="button" class="filter-pill" data-sfilter="custom">📌 My Server Shops</button>
+          <button type="button" class="filter-pill" data-sfilter="npc">🏛️ All NPC Shops</button>
           <button type="button" class="filter-pill" data-sfilter="Outpost">🛡️ Outpost</button>
           <button type="button" class="filter-pill" data-sfilter="Bandit Camp">🏴‍☠️ Bandit Camp</button>
           <button type="button" class="filter-pill" data-sfilter="Fishing Village">⚓ Fishing Village</button>
           <button type="button" class="filter-pill" data-sfilter="Ranch / Barn">🐎 Ranch / Barn</button>
           <button type="button" class="filter-pill" data-sfilter="Water Well">🚰 Water Well</button>
-          <button type="button" class="filter-pill" data-sfilter="custom">📌 Player Shops</button>
+        </div>
+
+        <div id="shopCategoryBar" style="display: flex; gap: 6px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+          <button type="button" class="filter-pill active" data-scat="all">All Categories</button>
+          <button type="button" class="filter-pill" data-scat="teas">🧪 Teas &amp; Clones</button>
+          <button type="button" class="filter-pill" data-scat="progression">⚙️ Workbenches &amp; BPs</button>
+          <button type="button" class="filter-pill" data-scat="weapons">🔫 Weapons &amp; Guns</button>
+          <button type="button" class="filter-pill" data-scat="raid">💥 Raid &amp; Boom</button>
+          <button type="button" class="filter-pill" data-scat="defense">🛡️ Doors &amp; Turrets</button>
+          <button type="button" class="filter-pill" data-scat="resources">⛏️ Resources &amp; Fuel</button>
+          <button type="button" class="filter-pill" data-scat="recycle">♻️ Scrap &amp; Recycle</button>
+          <button type="button" class="filter-pill" data-scat="tools">🛠️ Tools &amp; Elec</button>
+          <button type="button" class="filter-pill" data-scat="vehicles">🚁 Vehicles &amp; Horses</button>
         </div>
       </div>
 
@@ -791,20 +818,20 @@
         <div class="panel">
           <div class="panel-header" style="margin-bottom: 10px;">
             <div>
-              <div class="panel-title">🏪 Matching Vendor Trades</div>
-              <div class="panel-subtitle">Click any trade to calculate batch quantities &amp; recycle yields</div>
+              <div class="panel-title">🏪 Matching Player &amp; NPC Deals</div>
+              <div class="panel-subtitle">Click any trade to evaluate server pricing, calculate bulk batches &amp; check recycle ROI</div>
             </div>
           </div>
           <div id="shopTradesList" class="monument-list" style="max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
         </div>
 
-        <!-- Right Column: Batch Calculator + Custom Player Shops -->
+        <!-- Right Column: Deal Evaluator + Batch Calculator + Custom Player Shops -->
         <div style="display: flex; flex-direction: column; gap: 16px;">
           <div id="shopTradeCalcPanel" class="panel">
             <div class="panel-header" style="margin-bottom: 10px;">
               <div>
-                <div class="panel-title">🧮 Batch Trade &amp; Recycle Loop Calculator</div>
-                <div class="panel-subtitle">Calculate bulk trades or check max amount your currency budget buys</div>
+                <div class="panel-title">🧮 Deal Evaluator &amp; Batch Calculator</div>
+                <div class="panel-subtitle">Check if a Player Shop's asking price is a steal or rip-off, or calculate bulk NPC/Recycle trades</div>
               </div>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px;">
@@ -814,13 +841,26 @@
               </div>
               <div style="flex: 1; min-width: 160px;">
                 <label id="shopBudgetLabel" style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">OR AVAILABLE BUDGET</label>
-                <input id="shopBudgetInput" type="number" class="input" value="" min="0" placeholder="e.g. 1000 Scrap / Stone" style="width: 100%;" />
+                <input id="shopBudgetInput" type="number" class="input" value="" min="0" placeholder="e.g. 1000 Scrap / Sulfur" style="width: 100%;" />
               </div>
             </div>
             <label style="display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; margin-bottom: 12px;">
               <input id="shopDroneFeeCb" type="checkbox" />
               <span>🚁 Drone Marketplace Delivery (+20 Scrap per order, drone-eligible shops only)</span>
             </label>
+
+            <div id="shopPriceCheckWrap" style="margin-bottom: 12px; padding: 10px; border-radius: 6px; background: rgba(15, 23, 42, 0.55); border: 1px solid var(--border-subtle);">
+              <label style="display:block; font-size:11px; font-family:var(--font-mono); color:#fde047; margin-bottom:6px;">
+                ⚖️ SERVER PRICE DEAL CHECKER (TEST A PLAYER SHOP ON YOUR MAP):
+              </label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <input id="shopAskingPriceInput" type="number" class="input" min="1" placeholder="Seller price (e.g. 250 Sulfur)" style="flex: 2; min-width: 145px;" />
+                <input id="shopAskingGridInput" type="text" class="input" placeholder="Grid (M14)" style="width: 82px;" />
+                <button id="pinDealShopBtn" type="button" class="btn btn-sm" style="border-color: #a855f7; color: #e9d5ff;">📌 Pin Deal</button>
+              </div>
+              <div id="shopDealVerdictBox" style="margin-top: 8px;"></div>
+            </div>
+
             <div id="shopTradeCalcResult"></div>
           </div>
 
@@ -828,17 +868,27 @@
             <div class="panel-header" style="margin-bottom: 10px;">
               <div>
                 <div class="panel-title">📌 Squad Server Player Shops Tracker</div>
-                <div class="panel-subtitle">Log player-run vending deals spotted on your server — synced &amp; searchable above</div>
+                <div class="panel-subtitle">Log player vending deals spotted on your live map — auto-rated against meta benchmarks</div>
               </div>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
-              <input id="customShopSellInput" type="text" class="input" style="flex: 2; min-width: 140px;" placeholder="Selling (e.g. Garage Door)" />
+              <input id="customShopSellInput" type="text" class="input" style="flex: 2; min-width: 135px;" placeholder="Selling (e.g. Garage Door)" />
               <input id="customShopCostInput" type="text" class="input" style="flex: 2; min-width: 130px;" placeholder="Cost (e.g. 300 Sulfur)" />
-              <input id="customShopGridInput" type="text" class="input" style="width: 82px;" placeholder="Grid (M14)" />
+              <select id="customShopCategorySelect" class="select" style="flex: 1; min-width: 120px;">
+                <option value="teas">🧪 Teas &amp; Clones</option>
+                <option value="progression">⚙️ WB &amp; BPs</option>
+                <option value="weapons">🔫 Weapons</option>
+                <option value="raid">💥 Raid &amp; Boom</option>
+                <option value="defense" selected>🛡️ Doors &amp; Turrets</option>
+                <option value="resources">⛏️ Resources</option>
+                <option value="tools">🛠️ Tools</option>
+                <option value="vehicles">🚁 Vehicles</option>
+              </select>
+              <input id="customShopGridInput" type="text" class="input" style="width: 80px;" placeholder="Grid (M14)" />
               <button id="addCustomShopBtn" type="button" class="btn btn-primary btn-sm">+ Save Shop</button>
             </div>
             <div style="font-size: 11px; color: var(--text-muted);">
-              Note: Facepunch vanilla Dynamic Pricing shifts NPC prices slightly by supply/demand across wipe days.
+              Tip: 1 Sulfur node = 300 Sulfur Ore (smelted). Player shops priced in Scrap roughly follow 1 Scrap ≈ 3–4 Sulfur.
             </div>
           </div>
         </div>
@@ -1094,7 +1144,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116e"></script>
-  <script src="js/app.js?v=20261116e"></script>
+  <script src="js/data.js?v=20261116f"></script>
+  <script src="js/app.js?v=20261116f"></script>
 </body>
 </html>

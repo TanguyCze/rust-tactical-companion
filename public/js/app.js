@@ -123,8 +123,11 @@
   let selectedMonumentId = 'launch_site';
   let selectedCloneCropFilter = 'Hemp';
   let selectedShopFilter = 'all';
+  let selectedShopCategory = 'all';
+  let selectedShopCurrency = 'all';
+  let selectedShopSort = 'best';
   let shopSearchQuery = '';
-  let selectedShopTradeId = 'outpost_stone_wood';
+  let selectedShopTradeId = 'player_pure_ore_tea';
 
   // Load local fallback first
   try {
@@ -8595,32 +8598,223 @@
   }
 
   // =========================================================================
-  // MODULE 8: IN-GAME SHOPS, VENDING TRADES & RECYCLE PROFIT SEARCH
+  // MODULE 8: IN-GAME PLAYER SHOPS, NPC VENDORS & BEST-TO-BUY EVALUATOR
   // =========================================================================
+  const SHOP_CATEGORY_LABELS = {
+    teas: '🧪 Teas & Clones',
+    progression: '⚙️ WB & BPs',
+    weapons: '🔫 Weapons',
+    raid: '💥 Raid & Boom',
+    defense: '🛡️ Doors & Turrets',
+    resources: '⛏️ Resources & Fuel',
+    recycle: '♻️ Scrap & Recycle',
+    tools: '🛠️ Tools & Elec',
+    vehicles: '🚁 Vehicles & Horses',
+    custom: '📌 Server Shop'
+  };
+
+  function normalizeShopItemKey(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/\(.*?\)/g, ' ')
+      .replace(/\bsar\b/g, 'semi automatic rifle')
+      .replace(/\bwb2\b|\bt2\b/g, 'workbench level 2')
+      .replace(/\bwb3\b|\bt3\b/g, 'workbench level 3')
+      .replace(/\bc4\b/g, 'timed explosive charge')
+      .replace(/\bexplo\b/g, 'explosive')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function findMatchingShopBenchmark(buyItem) {
+    const key = normalizeShopItemKey(buyItem);
+    if (!key) return null;
+    const pool = (DATA.shopTrades || []).filter((t) => typeof t.fairMax === 'number');
+    let match = pool.find((t) => normalizeShopItemKey(t.buyItem) === key);
+    if (match) return match;
+    match = pool.find((t) => {
+      const tk = normalizeShopItemKey(t.buyItem);
+      return tk.includes(key) || key.includes(tk);
+    });
+    return match || null;
+  }
+
+  function formatSulfurNodesHint(amount, payItem) {
+    if (String(payItem || '').toLowerCase() !== 'sulfur' || !amount) return '';
+    const nodes = Math.max(0.1, amount / 300);
+    return `~${nodes >= 10 ? Math.round(nodes) : nodes.toFixed(1)} Sulfur ${nodes === 1 ? 'node' : 'nodes'}`;
+  }
+
+  function evaluateShopPriceVerdict(trade, overrideAskingPrice = null) {
+    if (!trade) return null;
+    const askingRaw =
+      overrideAskingPrice !== null && overrideAskingPrice !== '' && !Number.isNaN(Number(overrideAskingPrice))
+        ? Math.max(1, Number(overrideAskingPrice))
+        : Math.max(1, Number(trade.payQty) || 1);
+
+    const bench =
+      typeof trade.fairMax === 'number'
+        ? trade
+        : findMatchingShopBenchmark(trade.buyItem);
+
+    const payLower = String(trade.payItem || '').toLowerCase();
+
+    if (bench && typeof bench.fairMax === 'number') {
+      const qtyScale = (Number(bench.buyQty) || 1) / Math.max(1, Number(trade.buyQty) || 1);
+      let normalizedAsk = askingRaw * qtyScale;
+      let currencyNote = '';
+      if (String(bench.payItem || '').toLowerCase() === 'sulfur' && payLower === 'scrap') {
+        normalizedAsk = Math.round(normalizedAsk * 3.33);
+        currencyNote = ` (≈${normalizedAsk.toLocaleString()} Sulfur eq.)`;
+      } else if (payLower !== String(bench.payItem || '').toLowerCase()) {
+        return null;
+      }
+
+      const fairMin = bench.fairMin || Math.round(bench.fairMax * 0.6);
+      const fairMax = bench.fairMax;
+      const ripOffAt = bench.ripOffAt || Math.round(bench.fairMax * 1.45);
+      const nodeHint = formatSulfurNodesHint(askingRaw, trade.payItem);
+      const fairRange = `${fairMin.toLocaleString()}–${fairMax.toLocaleString()} ${bench.payItem}`;
+
+      if (normalizedAsk <= fairMin) {
+        return {
+          tier: 'steal',
+          shortTag: '🔥 STEAL',
+          title: `🔥 S-TIER STEAL — Buy Immediately!`,
+          detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote}${nodeHint ? ` (${nodeHint})` : ''} is well below typical fair value (${fairRange}).`,
+          fairRange,
+          color: '#4ade80',
+          bg: 'rgba(34,197,94,0.15)',
+          border: 'rgba(34,197,94,0.45)'
+        };
+      }
+      if (normalizedAsk <= fairMax) {
+        return {
+          tier: 'fair',
+          shortTag: '✅ GOOD BUY',
+          title: `✅ GOOD VALUE — Fair Server Price`,
+          detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote}${nodeHint ? ` (${nodeHint})` : ''} sits right inside the fair wipe range (${fairRange}).`,
+          fairRange,
+          color: '#38bdf8',
+          bg: 'rgba(56,189,248,0.14)',
+          border: 'rgba(56,189,248,0.42)'
+        };
+      }
+      if (normalizedAsk < ripOffAt) {
+        return {
+          tier: 'overpay',
+          shortTag: '⚠️ OVERPAY',
+          title: `⚠️ SLIGHT OVERPAY — Buy Only If Desperate`,
+          detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote} is above fair market (${fairRange}). Negotiate or wait under ${ripOffAt.toLocaleString()} ${bench.payItem}.`,
+          fairRange,
+          color: '#facc15',
+          bg: 'rgba(250,204,21,0.14)',
+          border: 'rgba(250,204,21,0.42)'
+        };
+      }
+      return {
+        tier: 'ripoff',
+        shortTag: '🚫 RIP-OFF',
+        title: `🚫 RIP-OFF / TRAP — Skip This Shop`,
+        detail: `${askingRaw.toLocaleString()} ${trade.payItem}${currencyNote} exceeds the ${ripOffAt.toLocaleString()} ${bench.payItem} trap line (fair: ${fairRange}). Craft or pick another shop.`,
+        fairRange,
+        color: '#f87171',
+        bg: 'rgba(239,68,68,0.14)',
+        border: 'rgba(239,68,68,0.45)'
+      };
+    }
+
+    if (overrideAskingPrice !== null && overrideAskingPrice !== '') {
+      const ratio = askingRaw / Math.max(1, Number(trade.payQty) || 1);
+      if (ratio <= 0.85) {
+        return {
+          tier: 'steal',
+          shortTag: '🔥 BARGAIN',
+          title: `🔥 UNDER BENCHMARK (-${Math.round((1 - ratio) * 100)}%)`,
+          detail: `Cheaper than the ${trade.payQty.toLocaleString()} ${trade.payItem} reference price.`,
+          color: '#4ade80',
+          bg: 'rgba(34,197,94,0.15)',
+          border: 'rgba(34,197,94,0.45)'
+        };
+      }
+      if (ratio <= 1.2) {
+        return {
+          tier: 'fair',
+          shortTag: '✅ STANDARD',
+          title: `✅ STANDARD RATE`,
+          detail: `Matches the ${trade.payQty.toLocaleString()} ${trade.payItem} baseline.`,
+          color: '#38bdf8',
+          bg: 'rgba(56,189,248,0.14)',
+          border: 'rgba(56,189,248,0.42)'
+        };
+      }
+      return {
+        tier: 'ripoff',
+        shortTag: '🚫 OVERPRICED',
+        title: `🚫 OVERPRICED (+${Math.round((ratio - 1) * 100)}%)`,
+        detail: `${askingRaw.toLocaleString()} ${trade.payItem} is noticeably steeper than baseline (${trade.payQty.toLocaleString()} ${trade.payItem}).`,
+        color: '#f87171',
+        bg: 'rgba(239,68,68,0.14)',
+        border: 'rgba(239,68,68,0.45)'
+      };
+    }
+
+    return null;
+  }
+
   function getAllNormalizedShopTrades() {
-    const npc = (DATA.shopTrades || []).map((t) => ({ ...t, isCustom: false }));
-    const custom = (Array.isArray(appState.customShops) ? appState.customShops : []).map((cs) => ({
-      id: cs.id,
-      isCustom: true,
-      monument: 'Player Shop',
-      monumentId: 'custom',
-      vendor: cs.grid ? `Vending [${cs.grid}]` : 'Player Vending',
-      grid: cs.grid || '',
-      category: 'custom',
-      meta: false,
-      drone: true,
-      buyItem: cs.buyItem || cs.sellItem || 'Item',
-      buyQty: Math.max(1, Number(cs.buyQty) || 1),
-      payItem: cs.payItem || cs.costText || 'Scrap',
-      payQty: Math.max(1, Number(cs.payQty) || 1),
-      notes: cs.notes || 'Player vending deal logged by squad.'
+    const base = (DATA.shopTrades || []).map((t) => ({
+      ...t,
+      isCustom: false,
+      shopType: t.shopType || 'npc',
+      tierRank: t.tierRank || (t.meta ? 'A' : 'B'),
+      bestToBuy: Boolean(t.bestToBuy)
     }));
-    return [...custom, ...npc];
+    const custom = (Array.isArray(appState.customShops) ? appState.customShops : []).map((cs) => {
+      const bench = findMatchingShopBenchmark(cs.buyItem || cs.sellItem);
+      const entry = {
+        id: cs.id,
+        isCustom: true,
+        shopType: 'player',
+        monument: 'My Server Shop',
+        monumentId: 'custom',
+        vendor: cs.grid ? `Player Vending [${cs.grid}]` : 'Player Vending',
+        grid: cs.grid || '',
+        category: cs.category || bench?.category || 'defense',
+        meta: true,
+        bestToBuy: Boolean(bench?.bestToBuy),
+        tierRank: bench?.tierRank || 'A',
+        drone: true,
+        buyItem: cs.buyItem || cs.sellItem || 'Item',
+        buyQty: Math.max(1, Number(cs.buyQty) || 1),
+        payItem: cs.payItem || cs.costText || 'Sulfur',
+        payQty: Math.max(1, Number(cs.payQty) || 1),
+        fairMin: bench?.fairMin,
+        fairMax: bench?.fairMax,
+        ripOffAt: bench?.ripOffAt,
+        altPriceHint: bench?.altPriceHint,
+        whyBest: bench?.whyBest,
+        notes: cs.notes || 'Player vending deal logged by squad on live server.'
+      };
+      const verdict = evaluateShopPriceVerdict(entry);
+      if (verdict && verdict.tier === 'steal') {
+        entry.tierRank = 'S';
+        entry.bestToBuy = true;
+      } else if (verdict && verdict.tier === 'ripoff') {
+        entry.tierRank = 'B';
+        entry.bestToBuy = false;
+      }
+      return entry;
+    });
+    return [...custom, ...base];
   }
 
   function resolveShopGridBadge(trade) {
     if (trade.isCustom) {
-      return trade.grid ? `[${trade.grid}]` : '[Server Map]';
+      return trade.grid ? `[${trade.grid}]` : '[My Server]';
+    }
+    if (trade.shopType === 'player') {
+      return '[Check Map Drone UI]';
     }
     if (bfMapData && Array.isArray(bfMapData.monuments) && trade.monumentId) {
       const selSpot = getSelectedBuildSpot();
@@ -8663,7 +8857,9 @@
     const list = allTrades || getAllNormalizedShopTrades();
     const sel = list.find((t) => t.id === selectedShopTradeId) || list[0];
     if (!sel) {
-      outEl.innerHTML = `<div style="padding:14px; color:var(--text-muted); text-align:center;">Select any shop trade on the left to calculate bulk trades.</div>`;
+      outEl.innerHTML = `<div style="padding:14px; color:var(--text-muted); text-align:center;">Select any shop trade on the left to evaluate deals or calculate bulk batches.</div>`;
+      const verdictBox = document.getElementById('shopDealVerdictBox');
+      if (verdictBox) verdictBox.innerHTML = '';
       return;
     }
 
@@ -8675,6 +8871,31 @@
     const batchEl = document.getElementById('shopBatchCountInput');
     const budgetEl = document.getElementById('shopBudgetInput');
     const droneEl = document.getElementById('shopDroneFeeCb');
+    const askEl = document.getElementById('shopAskingPriceInput');
+    const verdictBox = document.getElementById('shopDealVerdictBox');
+
+    if (askEl) {
+      askEl.placeholder = `Seller price (${sel.payItem}, e.g. ${sel.payQty})`;
+    }
+    const rawAskVal = askEl && askEl.value !== '' ? askEl.value : null;
+    const activeVerdict = evaluateShopPriceVerdict(sel, rawAskVal);
+
+    if (verdictBox) {
+      if (activeVerdict) {
+        verdictBox.innerHTML = `
+          <div style="padding:8px 10px; border-radius:6px; background:${activeVerdict.bg}; border:1px solid ${activeVerdict.border};">
+            <div style="font-family:var(--font-mono); font-size:12px; font-weight:800; color:${activeVerdict.color};">${escapeHtml(activeVerdict.title)}</div>
+            <div style="font-size:11.5px; color:#e2e8f0; margin-top:3px;">${escapeHtml(activeVerdict.detail)}</div>
+            ${sel.altPriceHint ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">Alt Server Currency: <strong>${escapeHtml(sel.altPriceHint)}</strong></div>` : ''}
+          </div>
+        `;
+      } else if (sel.shopType === 'npc') {
+        verdictBox.innerHTML = `<div style="font-size:11px; color:var(--text-secondary);">🏛️ Fixed Monument NPC Rate${sel.bestToBuy ? ' — <strong style="color:#4ade80;">🏆 S-Tier Best NPC Trade</strong>' : ''}. Enter a number above to compare a Player Shop asking the same currency.</div>`;
+      } else {
+        verdictBox.innerHTML = `<div style="font-size:11px; color:var(--text-secondary);">Enter a player shop's asking price above to grade it vs benchmark (${sel.payQty.toLocaleString()} ${escapeHtml(sel.payItem)}).</div>`;
+      }
+    }
+
     const rawBudget = budgetEl && budgetEl.value !== '' ? Math.max(0, parseInt(budgetEl.value, 10) || 0) : 0;
     const useDrone = Boolean(droneEl?.checked);
     const droneFee = useDrone && sel.drone ? 20 : 0;
@@ -8697,14 +8918,19 @@
       }
     }
 
+    const unitPay =
+      rawAskVal !== null && Number(rawAskVal) > 0 && sel.shopType === 'player'
+        ? Math.max(1, Number(rawAskVal))
+        : sel.payQty;
     const totalGet = sel.buyQty * batch;
-    const totalPay = sel.payQty * batch;
+    const totalPay = unitPay * batch;
+    const nodeSummary = formatSulfurNodesHint(totalPay, sel.payItem);
     const paySummary =
       droneFee > 0 && isScrapPay
         ? `${(totalPay + droneFee).toLocaleString()} Scrap <span style="font-size:11px; color:var(--text-secondary);">(${totalPay.toLocaleString()} + 20 Drone)</span>`
         : droneFee > 0
           ? `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)} + 20 Scrap <span style="font-size:11px; color:var(--text-secondary);">(Drone)</span>`
-          : `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)}`;
+          : `${totalPay.toLocaleString()} ${escapeHtml(sel.payItem)}${nodeSummary ? ` <span style="font-size:11px; color:#fde047;">(${nodeSummary})</span>` : ''}`;
 
     const droneBanner =
       useDrone && !sel.drone
@@ -8719,7 +8945,7 @@
       const effectiveScrap = isScrapPay ? totalPay + droneFee : 0;
       const gpRatioNote =
         sel.recycleTotals.rad?.gp && effectiveScrap > 0
-          ? `<div style="margin-top:6px; font-size:11px; color:#93c5fd; font-family:var(--font-mono);">Ratio: ${( (sel.recycleTotals.safe.gp * batch) / effectiveScrap ).toFixed(2)} GP/Scrap (Safe) • ${((sel.recycleTotals.rad.gp * batch) / effectiveScrap).toFixed(2)} GP/Scrap (Rad)</div>`
+          ? `<div style="margin-top:6px; font-size:11px; color:#93c5fd; font-family:var(--font-mono);">Ratio: ${((sel.recycleTotals.safe.gp * batch) / effectiveScrap).toFixed(2)} GP/Scrap (Safe) • ${((sel.recycleTotals.rad.gp * batch) / effectiveScrap).toFixed(2)} GP/Scrap (Rad)</div>`
           : '';
       recycleHtml = `
         <div style="margin-top:12px; padding:10px 12px; border-radius:6px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.35);">
@@ -8737,12 +8963,21 @@
     }
 
     const locBadge = resolveShopGridBadge(sel);
+    const sourceBadge = sel.isCustom
+      ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.2); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 MY SERVER</span>`
+      : sel.shopType === 'player'
+        ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.15); color:#d8b4fe; border:1px solid rgba(168,85,247,0.35);">👤 PLAYER SHOP META</span>`
+        : `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(34,197,94,0.15); color:#86efac; border:1px solid rgba(34,197,94,0.35);">🏛️ NPC VENDOR</span>`;
+
     outEl.innerHTML = `
       <div style="background:var(--bg-card); border:1px solid var(--rust-orange); border-radius:8px; padding:12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-          <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
-            ${escapeHtml(sel.monument)} — ${escapeHtml(sel.vendor)}
-          </span>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            ${sourceBadge}
+            <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
+              ${escapeHtml(sel.monument)} — ${escapeHtml(sel.vendor)}
+            </span>
+          </div>
           ${locBadge ? `<span class="keycard-tag keycard-Fuse">${escapeHtml(locBadge)}</span>` : ''}
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0;">
@@ -8755,6 +8990,7 @@
             <div style="font-family:var(--font-mono); font-size:15px; font-weight:800; color:var(--sulfur-yellow);">${paySummary}</div>
           </div>
         </div>
+        ${sel.whyBest ? `<div style="margin-top:8px; padding:8px 10px; border-radius:6px; background:rgba(250,204,21,0.1); border:1px solid rgba(250,204,21,0.35); font-size:12px; color:#fef08a;">🏆 <strong>Why Best to Buy:</strong> ${escapeHtml(sel.whyBest)}</div>` : ''}
         ${budgetNote}
         ${droneBanner}
         ${sel.notes ? `<div style="margin-top:8px; font-size:12px; color:var(--text-secondary);">${escapeHtml(sel.notes)}</div>` : ''}
@@ -8775,16 +9011,30 @@
       .filter(Boolean);
 
     const filtered = allTrades.filter((t) => {
-      if (selectedShopFilter === 'meta' && !t.meta) return false;
+      if (selectedShopFilter === 'best' && !t.bestToBuy) return false;
+      else if (selectedShopFilter === 'player' && t.shopType !== 'player') return false;
+      else if (selectedShopFilter === 'npc' && t.shopType !== 'npc') return false;
       else if (selectedShopFilter === 'custom' && !t.isCustom) return false;
       else if (
         selectedShopFilter !== 'all' &&
-        selectedShopFilter !== 'meta' &&
+        selectedShopFilter !== 'best' &&
+        selectedShopFilter !== 'player' &&
+        selectedShopFilter !== 'npc' &&
         selectedShopFilter !== 'custom' &&
         t.monument !== selectedShopFilter
       ) {
         return false;
       }
+
+      if (selectedShopCategory !== 'all' && t.category !== selectedShopCategory) return false;
+
+      if (selectedShopCurrency !== 'all') {
+        const payLower = String(t.payItem || '').toLowerCase();
+        if (selectedShopCurrency === 'Sulfur' && payLower !== 'sulfur') return false;
+        if (selectedShopCurrency === 'Scrap' && payLower !== 'scrap') return false;
+        if (selectedShopCurrency === 'other' && (payLower === 'sulfur' || payLower === 'scrap')) return false;
+      }
+
       if (tokens.length === 0) return true;
       const hay = [
         t.buyItem,
@@ -8792,6 +9042,11 @@
         t.monument,
         t.vendor,
         t.category,
+        SHOP_CATEGORY_LABELS[t.category] || '',
+        t.shopType === 'player' ? 'player vending shop' : 'npc safe zone',
+        t.bestToBuy ? 'best to buy s-tier top meta' : '',
+        t.whyBest || '',
+        t.altPriceHint || '',
         t.notes,
         t.recycleSafe || '',
         t.recycleRad || '',
@@ -8800,6 +9055,26 @@
         .join(' ')
         .toLowerCase();
       return tokens.every((tok) => hay.includes(tok));
+    });
+
+    const tierScore = (t) => (t.tierRank === 'S' ? 0 : t.tierRank === 'A' ? 1 : 2);
+    filtered.sort((a, b) => {
+      if (selectedShopSort === 'cost_asc') {
+        return a.payQty - b.payQty || a.buyItem.localeCompare(b.buyItem);
+      }
+      if (selectedShopSort === 'cost_desc') {
+        return b.payQty - a.payQty || a.buyItem.localeCompare(b.buyItem);
+      }
+      if (selectedShopSort === 'name_asc') {
+        return a.buyItem.localeCompare(b.buyItem);
+      }
+      // Default 'best': squad's live server shops first (ordered S->B), then S-tier best-to-buy meta deals
+      return (
+        (a.isCustom === b.isCustom ? 0 : a.isCustom ? -1 : 1) ||
+        tierScore(a) - tierScore(b) ||
+        (a.bestToBuy === b.bestToBuy ? 0 : a.bestToBuy ? -1 : 1) ||
+        (a.shopType === b.shopType ? 0 : a.shopType === 'player' ? -1 : 1)
+      );
     });
 
     if (badgeEl) {
@@ -8811,21 +9086,39 @@
     }
 
     if (filtered.length === 0) {
-      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px;">No shop trades matched "<strong>${escapeHtml(shopSearchQuery)}</strong>". Try clearing filters or log a Player Shop on the right.</div>`;
+      listEl.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px;">No shop trades matched your search or filters. Click <strong>✕ Reset</strong> above or pin a Player Shop on the right.</div>`;
     } else {
       listEl.innerHTML = filtered
         .map((t) => {
           const isAct = t.id === selectedShopTradeId;
           const locBadge = resolveShopGridBadge(t);
+          const verdict = t.isCustom || t.shopType === 'player' ? evaluateShopPriceVerdict(t) : null;
+          const typePill = t.isCustom
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 Server Shop</span>`
+            : t.shopType === 'player'
+              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.16); color:#d8b4fe;">👤 Player Shop</span>`
+              : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.14); color:#86efac;">🏛️ NPC</span>`;
+          const bestPill = t.bestToBuy
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.2); color:#fde047; font-weight:700; border:1px solid rgba(250,204,21,0.45);">🏆 BEST TO BUY</span>`
+            : t.tierRank === 'A'
+              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.14); color:#7dd3fc;">✅ A-Tier</span>`
+              : '';
+          const customVerdictPill =
+            t.isCustom && verdict
+              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:${verdict.bg}; color:${verdict.color}; border:1px solid ${verdict.border}; font-weight:700;">${escapeHtml(verdict.shortTag)}</span>`
+              : '';
           const dronePill = t.drone
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.14); color:#7dd3fc;">🚁 Drone OK</span>`
-            : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(148,163,184,0.16); color:#cbd5e1;">🏃 In-Person</span>`;
-          const metaPill = t.meta
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.16); color:#fde047;">⭐ Meta</span>`
-            : '';
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.12); color:#7dd3fc;">🚁 Drone</span>`
+            : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(148,163,184,0.15); color:#cbd5e1;">🏃 In-Person</span>`;
           const delBtn = t.isCustom
             ? `<button type="button" class="btn btn-sm shop-del-btn" data-del-shop="${escapeHtml(t.id)}" style="padding:2px 7px; font-size:10.5px;">✕</button>`
             : '';
+          const catLabel = SHOP_CATEGORY_LABELS[t.category] || t.category;
+          const fairLine =
+            typeof t.fairMin === 'number' && typeof t.fairMax === 'number'
+              ? `<span style="color:#c4b5fd; font-family:var(--font-mono); font-size:10.5px;">Fair: ${t.fairMin.toLocaleString()}–${t.fairMax.toLocaleString()} ${escapeHtml(t.payItem)}${t.altPriceHint ? ` (${escapeHtml(t.altPriceHint)})` : ''}</span>`
+              : '';
+
           return `
             <div class="monument-item shop-trade-card ${isAct ? 'active' : ''}" data-shop-id="${escapeHtml(t.id)}">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -8834,17 +9127,19 @@
                   <span style="color:var(--text-muted); margin:0 5px;">⇄</span>
                   <span style="color:var(--sulfur-yellow);">${t.payQty.toLocaleString()}× ${escapeHtml(t.payItem)}</span>
                 </div>
-                <div style="display:flex; gap:5px; align-items:center;">
-                  ${metaPill}
+                <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+                  ${bestPill}
+                  ${customVerdictPill}
+                  ${typePill}
                   ${dronePill}
                   ${delBtn}
                 </div>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:5px; font-size:11.5px; color:var(--text-secondary); flex-wrap:wrap;">
-                <span>📍 <strong style="color:#e2e8f0;">${escapeHtml(t.monument)}</strong> • ${escapeHtml(t.vendor)} ${locBadge ? `<span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">${escapeHtml(locBadge)}</span>` : ''}</span>
-                ${t.recycleSafe ? `<span style="color:#86efac; font-family:var(--font-mono); font-size:10.5px;">♻️ ${escapeHtml(t.recycleSafe)}</span>` : ''}
+                <span>📍 <strong style="color:#e2e8f0;">${escapeHtml(t.monument)}</strong> • ${escapeHtml(t.vendor)} • <span>${escapeHtml(catLabel)}</span> ${locBadge ? `<span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">${escapeHtml(locBadge)}</span>` : ''}</span>
+                ${t.recycleSafe ? `<span style="color:#86efac; font-family:var(--font-mono); font-size:10.5px;">♻️ ${escapeHtml(t.recycleSafe)}</span>` : fairLine}
               </div>
-              ${t.notes ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.notes)}</div>` : ''}
+              ${t.whyBest ? `<div style="font-size:11.5px; color:#fde68a; margin-top:4px;">💡 ${escapeHtml(t.whyBest)}</div>` : t.notes ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.notes)}</div>` : ''}
             </div>
           `;
         })
@@ -8859,6 +9154,8 @@
         if (budgetEl) budgetEl.value = '';
         const batchEl = document.getElementById('shopBatchCountInput');
         if (batchEl) batchEl.value = '1';
+        const askEl = document.getElementById('shopAskingPriceInput');
+        if (askEl) askEl.value = '';
         renderShopsModule();
       });
     });
@@ -8879,15 +9176,43 @@
   function initShopsModule() {
     const searchEl = document.getElementById('shopSearchInput');
     const clearBtn = document.getElementById('shopClearSearchBtn');
+    const currencyEl = document.getElementById('shopCurrencySelect');
+    const sortEl = document.getElementById('shopSortSelect');
 
     searchEl?.addEventListener('input', () => {
       shopSearchQuery = searchEl.value.trim();
       renderShopsModule();
     });
 
+    currencyEl?.addEventListener('change', () => {
+      selectedShopCurrency = currencyEl.value || 'all';
+      renderShopsModule();
+    });
+
+    sortEl?.addEventListener('change', () => {
+      selectedShopSort = sortEl.value || 'best';
+      renderShopsModule();
+    });
+
     clearBtn?.addEventListener('click', () => {
       if (searchEl) searchEl.value = '';
+      if (currencyEl) currencyEl.value = 'all';
+      if (sortEl) sortEl.value = 'best';
+      const askEl = document.getElementById('shopAskingPriceInput');
+      if (askEl) askEl.value = '';
+      const askGridEl = document.getElementById('shopAskingGridInput');
+      if (askGridEl) askGridEl.value = '';
       shopSearchQuery = '';
+      selectedShopFilter = 'all';
+      selectedShopCategory = 'all';
+      selectedShopCurrency = 'all';
+      selectedShopSort = 'best';
+      document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-sfilter') === 'all');
+      });
+      document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-scat') === 'all');
+      });
       renderShopsModule();
     });
 
@@ -8896,6 +9221,15 @@
         document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         selectedShopFilter = btn.getAttribute('data-sfilter') || 'all';
+        renderShopsModule();
+      });
+    });
+
+    document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedShopCategory = btn.getAttribute('data-scat') || 'all';
         renderShopsModule();
       });
     });
@@ -8914,10 +9248,58 @@
       renderSelectedShopCalculator();
     });
 
+    document.getElementById('shopAskingPriceInput')?.addEventListener('input', () => {
+      renderSelectedShopCalculator();
+    });
+
+    const commitCustomShopEntry = (entry) => {
+      appState.customShops = [entry, ...(Array.isArray(appState.customShops) ? appState.customShops : [])];
+      selectedShopTradeId = entry.id;
+      if (!['all', 'player', 'custom'].includes(selectedShopFilter)) {
+        selectedShopFilter = 'player';
+        document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-sfilter') === 'player');
+        });
+      }
+      if (selectedShopCategory !== 'all' && selectedShopCategory !== entry.category) {
+        selectedShopCategory = 'all';
+        document.querySelectorAll('#shopCategoryBar .filter-pill').forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-scat') === 'all');
+        });
+      }
+      syncStateToServer();
+      renderShopsModule();
+      document.querySelector('#shopTradesList .shop-trade-card.active')?.scrollIntoView?.({ block: 'nearest' });
+    };
+
+    document.getElementById('pinDealShopBtn')?.addEventListener('click', () => {
+      const allTrades = getAllNormalizedShopTrades();
+      const sel = allTrades.find((t) => t.id === selectedShopTradeId);
+      if (!sel) return;
+      const askEl = document.getElementById('shopAskingPriceInput');
+      const gridEl = document.getElementById('shopAskingGridInput');
+      const customPrice = askEl && Number(askEl.value) > 0 ? Math.max(1, parseInt(askEl.value, 10)) : sel.payQty;
+      const grid = gridEl?.value.trim().toUpperCase() || '';
+      const entry = {
+        id: 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        buyQty: sel.buyQty,
+        buyItem: sel.buyItem,
+        payQty: customPrice,
+        payItem: sel.payItem,
+        category: sel.category || 'defense',
+        grid,
+        notes: `Pinned player deal${grid ? ` at [${grid}]` : ''} (checked vs benchmark).`
+      };
+      if (askEl) askEl.value = '';
+      if (gridEl) gridEl.value = '';
+      commitCustomShopEntry(entry);
+    });
+
     const addCustomShop = () => {
       const sellEl = document.getElementById('customShopSellInput');
       const costEl = document.getElementById('customShopCostInput');
       const gridEl = document.getElementById('customShopGridInput');
+      const catEl = document.getElementById('customShopCategorySelect');
       const rawSell = sellEl?.value.trim() || '';
       const rawCost = costEl?.value.trim() || '';
       const grid = gridEl?.value.trim().toUpperCase() || '';
@@ -8925,22 +9307,22 @@
 
       const sellMatch = rawSell.match(/^(\d+)\s+(.+)$/);
       const costMatch = rawCost.match(/^(\d+)\s+(.+)$/);
+      const buyItem = sellMatch ? sellMatch[2].trim() : rawSell;
+      const bench = findMatchingShopBenchmark(buyItem);
       const entry = {
         id: 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
         buyQty: sellMatch ? parseInt(sellMatch[1], 10) : 1,
-        buyItem: sellMatch ? sellMatch[2].trim() : rawSell,
+        buyItem,
         payQty: costMatch ? parseInt(costMatch[1], 10) : 1,
         payItem: costMatch ? costMatch[2].trim() : rawCost,
+        category: catEl?.value || bench?.category || 'defense',
         grid,
         notes: 'Logged by squad on live server.'
       };
-      appState.customShops = [entry, ...(Array.isArray(appState.customShops) ? appState.customShops : [])];
-      selectedShopTradeId = entry.id;
       if (sellEl) sellEl.value = '';
       if (costEl) costEl.value = '';
       if (gridEl) gridEl.value = '';
-      syncStateToServer();
-      renderShopsModule();
+      commitCustomShopEntry(entry);
     };
 
     document.getElementById('addCustomShopBtn')?.addEventListener('click', addCustomShop);
