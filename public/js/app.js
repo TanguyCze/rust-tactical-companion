@@ -9867,10 +9867,79 @@
         if (statusEl) {
           statusEl.textContent = data.lastStatus || `✅ Connected via Facepunch Cloud! Found ${(data.pairedServers || []).length} paired server(s).`;
         }
+        startClientCloudWaitPoll();
         return true;
       } catch (err) {
         if (!isSilentAuto && statusEl) statusEl.textContent = `❌ ${err.message}`;
         return false;
+      }
+    };
+
+    let clientCloudWaitTimer = null;
+    const stopClientCloudWaitPoll = () => {
+      if (clientCloudWaitTimer) {
+        clearInterval(clientCloudWaitTimer);
+        clientCloudWaitTimer = null;
+      }
+    };
+    const startClientCloudWaitPoll = () => {
+      stopClientCloudWaitPoll();
+      const cfg = appState.rustPlusShopConfig || {};
+      if (!cfg.authToken || (Array.isArray(cfg.pairedServers) && cfg.pairedServers.length > 0)) {
+        return;
+      }
+      clientCloudWaitTimer = setInterval(() => {
+        const cur = appState.rustPlusShopConfig || {};
+        if (!cur.authToken || (Array.isArray(cur.pairedServers) && cur.pairedServers.length > 0)) {
+          stopClientCloudWaitPoll();
+          return;
+        }
+        syncCloudPairingsNow(true);
+      }, 4000);
+    };
+
+    const syncCloudPairingsNow = async (isBackground = false) => {
+      const statusEl = document.getElementById('rpShopStatusText');
+      if (!isBackground && statusEl) {
+        statusEl.textContent = '⏳ Checking Facepunch Cloud for paired servers...';
+      }
+      const typedCode = document.getElementById('rpAuthCodeInput')?.value.trim() || '';
+      try {
+        const resp = await fetch('/api/shops/rustplus/cloud-sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
+          },
+          body: JSON.stringify({ tokenInput: typedCode })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+        if (data.state) {
+          appState = {
+            ...appState,
+            ...data.state,
+            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
+            rustPlusShopConfig: {
+              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+              ...(appState.rustPlusShopConfig || {}),
+              ...(data.state.rustPlusShopConfig || {})
+            }
+          };
+          saveLocalFallback();
+        }
+        syncRustPlusShopUiFromState();
+        renderShopsModule();
+        if (Array.isArray(data.pairedServers) && data.pairedServers.length > 0) {
+          stopClientCloudWaitPoll();
+        }
+        if (statusEl && (data.lastStatus || !isBackground)) {
+          statusEl.textContent =
+            data.lastStatus ||
+            `🔄 Cloud sync checked ${data.historyItemsCount ?? 0} item(s): ${(data.pairedServers || []).length} paired server(s) found.`;
+        }
+      } catch (err) {
+        if (!isBackground && statusEl) statusEl.textContent = `❌ ${err.message}`;
       }
     };
 
@@ -9928,42 +9997,7 @@
       } catch (_) {}
     });
 
-    document.getElementById('rpSyncCloudBtn')?.addEventListener('click', async () => {
-      const statusEl = document.getElementById('rpShopStatusText');
-      if (statusEl) statusEl.textContent = '⏳ Checking Facepunch Cloud for new "Pair with Server" clicks...';
-      try {
-        const resp = await fetch('/api/shops/rustplus/cloud-sync', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
-          },
-          body: '{}'
-        });
-        const data = await resp.json();
-        if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
-        if (data.state) {
-          appState = {
-            ...appState,
-            ...data.state,
-            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
-            rustPlusShopConfig: {
-              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
-              ...(appState.rustPlusShopConfig || {}),
-              ...(data.state.rustPlusShopConfig || {})
-            }
-          };
-          saveLocalFallback();
-        }
-        syncRustPlusShopUiFromState();
-        renderShopsModule();
-        if (statusEl) {
-          statusEl.textContent = `🔄 Cloud sync complete: ${(data.pairedServers || []).length} paired server(s) loaded.`;
-        }
-      } catch (err) {
-        if (statusEl) statusEl.textContent = `❌ ${err.message}`;
-      }
-    });
+    document.getElementById('rpSyncCloudBtn')?.addEventListener('click', () => syncCloudPairingsNow(false));
 
     document.getElementById('rpPairedServerSelect')?.addEventListener('change', (e) => {
       const key = e.target.value;
@@ -10027,6 +10061,7 @@
 
     syncRustPlusShopUiFromState();
     renderShopsModule();
+    startClientCloudWaitPoll();
   }
 
   function syncRustPlusShopUiFromState() {

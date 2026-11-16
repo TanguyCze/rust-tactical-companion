@@ -1363,6 +1363,126 @@ async function resolveFacepunchAuthInput(rawInput) {
 
 async function registerFacepunchWebPush(authToken) {
   let token = authToken;
+  // Full 4-Step Android Firebase (FIS_v2) + C2DM + Expo Registration (PushKind: 3)
+  try {
+    const checkinRes = await postJsonHttps('https://android.clients.google.com/checkin', {
+      checkin: {
+        type: 3,
+        chromeBuild: { platform: 2, chromeVersion: '63.0.3234.0', channel: 1 }
+      },
+      version: 3
+    });
+    const androidId = String(checkinRes.androidId || checkinRes.android_id || '');
+    const securityToken = String(checkinRes.securityToken || checkinRes.security_token || '');
+
+    if (androidId && securityToken) {
+      const fidBytes = crypto.randomBytes(17);
+      fidBytes[0] = 0b01110000 | (fidBytes[0] & 0b00001111);
+      const fid = fidBytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 22);
+
+      const fisRes = await postJsonHttps(
+        'https://firebaseinstallations.googleapis.com/v1/projects/rust-companion-app/installations',
+        {
+          fid,
+          appId: '1:976529667804:android:d6f1ddeb4403b338fea619',
+          authVersion: 'FIS_v2',
+          sdkVersion: 'a:17.0.0'
+        },
+        {
+          'x-goog-api-key': 'AIzaSyB5y2y-Tzqb4-I4Qnlsh_9naYv_TD8pCvY',
+          'X-Android-Package': 'com.facepunch.rust.companion',
+          'X-Android-Cert': 'E28D05345FB78A7A1A63D70F4A302DBF426CA5AD',
+          'x-firebase-client': 'fire-abt/21.1.1 fire-installations/17.0.0 fire-android/ fire-core/20.3.1',
+          'x-firebase-app-name-hash': 'R1dAH9Ui7M-ynoznwBdw01tLxhI'
+        }
+      );
+
+      const fisToken = fisRes?.authToken?.token;
+      if (fisToken) {
+        const c2dmPayload = new URLSearchParams({
+          'X-subtype': '976529667804',
+          sender: '976529667804',
+          'X-app_ver': '25',
+          'X-osv': '29',
+          'X-cliv': 'fiid-21.1.1',
+          'X-gmsv': '220217001',
+          'X-scope': '*',
+          'X-Goog-Firebase-Installations-Auth': fisToken,
+          'X-gms_app_id': '1:976529667804:android:d6f1ddeb4403b338fea619',
+          'X-Firebase-Client': 'fire-abt/21.1.1 fire-installations/17.0.0 fire-android/ fire-core/20.3.1',
+          'X-firebase-app-name-hash': 'R1dAH9Ui7M-ynoznwBdw01tLxhI',
+          'X-Goog-Firebase-Installations-Auth-Version': 'FIS_v2',
+          app: 'com.facepunch.rust.companion',
+          device: androidId,
+          cert: 'e28d05345fb78a7a1a63d70f4a302dbf426ca5ad',
+          target_ver: '31'
+        }).toString();
+
+        const c2dmRaw = await new Promise((resolve, reject) => {
+          const req = https.request(
+            {
+              hostname: 'android.clients.google.com',
+              path: '/c2dm/register3',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(c2dmPayload),
+                'User-Agent': 'okhttp/4.9.2',
+                Authorization: `AidLogin ${androidId}:${securityToken}`
+              },
+              timeout: 12000
+            },
+            (res) => {
+              let data = '';
+              res.on('data', (c) => (data += c));
+              res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
+                else reject(new Error(`C2DM HTTP ${res.statusCode}`));
+              });
+            }
+          );
+          req.on('error', reject);
+          req.write(c2dmPayload);
+          req.end();
+        });
+
+        const fcmToken = c2dmRaw.startsWith('token=') ? c2dmRaw.replace('token=', '').trim() : '';
+        if (fcmToken) {
+          const deviceId = crypto.randomUUID ? crypto.randomUUID() : `rustplus-${Date.now()}`;
+          const expoRes = await postJsonHttps('https://exp.host/--/api/v2/push/getExpoPushToken', {
+            type: 'fcm',
+            deviceId,
+            development: false,
+            appId: 'com.facepunch.rust.companion',
+            deviceToken: fcmToken,
+            projectId: '49451aca-a822-41e6-ad59-955718d0ff9c'
+          });
+
+          const expoPushToken = expoRes?.data?.expoPushToken;
+          if (expoPushToken) {
+            const regRes = await postJsonHttps(
+              'https://companion-rust.facepunch.com/api/push/register',
+              {
+                AuthToken: token,
+                DeviceId: deviceId,
+                PushKind: 3,
+                PushToken: expoPushToken
+              },
+              { Authorization: `Bearer ${token}` }
+            );
+            if (regRes && typeof regRes.token === 'string' && regRes.token) {
+              token = regRes.token;
+            }
+            return token;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.log('[Rust+ Push] Expo registration fallback:', err.message);
+  }
+
+  // Web PushKind.Null = 2 fallback
   try {
     const webDeviceId = 'rustplus-' + (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
     const regRes = await postJsonHttps(
@@ -1382,9 +1502,71 @@ async function registerFacepunchWebPush(authToken) {
   return token;
 }
 
+function extractSteamIdFromJwt(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return '';
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    const sid = json.steamId || json.steam_id || json.sub || json.userId || '';
+    return /^\d{15,22}$/.test(String(sid)) ? String(sid) : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function tryParseJsonDeep(val, depth = 0) {
+  if (depth > 3 || val === null || val === undefined) return null;
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (!s.startsWith('{') && !s.startsWith('[')) return null;
+    try {
+      return tryParseJsonDeep(JSON.parse(s), depth + 1);
+    } catch (_) {
+      return null;
+    }
+  }
+  return typeof val === 'object' ? val : null;
+}
+
+function extractServerPairingFromHistoryItem(item, fallbackSteamId = '') {
+  if (!item || typeof item !== 'object') return null;
+  const candidates = [
+    item.data?.body,
+    item.data?.data,
+    item.data,
+    item.body,
+    item.payload,
+    item
+  ];
+  for (const cand of candidates) {
+    const parsed = tryParseJsonDeep(cand);
+    if (!parsed || typeof parsed !== 'object') continue;
+    const obj = parsed.body && typeof parsed.body === 'object' ? parsed.body : parsed;
+    const ip = obj.ip || obj.IP || obj.host;
+    const playerToken = obj.playerToken || obj.PlayerToken;
+    if (ip && playerToken !== undefined && playerToken !== null && String(playerToken) !== '') {
+      const port = String(obj.port || obj.Port || '28082');
+      const pid = String(obj.playerId || obj.PlayerId || obj.steamId || obj.SteamId || item.steamId || fallbackSteamId || '');
+      const name = String(obj.name || obj.serverName || item.data?.title || item.title || `${ip}:${port}`);
+      return {
+        id: obj.id || item.serverId || `${ip}:${port}`,
+        serverName: name,
+        type: String(obj.type || (obj.entityId ? 'entity' : 'server')),
+        ip: String(ip),
+        port,
+        playerId: pid,
+        playerToken: String(playerToken),
+        pairedAt: Date.now()
+      };
+    }
+  }
+  return null;
+}
+
 async function syncPairedServersFromFacepunchCloud(authToken, isBackground = false) {
   const token = authToken || squadState.rustPlusShopConfig?.authToken;
-  if (!token) return { serversFound: 0, pairedServers: [], activeServer: null };
+  if (!token) return { serversFound: 0, historyItemsCount: 0, pairedServers: [], activeServer: null };
 
   const res = await postJsonHttps(
     'https://companion-rust.facepunch.com/api/history/read',
@@ -1396,54 +1578,58 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
     ? res.notifications
     : Array.isArray(res?.messages)
       ? res.messages
-      : [];
+      : Array.isArray(res?.history)
+        ? res.history
+        : Array.isArray(res)
+          ? res
+          : [];
 
-  const sorted = [...notifications].sort((a, b) => (a.notificationId || 0) - (b.notificationId || 0));
+  const sorted = [...notifications].sort(
+    (a, b) => Number(a.notificationId || a.id || 0) - Number(b.notificationId || b.id || 0)
+  );
   const cfg = squadState.rustPlusShopConfig || { ...DEFAULT_STATE.rustPlusShopConfig };
-  const prevMaxId = Number(cfg.lastHistoryNotificationId || 0);
+  const jwtSteamId = cfg.steamId || extractSteamIdFromJwt(token);
   const existing = Array.isArray(cfg.pairedServers) ? [...cfg.pairedServers] : [];
 
   let serversFound = 0;
   let newestServer = null;
-  let maxNid = prevMaxId;
+  let maxNid = Number(cfg.lastHistoryNotificationId || 0);
 
   for (const item of sorted) {
-    const nid = Number(item.notificationId || 0);
+    const nid = Number(item.notificationId || item.id || 0);
     if (nid > maxNid) maxNid = nid;
-    if (isBackground && prevMaxId > 0 && nid <= prevMaxId) continue;
 
-    const rawData = item.data || item.body;
-    if (!rawData) continue;
-    try {
-      const body = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
-      if (body && body.ip && body.playerToken) {
-        const srv = {
-          id: body.id || `${body.ip}:${body.port || '28082'}`,
-          serverName: body.name || `${body.ip}:${body.port || '28082'}`,
-          ip: String(body.ip),
-          port: String(body.port || '28082'),
-          playerId: String(body.playerId || cfg.steamId || ''),
-          playerToken: String(body.playerToken),
-          pairedAt: Date.now()
-        };
-        const idx = existing.findIndex((s) => s.ip === srv.ip && String(s.port) === String(srv.port));
-        if (idx >= 0) existing[idx] = srv;
-        else existing.unshift(srv);
-        if (body.type === 'server' || !newestServer) {
-          newestServer = srv;
-        }
-        serversFound++;
+    const srv = extractServerPairingFromHistoryItem(item, jwtSteamId);
+    if (!srv) continue;
+
+    const prev = existing.find((s) => s.ip === srv.ip && String(s.port) === String(srv.port));
+    const isNewOrUpdated = !prev || String(prev.playerToken) !== String(srv.playerToken);
+
+    const idx = existing.findIndex((s) => s.ip === srv.ip && String(s.port) === String(srv.port));
+    if (idx >= 0) existing[idx] = { ...existing[idx], ...srv };
+    else existing.unshift(srv);
+
+    serversFound++;
+    if (!isBackground || isNewOrUpdated) {
+      if (srv.type === 'server' || !newestServer) {
+        newestServer = srv;
       }
-    } catch (_) {}
+    }
   }
 
-  const active = newestServer || (!cfg.playerToken && existing[0]) || null;
+  const active = newestServer || (existing.length > 0 ? existing[0] : null);
+  const statusMsg = active
+    ? `🚀 Synced ${existing.length} paired server(s) (${notifications.length} cloud items) — active: ${active.serverName}`
+    : `✅ Signed in with Facepunch Cloud (${notifications.length} history items, 0 servers). In Rust: click [✕ DISABLE] then [PAIR WITH SERVER] once — auto-detects within 4s!`;
+
   squadState.rustPlusShopConfig = {
     ...DEFAULT_STATE.rustPlusShopConfig,
     ...cfg,
     authToken: token,
+    ...(jwtSteamId ? { steamId: jwtSteamId } : {}),
     pairedServers: existing,
     lastHistoryNotificationId: maxNid,
+    lastStatus: statusMsg,
     ...(active
       ? {
           ip: active.ip,
@@ -1458,13 +1644,13 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
   saveState(squadState);
   broadcastState('state_update');
 
-  if (newestServer) {
+  if (active && (!isBackground || newestServer)) {
     configureRustPlusShopPoller();
     try {
       const snap = await fetchRustPlusVendingSnapshot(squadState.rustPlusShopConfig);
       await applyVendingSnapshotToState(snap, squadState.rustPlusShopConfig, false);
     } catch (pollErr) {
-      squadState.rustPlusShopConfig.lastStatus = `✅ Paired ${newestServer.serverName} — awaiting live server reachability (${pollErr.message})`;
+      squadState.rustPlusShopConfig.lastStatus = `✅ Paired "${active.serverName}" (${active.ip}:${active.port}) — server poll wait: ${pollErr.message}`;
       saveState(squadState);
       broadcastState('state_update');
     }
@@ -1472,8 +1658,10 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
 
   return {
     serversFound,
+    historyItemsCount: notifications.length,
     pairedServers: existing,
-    activeServer: active || null
+    activeServer: active,
+    lastStatus: squadState.rustPlusShopConfig.lastStatus
   };
 }
 
@@ -1485,7 +1673,7 @@ function configureRustPlusCloudSyncPoller() {
   if (squadState.rustPlusShopConfig?.authToken) {
     rustPlusCloudSyncInterval = setInterval(() => {
       syncPairedServersFromFacepunchCloud(squadState.rustPlusShopConfig.authToken, true).catch(() => {});
-    }, 10000);
+    }, 4000);
   }
 }
 
@@ -1918,26 +2106,22 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
+        const initialSteamId = resolved.steamId || extractSteamIdFromJwt(resolved.token) || squadState.rustPlusShopConfig?.steamId || '';
         const regToken = await registerFacepunchWebPush(resolved.token);
         squadState.rustPlusShopConfig = {
           ...DEFAULT_STATE.rustPlusShopConfig,
           ...(squadState.rustPlusShopConfig || {}),
           authToken: regToken,
-          steamId: resolved.steamId || squadState.rustPlusShopConfig?.steamId || ''
+          steamId: initialSteamId
         };
         configureRustPlusCloudSyncPoller();
         const cloudSync = await syncPairedServersFromFacepunchCloud(regToken, false);
-        const msg = cloudSync.activeServer
-          ? `🚀 Steam Login synced ${cloudSync.pairedServers.length} paired server(s) & connected to "${cloudSync.activeServer.serverName}"!`
-          : '✅ Signed in with Facepunch Cloud! Now open Rust → ESC → Rust+ → Pair with Server (auto-detected within 10s).';
-        squadState.rustPlusShopConfig.lastStatus = msg;
-        saveState(squadState);
-        broadcastState('state_update');
         return sendJson(res, 200, {
           ok: true,
           pairedServers: cloudSync.pairedServers,
           activeServer: cloudSync.activeServer,
-          lastStatus: msg,
+          historyItemsCount: cloudSync.historyItemsCount,
+          lastStatus: cloudSync.lastStatus,
           state: squadState
         });
       } catch (err) {
@@ -1947,11 +2131,21 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/shops/rustplus/cloud-sync' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
-      if (!squadState.rustPlusShopConfig?.authToken) {
+      const body = await readJsonBody(req).catch(() => ({}));
+      let tokenToUse = squadState.rustPlusShopConfig?.authToken || '';
+      if (!tokenToUse && body.tokenInput) {
+        const resolved = await resolveFacepunchAuthInput(body.tokenInput).catch(() => null);
+        if (resolved?.token) {
+          tokenToUse = await registerFacepunchWebPush(resolved.token);
+          squadState.rustPlusShopConfig.authToken = tokenToUse;
+          configureRustPlusCloudSyncPoller();
+        }
+      }
+      if (!tokenToUse) {
         return sendJson(res, 400, { error: 'Not signed in with Facepunch Steam Popup yet.' });
       }
       try {
-        const cloudSync = await syncPairedServersFromFacepunchCloud(squadState.rustPlusShopConfig.authToken, false);
+        const cloudSync = await syncPairedServersFromFacepunchCloud(tokenToUse, false);
         return sendJson(res, 200, { ok: true, ...cloudSync, state: squadState });
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
