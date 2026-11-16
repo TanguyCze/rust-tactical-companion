@@ -8708,41 +8708,42 @@
 
   function formatRustPlusMonumentToken(rawToken) {
     const s = String(rawToken || '').toLowerCase();
-    if (!s || /cave|train_tunnel|swamp|power_sub|bus_stop|bunker|mining_quarry_a/.test(s)) return null;
-    if (s.includes('launch')) return { label: 'Launch Site', icon: '🚀', color: '#f87171' };
-    if (s.includes('silo')) return { label: 'Missile Silo', icon: '☢️', color: '#f87171' };
-    if (s.includes('military_tunnel')) return { label: 'Mil Tunnels', icon: '🪖', color: '#f87171' };
-    if (s.includes('oil') && s.includes('large')) return { label: 'Large Oil', icon: '🛢️', color: '#ef4444' };
-    if (s.includes('oil') && s.includes('small')) return { label: 'Small Oil', icon: '🛢️', color: '#fb923c' };
-    if (s.includes('power')) return { label: 'Power Plant', icon: '⚡', color: '#38bdf8' };
-    if (s.includes('water_treatment')) return { label: 'Water Treat', icon: '💧', color: '#38bdf8' };
-    if (s.includes('trainyard')) return { label: 'Train Yard', icon: '🚂', color: '#38bdf8' };
-    if (s.includes('airfield')) return { label: 'Airfield', icon: '✈️', color: '#38bdf8' };
-    if (s.includes('arctic')) return { label: 'Arctic Base', icon: '❄️', color: '#7dd3fc' };
-    if (s.includes('excavator')) return { label: 'Excavator', icon: '⛏️', color: '#facc15' };
-    if (s.includes('outpost') && !s.includes('mining')) return { label: 'Outpost', icon: '🛡️', color: '#4ade80' };
-    if (s.includes('bandit')) return { label: 'Bandit Camp', icon: '🏴‍☠️', color: '#4ade80' };
-    if (s.includes('fishing')) return { label: 'Fishing', icon: '⚓', color: '#2dd4bf' };
-    if (s.includes('harbor')) return { label: 'Harbor', icon: '⚓', color: '#a3e635' };
-    if (s.includes('ferry')) return { label: 'Ferry', icon: '⛴️', color: '#a3e635' };
-    if (s.includes('dome') || s.includes('sphere')) return { label: 'The Dome', icon: '🔵', color: '#fbbf24' };
-    if (s.includes('sewer')) return { label: 'Sewer Branch', icon: '🟢', color: '#a3e635' };
-    if (s.includes('satellite')) return { label: 'Satellite', icon: '📡', color: '#a3e635' };
-    if (s.includes('waterwell')) return { label: 'Water Well', icon: '🚰', color: '#22d3ee' };
-    if (s.includes('supermarket')) return { label: 'Supermarket', icon: '🏪', color: '#a3e635' };
-    if (s.includes('gas_station') || s.includes('oxum')) return { label: 'Gas Station', icon: '⛽', color: '#a3e635' };
-    if (s.includes('mining_outpost')) return { label: 'Mining Outpost', icon: '⛏️', color: '#a3e635' };
-    if (s.includes('ranch') || s.includes('stables') || s.includes('barn')) return { label: 'Stables/Ranch', icon: '🐎', color: '#4ade80' };
-    if (s.includes('junkyard')) return { label: 'Junkyard', icon: '⚙️', color: '#a3e635' };
-    if (s.includes('lighthouse')) return { label: 'Lighthouse', icon: '🚨', color: '#a3e635' };
-    if (s.includes('radtown')) return { label: 'Radtown', icon: '☢️', color: '#fbbf24' };
-    if (s.includes('abandoned_military')) return { label: 'Desert Mil', icon: '🪖', color: '#fb923c' };
-    const clean = String(rawToken || '')
-      .replace(/_display_name|_monument_name|monument_/gi, '')
-      .replace(/_/g, ' ')
-      .trim();
-    return clean ? { label: clean.replace(/\b\w/g, (c) => c.toUpperCase()), icon: '🏛️', color: '#cbd5e1' } : null;
+    if (!s || /cave|tunnel|swamp|substation|power_sub|bus_stop|bunker|rock|iceberg|ice_lake|ruin|glacier|canyon|cliff|bridge|mining_quarry_a/.test(s)) return null;
+    if (s.includes('launch')) return { label: 'Launch Site', color: '#ef4444', r: 7, isMajor: true };
+    if (s.includes('silo')) return { label: 'Missile Silo', color: '#ef4444', r: 7, isMajor: true };
+    if (s.includes('military_tunnel')) return { label: 'Mil Tunnels', color: '#ef4444', r: 7, isMajor: true };
+    if (s.includes('oil') && s.includes('large')) return { label: 'Large Oil', color: '#ef4444', r: 7, isMajor: true };
+    if (s.includes('oil') && s.includes('small')) return { label: 'Small Oil', color: '#f97316', r: 6.5, isMajor: true };
+    if (s.includes('powerplant') || s.includes('power_plant')) return { label: 'Powerplant', color: '#f97316', r: 6.5, isMajor: true };
+    if (s.includes('water_treatment')) return { label: 'Water Treat.', color: '#f97316', r: 6.5, isMajor: true };
+    if (s.includes('trainyard')) return { label: 'Train Yard', color: '#f97316', r: 6.5, isMajor: true };
+    if (s.includes('airfield')) return { label: 'Airfield', color: '#f97316', r: 6.5, isMajor: true };
+    if (s.includes('arctic')) return { label: 'Arctic Base', color: '#38bdf8', r: 6, isMajor: true };
+    if (s.includes('excavator')) return { label: 'Excavator', color: '#ef4444', r: 7, isMajor: true };
+    if (s.includes('outpost') && !s.includes('mining')) return { label: 'Outpost', color: '#3b82f6', r: 6, isMajor: true };
+    if (s.includes('bandit')) return { label: 'Bandit Camp', color: '#3b82f6', r: 6, isMajor: true };
+    if (s.includes('fishing')) return { label: 'Fishing', color: '#22d3ee', r: 5, isMajor: false };
+    if (s.includes('harbor')) return { label: 'Harbor', color: '#22d3ee', r: 5.5, isMajor: false };
+    if (s.includes('ferry')) return { label: 'Ferry', color: '#22d3ee', r: 5, isMajor: false };
+    if (s.includes('underwater_lab')) return { label: 'Lab', color: '#38bdf8', r: 5.5, isMajor: false };
+    if (s.includes('dome') || s.includes('sphere')) return { label: 'The Dome', color: '#f97316', r: 5.5, isMajor: false };
+    if (s.includes('sewer')) return { label: 'Sewer Branch', color: '#a3e635', r: 5.5, isMajor: false };
+    if (s.includes('satellite')) return { label: 'Satellite', color: '#a3e635', r: 5, isMajor: false };
+    if (s.includes('waterwell')) return { label: 'Water Well', color: '#22d3ee', r: 4, isMajor: false };
+    if (s.includes('supermarket')) return { label: 'Market', color: '#94a3b8', r: 4.5, isMajor: false };
+    if (s.includes('gas_station') || s.includes('oxum')) return { label: "Oxum's", color: '#94a3b8', r: 4.5, isMajor: false };
+    if (s.includes('mining_outpost')) return { label: 'Mining Outpost', color: '#94a3b8', r: 4.5, isMajor: false };
+    if (s.includes('ranch') || s.includes('stables')) return { label: 'Ranch', color: '#22c55e', r: 4.5, isMajor: false };
+    if (s.includes('barn')) return { label: 'Large Barn', color: '#22c55e', r: 4.5, isMajor: false };
+    if (s.includes('junkyard')) return { label: 'Junkyard', color: '#a3e635', r: 5, isMajor: false };
+    if (s.includes('lighthouse')) return { label: 'Lighthouse', color: '#94a3b8', r: 4.5, isMajor: false };
+    if (s.includes('radtown')) return { label: 'Radtown', color: '#a3e635', r: 5, isMajor: false };
+    if (s.includes('abandoned_military')) return { label: 'Aband. Mil.', color: '#f97316', r: 5, isMajor: false };
+    if (s.includes('quarry')) return { label: s.includes('sulfur') ? 'Sulfur Quarry' : s.includes('hqm') ? 'HQM Quarry' : 'Stone Quarry', color: '#f59e0b', r: 4.5, isMajor: false };
+    return null;
   }
+
+  const RUSTPLUS_NOTE_COLORS = ['#eab308', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#06b6d4'];
 
   function drawRustPlusOverlayOnCanvas(ctx, {
     toPx,
@@ -8761,29 +8762,54 @@
     if (!tel) return;
     const myMember = findMyRustPlusTeamMember(tel);
 
-    // A. In-Game Map Notes (Leader & Personal markers)
+    // A. In-Game Map Notes (Death markers = type 0, Leader/Team pins = type 1)
     if (showTeam && Array.isArray(tel.mapNotes)) {
       tel.mapNotes.forEach((n) => {
+        if (!Number.isFinite(n.wx) || !Number.isFinite(n.wy)) return;
         const { px, py } = toPx(n.wx, n.wy);
+        const isDeath = Number(n.type) === 0;
+        const color = isDeath ? '#ef4444' : (RUSTPLUS_NOTE_COLORS[Number(n.colourIndex) || 0] || '#eab308');
+        const grid = bfWorldToGrid(n.wx, n.wy, mapSize);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(px, py, 6, 0, Math.PI * 2);
-        ctx.fillStyle = n.type === 1 ? 'rgba(239,68,68,0.85)' : 'rgba(250,204,21,0.85)';
+        ctx.arc(px, py, isDeath ? 7 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = color;
         ctx.fill();
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.6;
         ctx.strokeStyle = '#090b0e';
         ctx.stroke();
+        if (isDeath) {
+          ctx.font = '700 9px "Inter", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('✕', px, py + 0.5);
+        }
         if (n.label) {
           ctx.font = '700 9.5px "Inter", sans-serif';
           ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
           ctx.strokeStyle = 'rgba(0,0,0,0.92)';
           ctx.lineWidth = 3;
-          const lbl = `📌 ${n.label}`;
-          ctx.strokeText(lbl, px, py - 9);
-          ctx.fillStyle = '#fde68a';
-          ctx.fillText(lbl, px, py - 9);
+          ctx.strokeText(n.label, px, py - 9);
+          ctx.fillStyle = '#fef3c7';
+          ctx.fillText(n.label, px, py - 9);
         }
         ctx.restore();
+        const distLine = formatPlayerDistanceBearing(n.wx, n.wy, myMember);
+        pinOut.push({
+          px,
+          py,
+          r: 8,
+          wx: n.wx,
+          wy: n.wy,
+          title: `${isDeath ? '💀 Death Marker' : '📌 Map Note'}${n.label ? `: ${n.label}` : ''} [${grid}]`,
+          color,
+          lines: [
+            isDeath ? 'Last death location' : 'In-game team map marker',
+            ...(distLine ? [distLine] : [])
+          ]
+        });
       });
     }
 
@@ -8968,6 +8994,11 @@
     }
   }
 
+  function getShopMapScale(canvas, mapSize) {
+    const fitSpan = Math.min(canvas.width, canvas.height) * 0.94;
+    return (fitSpan / Math.max(1, mapSize)) * shopMapZoom;
+  }
+
   function renderShopLiveMap() {
     const card = document.getElementById('shopLiveMapCard');
     const toggleBtn = document.getElementById('toggleShopMapBtn');
@@ -9050,19 +9081,19 @@
       });
     }
 
+    const wrap = document.getElementById('shopLiveMapWrap');
+    if (wrap) wrap.style.maxWidth = shopMapExpanded ? '900px' : '680px';
     const canvas = document.getElementById('shopLiveMapCanvas');
     if (!canvas) return;
-    canvas.style.maxHeight = shopMapExpanded ? '780px' : '580px';
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#09232e';
+    ctx.fillStyle = '#0b3a4a';
     ctx.fillRect(0, 0, W, H);
 
-    // Maintain square scale based on canvas height so entire island fits neatly at 100% zoom
-    const fitSpan = Math.min(W, H) * 0.94;
-    const scale = (fitSpan / mapSize) * shopMapZoom;
+    // Shared 1:1 Base-Finder scale so the island renders sharp & unstretched
+    const scale = getShopMapScale(canvas, mapSize);
     const toPx = (wx, wy) => ({
       px: W / 2 + (wx - shopMapPanX) * scale,
       py: H / 2 - (wy - shopMapPanY) * scale
@@ -9133,7 +9164,7 @@
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
     ctx.lineWidth = 1;
     ctx.font = '600 9.5px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     for (let i = 0; i <= count; i++) {
       const gx = imgTopLeft.px + i * cellPx;
       const gy = imgTopLeft.py + i * cellPx;
@@ -9152,27 +9183,39 @@
     }
     ctx.restore();
 
-    // Formatted Monuments Layer (Toggleable)
+    // Base Finder Clean Monument Pins Layer (Toggleable)
     if (document.getElementById('shopMapShowMonumentsCb')?.checked !== false) {
-      const mons = (bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0)
-        ? bfMapData.monuments.map((m) => ({ fmt: formatRustPlusMonumentToken(m.type) || { label: m.type, icon: '🏛️', color: '#cbd5e1' }, wx: m.x, wy: m.y }))
-        : (tel.mapMeta?.monuments || []).map((m) => ({ fmt: formatRustPlusMonumentToken(m.token), wx: m.wx, wy: m.wy }));
+      const useBfMons = Boolean(bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0);
+      const mons = useBfMons
+        ? bfMapData.monuments.map((m) => {
+          const vis = bfGetMonumentVisual(m, '');
+          return vis ? { vis, wx: m.x, wy: m.y } : null;
+        })
+        : (tel.mapMeta?.monuments || []).map((m) => {
+          const fmt = formatRustPlusMonumentToken(m.token);
+          return fmt ? { vis: { color: fmt.color, short: fmt.label, r: fmt.r, isMajor: fmt.isMajor }, wx: m.wx, wy: m.wy } : null;
+        });
       ctx.save();
-      ctx.font = '700 9.5px "Inter", sans-serif';
       ctx.textAlign = 'center';
-      mons.forEach((m) => {
-        if (!m.fmt) return;
-        const { px, py } = toPx(m.wx, m.wy);
+      mons.forEach((item) => {
+        if (!item) return;
+        const { vis, wx, wy } = item;
+        const { px, py } = toPx(wx, wy);
         ctx.beginPath();
-        ctx.arc(px, py, 3, 0, Math.PI * 2);
-        ctx.fillStyle = m.fmt.color;
+        ctx.arc(px, py, vis.r, 0, Math.PI * 2);
+        ctx.fillStyle = vis.color;
         ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-        ctx.lineWidth = 3;
-        const txt = `${m.fmt.icon} ${m.fmt.label}`;
-        ctx.strokeText(txt, px, py - 6);
-        ctx.fillStyle = m.fmt.color;
-        ctx.fillText(txt, px, py - 6);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#090b0e';
+        ctx.stroke();
+        if (vis.short) {
+          ctx.font = vis.isMajor ? '700 10px "Inter", sans-serif' : '600 9px "Inter", sans-serif';
+          ctx.strokeStyle = 'rgba(0,0,0,0.88)';
+          ctx.lineWidth = 3;
+          ctx.strokeText(vis.short, px, py - vis.r - 4);
+          ctx.fillStyle = '#f8fafc';
+          ctx.fillText(vis.short, px, py - vis.r - 4);
+        }
       });
       ctx.restore();
     }
@@ -10485,15 +10528,16 @@
       const c = document.getElementById('shopLiveMapCanvas');
       if (c && anchorCx !== null && anchorCy !== null) {
         const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-        const fitSpan = Math.min(c.width, c.height) * 0.94;
-        const oldScale = (fitSpan / mapSize) * shopMapZoom;
-        const newScale = (fitSpan / mapSize) * nextZoom;
+        const oldScale = getShopMapScale(c, mapSize);
         const wxBefore = (anchorCx - c.width / 2) / oldScale + shopMapPanX;
         const wyBefore = -(anchorCy - c.height / 2) / oldScale + shopMapPanY;
+        shopMapZoom = nextZoom;
+        const newScale = getShopMapScale(c, mapSize);
         shopMapPanX = wxBefore - (anchorCx - c.width / 2) / newScale;
         shopMapPanY = wyBefore + (anchorCy - c.height / 2) / newScale;
+      } else {
+        shopMapZoom = nextZoom;
       }
-      shopMapZoom = nextZoom;
       renderShopLiveMap();
     };
     document.getElementById('shopMapZoomInBtn')?.addEventListener('click', () => setShopZoomClamped(shopMapZoom * 1.25));
@@ -10545,8 +10589,7 @@
         dragMoved += Math.hypot(e.clientX - lastX, e.clientY - lastY);
         const rect = shopCanvas.getBoundingClientRect();
         const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-        const fitSpan = Math.min(shopCanvas.width, shopCanvas.height) * 0.94;
-        const scale = (fitSpan / mapSize) * shopMapZoom;
+        const scale = getShopMapScale(shopCanvas, mapSize);
         const dx = ((e.clientX - lastX) * shopCanvas.width) / Math.max(1, rect.width);
         const dy = ((e.clientY - lastY) * shopCanvas.height) / Math.max(1, rect.height);
         lastX = e.clientX;
@@ -10564,8 +10607,7 @@
         const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
         const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
         const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-        const fitSpan = Math.min(shopCanvas.width, shopCanvas.height) * 0.94;
-        const scale = (fitSpan / mapSize) * shopMapZoom;
+        const scale = getShopMapScale(shopCanvas, mapSize);
         const wx = (cx - shopCanvas.width / 2) / scale + shopMapPanX;
         const wy = -(cy - shopCanvas.height / 2) / scale + shopMapPanY;
         if (shopHudReadout) {

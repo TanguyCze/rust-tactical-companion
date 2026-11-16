@@ -866,15 +866,15 @@ function decodeRustPlusMapNote(buf) {
     if (wt === 0) {
       const v = readVarint(buf, pos);
       pos = v.offset;
-      if (fn === 1) note.type = Number(v.value);
-      else if (fn === 4) note.icon = Number(v.value);
-      else if (fn === 5) note.colourIndex = Number(v.value);
+      if (fn === 2) note.type = Number(v.value);
+      else if (fn === 5) note.icon = Number(v.value);
+      else if (fn === 6) note.colourIndex = Number(v.value);
     } else if (wt === 5 && pos + 4 <= buf.length) {
       const val = buf.readFloatLE(pos);
       pos += 4;
-      if (fn === 2) note.x = val;
-      else if (fn === 3) note.y = val;
-    } else if (wt === 2 && fn === 6) {
+      if (fn === 3) note.x = val;
+      else if (fn === 4) note.y = val;
+    } else if (wt === 2 && fn === 7) {
       const len = readVarint(buf, pos);
       pos = len.offset;
       note.label = buf.slice(pos, pos + Number(len.value)).toString('utf8');
