@@ -130,6 +130,7 @@
     discordWebhookUrl: '',
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     squadPins: [],
+    conveyorFilters: [],
     squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS },
     rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
     rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY },
@@ -168,6 +169,7 @@
         raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
         discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
         squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS, ...(parsedSaved.squadKeycards || {}) },
+        conveyorFilters: Array.isArray(parsedSaved.conveyorFilters) ? parsedSaved.conveyorFilters : [],
         rustPlusShopConfig: {
           ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
           ...(parsedSaved.rustPlusShopConfig || {}),
@@ -257,7 +259,8 @@
                 }
               },
               rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), ...(msg.state.rustPlusTelemetry || {}) },
-              squadPins: Array.isArray(msg.state.squadPins) ? msg.state.squadPins : (appState.squadPins || [])
+              squadPins: Array.isArray(msg.state.squadPins) ? msg.state.squadPins : (appState.squadPins || []),
+              conveyorFilters: Array.isArray(msg.state.conveyorFilters) ? msg.state.conveyorFilters : (appState.conveyorFilters || [])
             };
             saveLocalFallback();
             if (firstHydrate) {
@@ -6575,30 +6578,176 @@
       </div>`;
   }
 
+  let editingConveyorFilterId = '';
   const customConveyorFilters = [
-    { item: 'Sulfur Ore', min: 0, max: 0, buf: 0 },
-    { item: 'Metal Ore', min: 0, max: 0, buf: 0 }
+    { item: 'Sulfur Ore', shortname: 'sulfur.ore', min: 0, max: 0, buf: 0, isBlueprint: false },
+    { item: 'Metal Ore', shortname: 'metal.ore', min: 0, max: 0, buf: 0, isBlueprint: false }
   ];
 
+  function resolveConveyorShortname(itemName, explicitShort = '') {
+    if (explicitShort) return String(explicitShort);
+    const catEntry = (DATA.conveyorItemsCatalog || []).find(
+      (x) => x.name.toLowerCase() === String(itemName || '').toLowerCase() || x.shortname.toLowerCase() === String(itemName || '').toLowerCase()
+    );
+    if (catEntry) return catEntry.shortname;
+    return '';
+  }
+
+  function conveyorSlotToRustJson(slot) {
+    const rawItem = String(slot?.item || '').trim();
+    if (!rawItem || rawItem.startsWith('(Blank')) return null;
+    if (rawItem.startsWith('Category:')) {
+      const catLabel = rawItem.replace(/^Category:\s*/i, '').trim();
+      const catId = DATA.conveyorCategoryIds?.[catLabel];
+      if (typeof catId !== 'number') return null;
+      return {
+        TargetCategory: catId,
+        MaxAmountInOutput: Math.max(0, Number(slot.max) || 0),
+        BufferAmount: Math.max(0, Number(slot.buf) || 0),
+        MinAmountInInput: Math.max(0, Number(slot.min) || 0),
+        IsBlueprint: Boolean(slot.isBlueprint),
+        BufferTransferRemaining: 0,
+        TargetItemName: null
+      };
+    }
+    const shortname = resolveConveyorShortname(rawItem, slot.shortname) || rawItem.toLowerCase().replace(/\s+/g, '.');
+    return {
+      TargetCategory: null,
+      MaxAmountInOutput: Math.max(0, Number(slot.max) || 0),
+      BufferAmount: Math.max(0, Number(slot.buf) || 0),
+      MinAmountInInput: Math.max(0, Number(slot.min) || 0),
+      IsBlueprint: Boolean(slot.isBlueprint),
+      BufferTransferRemaining: 0,
+      TargetItemName: shortname
+    };
+  }
+
+  function filtersToRustJsonString(slots, pretty = false) {
+    const payload = (Array.isArray(slots) ? slots : []).map(conveyorSlotToRustJson).filter(Boolean);
+    return JSON.stringify(payload, null, pretty ? 2 : 0);
+  }
+
+  function parseRustConveyorJson(rawText) {
+    const arr = JSON.parse(String(rawText || '').trim());
+    if (!Array.isArray(arr)) throw new Error('Expected a JSON array `[...]` from Rust Conveyor Copy.');
+    const catById = {};
+    Object.entries(DATA.conveyorCategoryIds || {}).forEach(([k, v]) => {
+      if (catById[v] === undefined) catById[v] = k;
+    });
+    return arr.slice(0, 12).map((row) => {
+      const min = Math.max(0, Number(row?.MinAmountInInput) || 0);
+      const max = Math.max(0, Number(row?.MaxAmountInOutput) || 0);
+      const buf = Math.max(0, Number(row?.BufferAmount) || 0);
+      const isBlueprint = Boolean(row?.IsBlueprint);
+      if (row?.TargetItemName) {
+        const shortname = String(row.TargetItemName).trim();
+        const catMatch = (DATA.conveyorItemsCatalog || []).find((x) => x.shortname.toLowerCase() === shortname.toLowerCase());
+        return { item: catMatch ? catMatch.name : shortname, shortname, min, max, buf, isBlueprint };
+      }
+      if (row?.TargetCategory !== null && row?.TargetCategory !== undefined) {
+        const catName = catById[Number(row.TargetCategory)] || 'Resources';
+        return { item: `Category: ${catName}`, shortname: '', min, max, buf, isBlueprint };
+      }
+      return null;
+    }).filter(Boolean);
+  }
+
   function renderConveyorModule() {
+    const myListEl = document.getElementById('conveyorMyFiltersList');
+    const myBadgeEl = document.getElementById('conveyorMyCountBadge');
     const presetsEl = document.getElementById('conveyorPresetsList');
     const customEl = document.getElementById('conveyorCustomList');
     const slotsBadge = document.getElementById('conveyorSlotsBadge');
+    const jsonPreviewEl = document.getElementById('conveyorJsonPreview');
     const itemSel = document.getElementById('conveyorItemSelect');
 
     if (itemSel && itemSel.options.length === 0 && Array.isArray(DATA.conveyorItemsCatalog)) {
       itemSel.innerHTML =
-        `<option value="Category: Weapons">📁 Category: Weapons</option>` +
-        `<option value="Category: Ammunition">📁 Category: Ammunition</option>` +
-        `<option value="Category: Component">📁 Category: Components</option>` +
-        `<option value="Category: Resources">📁 Category: Resources</option>` +
-        `<option value="Category: Medical">📁 Category: Medical</option>` +
-        `<option value="Category: Attire">📁 Category: Attire</option>` +
+        `<option value="Category: Weapon">📁 Category: Weapons (All)</option>` +
+        `<option value="Category: Ammunition">📁 Category: Ammunition (All)</option>` +
+        `<option value="Category: Component">📁 Category: Components (All)</option>` +
+        `<option value="Category: Resources">📁 Category: Resources (All)</option>` +
+        `<option value="Category: Medical">📁 Category: Medical (All)</option>` +
+        `<option value="Category: Attire">📁 Category: Attire / Armor (All)</option>` +
+        `<option value="Category: Tool">📁 Category: Tools (All)</option>` +
+        `<option value="Category: Electrical">📁 Category: Electrical (All)</option>` +
         DATA.conveyorItemsCatalog
           .map((it) => `<option value="${escapeHtml(it.name)}">${escapeHtml(it.name)} (${escapeHtml(it.cat)})</option>`)
           .join('');
     }
 
+    // 1. My Saved Squad Filters (rustconveyorfilters.com/my-filters style)
+    const savedList = Array.isArray(appState.conveyorFilters) ? appState.conveyorFilters : [];
+    if (myBadgeEl) myBadgeEl.textContent = `${savedList.length} saved`;
+    if (myListEl) {
+      myListEl.innerHTML = savedList.length
+        ? savedList
+            .map((cf) => {
+              const tags = (cf.filters || [])
+                .slice(0, 6)
+                .map((f) => {
+                  const sn = resolveConveyorShortname(f.item, f.shortname);
+                  const cap = f.max > 0 ? `:${f.max}` : '';
+                  return `<span style="display:inline-flex; align-items:center; gap:3px; font-family:var(--font-mono); font-size:10px; padding:1px 6px; border-radius:4px; background:rgba(30,41,59,0.9); border:1px solid rgba(148,163,184,0.28); color:#e2e8f0;">${sn ? rustItemIconHtml(sn, f.item, 13) : ''}${escapeHtml(f.item)}${cap ? `<strong style="color:#38bdf8;">${cap}</strong>` : ''}</span>`;
+                })
+                .join('');
+              return `
+                <div style="padding:8px 10px; border-radius:6px; background:rgba(15,23,42,0.78); border:1px solid ${String(editingConveyorFilterId) === String(cf.id) ? '#f59e0b' : 'var(--border-subtle)'};">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px;">
+                    <div>
+                      <strong style="font-size:12.5px; color:#f8fafc;">🎛️ ${escapeHtml(cf.name)}</strong>
+                      <span style="font-size:10px; font-family:var(--font-mono); color:#94a3b8; margin-left:6px;">${(cf.filters || []).length}/12 • ${cf.mode === 'all' ? 'AND' : 'OR'}</span>
+                    </div>
+                    <div style="display:flex; gap:4px;">
+                      <button type="button" class="btn btn-sm btn-primary conv-my-copy-btn" data-cid="${escapeHtml(cf.id)}" style="padding:2px 7px; font-size:10.5px;">📋 Copy JSON</button>
+                      <button type="button" class="btn btn-sm conv-my-edit-btn" data-cid="${escapeHtml(cf.id)}" style="padding:2px 7px; font-size:10.5px;">✏️ Edit</button>
+                      <button type="button" class="btn btn-sm conv-my-del-btn" data-cid="${escapeHtml(cf.id)}" style="padding:2px 6px; font-size:10.5px;">✕</button>
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:4px; flex-wrap:wrap;">${tags}${(cf.filters || []).length > 6 ? `<span style="font-size:10px; color:#94a3b8;">+${cf.filters.length - 6} more</span>` : ''}</div>
+                </div>`;
+            })
+            .join('')
+        : `<div style="padding:12px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px; font-size:11.5px;">No saved squad filters yet — build one on the right or load a preset below and click <strong>💾 Save to My Filters</strong>.</div>`;
+
+      myListEl.querySelectorAll('.conv-my-copy-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const cid = btn.getAttribute('data-cid');
+          const cf = (appState.conveyorFilters || []).find((x) => String(x.id) === String(cid));
+          if (!cf) return;
+          try {
+            await navigator.clipboard?.writeText(filtersToRustJsonString(cf.filters));
+          } catch (_) {}
+          flashButtonFeedback(btn, '✓ Copied!');
+        });
+      });
+      myListEl.querySelectorAll('.conv-my-edit-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cid = btn.getAttribute('data-cid');
+          const cf = (appState.conveyorFilters || []).find((x) => String(x.id) === String(cid));
+          if (!cf) return;
+          editingConveyorFilterId = String(cf.id);
+          customConveyorFilters.length = 0;
+          (cf.filters || []).slice(0, 12).forEach((f) => customConveyorFilters.push({ ...f }));
+          const nameInp = document.getElementById('conveyorFilterNameInput');
+          if (nameInp) nameInp.value = cf.name || '';
+          const modeSel = document.getElementById('conveyorModeSelect');
+          if (modeSel) modeSel.value = cf.mode === 'all' ? 'all' : 'any';
+          renderConveyorModule();
+        });
+      });
+      myListEl.querySelectorAll('.conv-my-del-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const cid = btn.getAttribute('data-cid');
+          appState.conveyorFilters = (appState.conveyorFilters || []).filter((x) => String(x.id) !== String(cid));
+          if (String(editingConveyorFilterId) === String(cid)) editingConveyorFilterId = '';
+          syncStateToServer();
+          renderConveyorModule();
+        });
+      });
+    }
+
+    // 2. Community & Meta Presets (each individual Conveyor pipe has 1-click Copy JSON + Load)
     if (presetsEl) {
       const q = (document.getElementById('conveyorPresetSearch')?.value || '').trim().toLowerCase();
       const filtered = (DATA.conveyorPresets || []).filter((p) => {
@@ -6619,17 +6768,20 @@
                 <strong style="font-size:13px; color:#f8fafc;">${escapeHtml(p.name)}</strong>
                 <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">${escapeHtml(p.summary)}</div>
               </div>
-              <div style="display:flex; gap:5px; align-items:center;">
-                <span style="font-size:10px; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#7dd3fc;">${p.conveyorsCount} Conv • ${p.powerRwm} rWm</span>
-                <button type="button" class="btn btn-sm conv-load-preset-btn" data-pid="${escapeHtml(p.id)}" style="border-color:#22c55e; color:#86efac;">📥 Load 1st Pipe</button>
-              </div>
+              <span style="font-size:10px; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#7dd3fc;">${p.conveyorsCount} Conv • ${p.powerRwm} rWm</span>
             </div>
-            <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
+            <div style="display:flex; flex-direction:column; gap:5px; margin-top:6px;">
               ${(p.conveyors || [])
                 .map(
-                  (c) => `
-                  <div style="padding:5px 8px; border-radius:4px; background:rgba(9,14,22,0.65); font-size:11px;">
-                    <div style="font-weight:700; color:#fde68a; margin-bottom:2px;">${escapeHtml(c.label)} <span style="color:#94a3b8; font-weight:400;">(${escapeHtml(p.mode)})</span></div>
+                  (c, cIdx) => `
+                  <div style="padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.68); font-size:11px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px;">
+                      <div style="font-weight:700; color:#fde68a;">${escapeHtml(c.label)} <span style="color:#94a3b8; font-weight:400;">(${escapeHtml(p.mode)})</span></div>
+                      <div style="display:flex; gap:4px;">
+                        <button type="button" class="btn btn-sm conv-pipe-copy-btn" data-pid="${escapeHtml(p.id)}" data-cidx="${cIdx}" style="padding:1px 6px; font-size:10px; border-color:#38bdf8; color:#bae6fd;">📋 Copy JSON</button>
+                        <button type="button" class="btn btn-sm conv-pipe-load-btn" data-pid="${escapeHtml(p.id)}" data-cidx="${cIdx}" style="padding:1px 6px; font-size:10px; border-color:#22c55e; color:#86efac;">✏️ Edit</button>
+                      </div>
+                    </div>
                     <div style="display:flex; gap:5px; flex-wrap:wrap;">
                       ${c.filters
                         .map((f) => {
@@ -6647,14 +6799,34 @@
         )
         .join('');
 
-      presetsEl.querySelectorAll('.conv-load-preset-btn').forEach((btn) => {
+      presetsEl.querySelectorAll('.conv-pipe-copy-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const pid = btn.getAttribute('data-pid');
+          const cIdx = parseInt(btn.getAttribute('data-cidx'), 10) || 0;
+          const preset = (DATA.conveyorPresets || []).find((x) => x.id === pid);
+          const filters = preset?.conveyors?.[cIdx]?.filters;
+          if (!filters) return;
+          try {
+            await navigator.clipboard?.writeText(filtersToRustJsonString(filters));
+          } catch (_) {}
+          flashButtonFeedback(btn, '✓ Copied!');
+        });
+      });
+
+      presetsEl.querySelectorAll('.conv-pipe-load-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const pid = btn.getAttribute('data-pid');
+          const cIdx = parseInt(btn.getAttribute('data-cidx'), 10) || 0;
           const preset = (DATA.conveyorPresets || []).find((x) => x.id === pid);
-          const firstFilters = preset?.conveyors?.[0]?.filters;
-          if (!firstFilters) return;
+          const conv = preset?.conveyors?.[cIdx];
+          if (!conv?.filters) return;
+          editingConveyorFilterId = '';
           customConveyorFilters.length = 0;
-          firstFilters.slice(0, 12).forEach((f) => customConveyorFilters.push({ ...f }));
+          conv.filters.slice(0, 12).forEach((f) =>
+            customConveyorFilters.push({ ...f, shortname: resolveConveyorShortname(f.item, f.shortname), isBlueprint: Boolean(f.isBlueprint) })
+          );
+          const nameInp = document.getElementById('conveyorFilterNameInput');
+          if (nameInp) nameInp.value = conv.label || preset.name;
           const modeSel = document.getElementById('conveyorModeSelect');
           if (modeSel) modeSel.value = /All/i.test(preset.mode || '') ? 'all' : 'any';
           renderConveyorModule();
@@ -6662,6 +6834,7 @@
       });
     }
 
+    // 3. Visual Slot Editor + Inline Min/Max/Buf/BP Controls + Live JSON Preview
     if (slotsBadge) {
       slotsBadge.textContent = `${customConveyorFilters.length} / 12 Slots • 1 rWm`;
       slotsBadge.style.color = customConveyorFilters.length >= 12 ? '#fca5a5' : '#7dd3fc';
@@ -6669,19 +6842,45 @@
     if (customEl) {
       customEl.innerHTML = customConveyorFilters.length
         ? customConveyorFilters
-            .map(
-              (f, idx) => `
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 9px; border-radius:5px; background:rgba(15,23,42,0.72); border:1px solid var(--border-subtle); font-size:12px;">
-                <div>
-                  <strong style="color:#f8fafc;">${escapeHtml(f.item)}</strong>
-                  <span style="font-family:var(--font-mono); font-size:10.5px; color:#7dd3fc; margin-left:6px;">Min: ${f.min} • Max: ${f.max || '∞'} • Buf: ${f.buf}</span>
-                </div>
-                <button type="button" class="btn btn-sm conv-del-slot-btn" data-idx="${idx}" style="padding:1px 6px;">✕</button>
-              </div>`
-            )
+            .map((f, idx) => {
+              const sn = resolveConveyorShortname(f.item, f.shortname);
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; padding:6px 8px; border-radius:5px; background:rgba(15,23,42,0.72); border:1px solid var(--border-subtle); font-size:11.5px;">
+                  <div style="display:flex; align-items:center; gap:5px; min-width:120px; flex:1;">
+                    ${sn ? rustItemIconHtml(sn, f.item, 16) : ''}
+                    <strong style="color:#f8fafc;">${escapeHtml(f.item)}</strong>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:10px; font-family:var(--font-mono); color:#94a3b8;">
+                    <label>Min:<input type="number" min="0" class="input conv-slot-edit" data-idx="${idx}" data-field="min" value="${Number(f.min || 0)}" style="width:52px; padding:2px 4px; font-size:10.5px; margin-left:2px;" /></label>
+                    <label>Max:<input type="number" min="0" class="input conv-slot-edit" data-idx="${idx}" data-field="max" value="${Number(f.max || 0)}" style="width:58px; padding:2px 4px; font-size:10.5px; margin-left:2px;" /></label>
+                    <label>Buf:<input type="number" min="0" class="input conv-slot-edit" data-idx="${idx}" data-field="buf" value="${Number(f.buf || 0)}" style="width:50px; padding:2px 4px; font-size:10.5px; margin-left:2px;" /></label>
+                    <label title="Target Blueprint instead of crafted item"><input type="checkbox" class="conv-slot-bp" data-idx="${idx}" ${f.isBlueprint ? 'checked' : ''} /> BP</label>
+                    <button type="button" class="btn btn-sm conv-del-slot-btn" data-idx="${idx}" style="padding:1px 6px;">✕</button>
+                  </div>
+                </div>`;
+            })
             .join('')
-        : `<div style="padding:12px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px; font-size:11.5px;">No filter slots added (blank Conveyor passes all items). Add items above or load a preset on the left.</div>`;
+        : `<div style="padding:12px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px; font-size:11.5px;">No filter slots added. Add items above, import Rust JSON, or click <strong>✏️ Edit</strong> on a preset.</div>`;
 
+      customEl.querySelectorAll('.conv-slot-edit').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const idx = parseInt(inp.getAttribute('data-idx'), 10);
+          const field = inp.getAttribute('data-field');
+          if (idx >= 0 && customConveyorFilters[idx] && field) {
+            customConveyorFilters[idx][field] = Math.max(0, parseInt(inp.value, 10) || 0);
+            renderConveyorModule();
+          }
+        });
+      });
+      customEl.querySelectorAll('.conv-slot-bp').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const idx = parseInt(cb.getAttribute('data-idx'), 10);
+          if (idx >= 0 && customConveyorFilters[idx]) {
+            customConveyorFilters[idx].isBlueprint = cb.checked;
+            renderConveyorModule();
+          }
+        });
+      });
       customEl.querySelectorAll('.conv-del-slot-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const idx = parseInt(btn.getAttribute('data-idx'), 10);
@@ -6691,6 +6890,10 @@
           }
         });
       });
+    }
+
+    if (jsonPreviewEl) {
+      jsonPreviewEl.textContent = filtersToRustJsonString(customConveyorFilters, true);
     }
   }
 
@@ -6730,26 +6933,71 @@
         return;
       }
       const item = document.getElementById('conveyorItemSelect')?.value || 'Sulfur Ore';
+      const shortname = resolveConveyorShortname(item);
       const min = Math.max(0, parseInt(document.getElementById('conveyorMinInput')?.value, 10) || 0);
       const max = Math.max(0, parseInt(document.getElementById('conveyorMaxInput')?.value, 10) || 0);
       const buf = Math.max(0, parseInt(document.getElementById('conveyorBufInput')?.value, 10) || 0);
-      customConveyorFilters.push({ item, min, max, buf });
+      customConveyorFilters.push({ item, shortname, min, max, buf, isBlueprint: false });
       renderConveyorModule();
     });
     document.getElementById('conveyorClearBtn')?.addEventListener('click', () => {
+      editingConveyorFilterId = '';
       customConveyorFilters.length = 0;
+      const nameInp = document.getElementById('conveyorFilterNameInput');
+      if (nameInp) nameInp.value = '';
       renderConveyorModule();
     });
-    document.getElementById('conveyorCopyBtn')?.addEventListener('click', async (e) => {
-      const modeTxt = document.getElementById('conveyorModeSelect')?.value === 'all' ? 'Require All (AND)' : 'Require Any (OR)';
-      const lines = [
-        `Industrial Conveyor Filter (${modeTxt}, ${customConveyorFilters.length}/12 slots, 1 rWm):`,
-        ...customConveyorFilters.map((f) => `- ${f.item} | Min: ${f.min} | Max: ${f.max || '0 (No Cap)'} | Buffer: ${f.buf}`)
-      ];
+    document.getElementById('conveyorSaveBtn')?.addEventListener('click', (e) => {
+      if (!customConveyorFilters.length) {
+        alert('Add at least 1 filter slot before saving.');
+        return;
+      }
+      const nameInp = document.getElementById('conveyorFilterNameInput');
+      const mode = document.getElementById('conveyorModeSelect')?.value === 'all' ? 'all' : 'any';
+      const name = String(nameInp?.value || '').trim() || `Custom Filter (${customConveyorFilters[0]?.item || 'Items'})`;
+      const snapshotFilters = customConveyorFilters.slice(0, 12).map((f) => ({ ...f }));
+      const list = Array.isArray(appState.conveyorFilters) ? [...appState.conveyorFilters] : [];
+      if (editingConveyorFilterId) {
+        const idx = list.findIndex((x) => String(x.id) === String(editingConveyorFilterId));
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], name, mode, filters: snapshotFilters, updatedAt: Date.now() };
+        } else {
+          list.unshift({ id: editingConveyorFilterId, name, mode, filters: snapshotFilters, updatedAt: Date.now() });
+        }
+      } else {
+        const newId = 'cf-' + Date.now();
+        editingConveyorFilterId = newId;
+        list.unshift({ id: newId, name, mode, filters: snapshotFilters, updatedAt: Date.now() });
+      }
+      appState.conveyorFilters = list.slice(0, 30);
+      syncStateToServer();
+      renderConveyorModule();
+      flashButtonFeedback(e.currentTarget, '✓ Saved!');
+    });
+    document.getElementById('conveyorImportBtn')?.addEventListener('click', () => {
+      const inp = document.getElementById('conveyorImportInput');
+      const raw = String(inp?.value || '').trim();
+      if (!raw) return;
       try {
-        await navigator.clipboard?.writeText(lines.join('\n'));
+        const imported = parseRustConveyorJson(raw);
+        if (!imported.length) throw new Error('No valid conveyor filter entries found in JSON.');
+        editingConveyorFilterId = '';
+        customConveyorFilters.length = 0;
+        imported.forEach((f) => customConveyorFilters.push(f));
+        if (inp) inp.value = '';
+        const nameInp = document.getElementById('conveyorFilterNameInput');
+        if (nameInp && !nameInp.value.trim()) nameInp.value = `Imported Filter (${imported.length} items)`;
+        renderConveyorModule();
+      } catch (err) {
+        alert(`Invalid Rust Conveyor JSON: ${err.message}`);
+      }
+    });
+    document.getElementById('conveyorCopyBtn')?.addEventListener('click', async (e) => {
+      const jsonStr = filtersToRustJsonString(customConveyorFilters);
+      try {
+        await navigator.clipboard?.writeText(jsonStr);
       } catch (_) {}
-      flashButtonFeedback(e.currentTarget, '✓ Copied!');
+      flashButtonFeedback(e.currentTarget, '✓ JSON Copied!');
     });
 
     document.getElementById('clearRecyclerBtn')?.addEventListener('click', () => {
@@ -11355,6 +11603,7 @@
     renderRecyclerCalculator();
     renderDieselCalculator();
     renderDecayCalculator();
+    renderConveyorModule();
     syncRustPlusShopUiFromState();
     renderShopLiveMap();
     renderRustPlusHeaderAndWidgets();

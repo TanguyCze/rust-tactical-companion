@@ -2238,8 +2238,30 @@ window.RUST_DATA = {
   },
 
   // =========================================================================
-  // 9. INDUSTRIAL CONVEYOR FILTER PRESETS & ITEM CATALOG
+  // 9. INDUSTRIAL CONVEYOR FILTER PRESETS & ITEM CATALOG (Rust Shift+Paste)
   // =========================================================================
+  conveyorCategoryIds: {
+    Weapon: 0,
+    Weapons: 0,
+    Construction: 1,
+    Items: 2,
+    Resources: 3,
+    Attire: 4,
+    Tool: 5,
+    Tools: 5,
+    Medical: 6,
+    Food: 7,
+    Ammunition: 8,
+    Traps: 9,
+    Misc: 10,
+    All: 11,
+    Common: 12,
+    Component: 13,
+    Components: 13,
+    Electrical: 16,
+    Fun: 17
+  },
+
   conveyorItemsCatalog: [
     { name: 'Sulfur Ore', shortname: 'sulfur.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Sulfur', shortname: 'sulfur', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
@@ -2250,9 +2272,16 @@ window.RUST_DATA = {
     { name: 'Stones', shortname: 'stones', cat: 'Ores & Mats', defaultMax: 10000, defaultMin: 0, defaultBuf: 0 },
     { name: 'Wood', shortname: 'wood', cat: 'Ores & Mats', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
     { name: 'Charcoal', shortname: 'charcoal', cat: 'Ores & Mats', defaultMax: 3000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Crude Oil', shortname: 'crude.oil', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Low Grade Fuel', shortname: 'lowgradefuel', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Scrap', shortname: 'scrap', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Cloth', shortname: 'cloth', cat: 'Ores & Mats', defaultMax: 1000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Leather', shortname: 'leather', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
     { name: 'Gun Powder', shortname: 'gunpowder', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Explosives', shortname: 'explosives', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Rocket', shortname: 'ammo.rocket.basic', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'HV Rocket', shortname: 'ammo.rocket.hv', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Incendiary Rocket', shortname: 'ammo.rocket.fire', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Timed Explosive Charge', shortname: 'explosive.timed', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Satchel Charge', shortname: 'explosive.satchel', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: '5.56 Rifle Ammo', shortname: 'ammo.rifle', cat: 'Ammo & Meds', defaultMax: 384, defaultMin: 0, defaultBuf: 0 },
@@ -2262,28 +2291,38 @@ window.RUST_DATA = {
     { name: '12 Gauge Buckshot', shortname: 'ammo.shotgun', cat: 'Ammo & Meds', defaultMax: 64, defaultMin: 0, defaultBuf: 0 },
     { name: 'Medical Syringe', shortname: 'syringe.medical', cat: 'Ammo & Meds', defaultMax: 4, defaultMin: 0, defaultBuf: 0 },
     { name: 'Bandage', shortname: 'bandage', cat: 'Ammo & Meds', defaultMax: 3, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Low Grade Fuel', shortname: 'lowgradefuel', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Scrap', shortname: 'scrap', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Cloth', shortname: 'cloth', cat: 'Ores & Mats', defaultMax: 1000, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Crude Oil', shortname: 'crude.oil', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Assault Rifle', shortname: 'rifle.ak', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'LR-300 Assault Rifle', shortname: 'rifle.lr300', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'MP5A4', shortname: 'smg.mp5', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Thompson', shortname: 'smg.thompson', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Custom SMG', shortname: 'smg.2', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Semi-Automatic Rifle', shortname: 'rifle.semiauto', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Bolt Action Rifle', shortname: 'rifle.bolt', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'L96 Rifle', shortname: 'rifle.l96', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Python Revolver', shortname: 'pistol.python', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Metal Facemask', shortname: 'metal.facemask', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Metal Chest Plate', shortname: 'metal.plate.torso', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Road Sign Jacket', shortname: 'roadsign.jacket', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Road Sign Kilt', shortname: 'roadsign.kilt', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Hazmat Suit', shortname: 'hazmatsuit', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Jackhammer', shortname: 'jackhammer', cat: 'Tools & Elec', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Auto Turret', shortname: 'autoturret', cat: 'Tools & Elec', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Garage Door', shortname: 'wall.frame.garagedoor', cat: 'Tools & Elec', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Tech Trash', shortname: 'techparts', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Metal Pipe', shortname: 'metalpipe', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Metal Spring', shortname: 'metalspring', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Gears', shortname: 'gears', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
     { name: 'Sewing Kit', shortname: 'sewingkit', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Blue Berry', shortname: 'blue.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Yellow Berry', shortname: 'yellow.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Red Berry', shortname: 'red.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 },
-    { name: 'White Berry', shortname: 'white.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 }
+    { name: 'Rifle Body', shortname: 'riflebody', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'SMG Body', shortname: 'smgbody', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Blue Berry', shortname: 'blue.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Yellow Berry', shortname: 'yellow.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Red Berry', shortname: 'red.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'White Berry', shortname: 'white.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Ore Tea', shortname: 'oretea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Scrap Tea', shortname: 'scraptea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Wood Tea', shortname: 'woodtea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Max Health Tea', shortname: 'maxhealthtea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 }
   ],
 
   conveyorPresets: [
@@ -2508,7 +2547,10 @@ window.RUST_DATA = {
         {
           label: 'Conveyor OUT → Tea Fridge',
           filters: [
-            { item: 'Category: Tea', min: 0, max: 0, buf: 0 }
+            { item: 'Pure Ore Tea', min: 0, max: 0, buf: 0 },
+            { item: 'Pure Scrap Tea', min: 0, max: 0, buf: 0 },
+            { item: 'Pure Wood Tea', min: 0, max: 0, buf: 0 },
+            { item: 'Pure Max Health Tea', min: 0, max: 0, buf: 0 }
           ]
         }
       ]

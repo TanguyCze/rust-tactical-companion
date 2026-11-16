@@ -75,6 +75,7 @@ const DEFAULT_STATE = {
     notifyOn60s: false
   },
   squadPins: [],
+  conveyorFilters: [],
   squadKeycards: {
     green: false,
     blue: false,
