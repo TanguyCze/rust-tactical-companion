@@ -6364,6 +6364,26 @@
     return `${bfColLabel(col)}${row}`;
   }
 
+  function bfGridToWorld(gridStr, mapSize) {
+    const m = /^([A-Za-z]{1,2})\s*(\d{1,2})$/.exec(String(gridStr || '').trim());
+    if (!m) return null;
+    const letters = m[1].toUpperCase();
+    const row = parseInt(m[2], 10);
+    let col = 0;
+    for (let i = 0; i < letters.length; i++) {
+      col = col * 26 + (letters.charCodeAt(i) - 64);
+    }
+    col -= 1;
+    const size = mapSize || 4250;
+    const count = bfGridCount(size);
+    if (col < 0 || col >= count || row < 0 || row >= count) return null;
+    const cellSize = size / count;
+    return {
+      wx: Number(((col + 0.5) * cellSize - size / 2).toFixed(1)),
+      wy: Number((size / 2 - (row + 0.5) * cellSize).toFixed(1))
+    };
+  }
+
   function bfWorldToSubGrid(wx, wy, mapSize) {
     const count = bfGridCount(mapSize);
     const cellSize = mapSize / count;
@@ -8900,10 +8920,28 @@
       });
     }
 
-    // C. Live Vending Machines (Color-coded: Gold Star = S-Tier Steal, Green = In Stock, Grey = Sold Out, Cyan ◎ = Search Match)
-    if (showVending && Array.isArray(tel.vendingPins)) {
+    // C. Live Vending Machines & Pinned Squad Shop Deals
+    const combinedVendingPins = [...(Array.isArray(tel.vendingPins) ? tel.vendingPins : [])];
+    const manualPinned = (Array.isArray(appState.customShops) ? appState.customShops : []).filter(
+      (cs) => cs && cs.liveSource !== 'rustplus' && typeof cs.wx === 'number' && typeof cs.wy === 'number'
+    );
+    manualPinned.forEach((cs) => {
+      combinedVendingPins.push({
+        id: cs.id,
+        markerId: cs.id,
+        name: cs.shopName || `${cs.buyItem}`,
+        grid: cs.grid || bfWorldToGrid(cs.wx, cs.wy, mapSize),
+        wx: cs.wx,
+        wy: cs.wy,
+        inStockCount: 1,
+        totalOrders: 1,
+        stealCount: evaluateShopPriceVerdict({ ...cs, shopType: 'player' })?.tier === 'steal' ? 1 : 0,
+        orders: [{ id: cs.id, buyQty: cs.buyQty || 1, buyItem: cs.buyItem || 'Item', payQty: cs.payQty || 1, payItem: cs.payItem || 'Sulfur', inStock: 1, isSteal: false }]
+      });
+    });
+    if (showVending && combinedVendingPins.length > 0) {
       const hasHighlightSet = highlightedIds instanceof Set;
-      tel.vendingPins.forEach((vp) => {
+      combinedVendingPins.forEach((vp) => {
         const isSel = selectedShopPinId && String(vp.markerId) === String(selectedShopPinId);
         const hasSteal = (vp.stealCount || 0) > 0;
         const hasStock = (vp.inStockCount || 0) > 0;
@@ -9154,7 +9192,7 @@
               return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
             })
             .join('')
-        : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).` : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
+        : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.vendingCount === 0 && tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts Shops &amp; World Events on the Rust+ API for most vanilla/community servers. Squad GPS, Map Notes, Chat, Clock &amp; Smart Devices stay live; pin spotted player shops by grid via "📌 Pin Deal".` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
       eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
         btn.addEventListener('click', () => {
           shopMapPanX = parseFloat(btn.getAttribute('data-wx')) || 0;
@@ -10452,14 +10490,19 @@
       const gridEl = document.getElementById('shopAskingGridInput');
       const customPrice = askEl && Number(askEl.value) > 0 ? Math.max(1, parseInt(askEl.value, 10)) : sel.payQty;
       const grid = gridEl?.value.trim().toUpperCase() || '';
+      const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || bfMapData?.size || appState.rustPlusShopConfig?.mapSize || 4250);
+      const coords = bfGridToWorld(grid, mapSize);
+      const id = 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5);
       const entry = {
-        id: 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        id,
+        markerId: id,
         buyQty: sel.buyQty,
         buyItem: sel.buyItem,
         payQty: customPrice,
         payItem: sel.payItem,
         category: sel.category || 'defense',
         grid,
+        ...(coords ? { wx: coords.wx, wy: coords.wy } : {}),
         notes: `Pinned player deal${grid ? ` at [${grid}]` : ''} (checked vs benchmark).`
       };
       if (askEl) askEl.value = '';
