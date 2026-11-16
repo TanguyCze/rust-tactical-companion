@@ -386,6 +386,53 @@ body::before {
   display: block;
 }
 
+.rc-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px;
+  margin-bottom: 16px;
+}
+
+.rc-subtab-btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.rc-subtab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rc-subtab-btn.active {
+  color: #fff;
+  background: var(--bg-card);
+  border-color: var(--rust-orange);
+  box-shadow: 0 2px 8px rgba(205, 65, 43, 0.2);
+}
+
+.rc-subpanel {
+  display: none;
+}
+
+.rc-subpanel.active {
+  display: block;
+}
+
 @media (max-width: 1150px) {
   .grid-2, .grid-map-layout, .bf-map-layout {
     grid-template-columns: 1fr;

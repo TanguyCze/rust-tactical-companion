@@ -74,9 +74,13 @@ const DEFAULT_STATE = {
     notifyOnComplete: true,
     notifyOn60s: false
   },
-  customShops: [],
-  shopWatchlist: [],
   squadPins: [],
+  squadKeycards: {
+    green: false,
+    blue: false,
+    red: false,
+    fuses: 0
+  },
   rustPlusShopConfig: {
     ip: process.env.RUSTPLUS_IP || '',
     port: process.env.RUSTPLUS_PORT || '28082',
@@ -91,7 +95,13 @@ const DEFAULT_STATE = {
     useProxy: false,
     autoPoll: false,
     chatBotEnabled: true,
+    chatBotAllowSwitchControl: true,
     discordAlertEvents: true,
+    smartAutomation: {
+      duskAutoSwitchIds: [],
+      alarmDefenseSwitchIds: [],
+      switchGroups: []
+    },
     lastPolledAt: 0,
     lastStatus: '',
     mapSize: 4250
@@ -105,7 +115,8 @@ const DEFAULT_STATE = {
     recentDeaths: [],
     mapNotes: [],
     teamChat: [],
-    smartDevices: []
+    smartDevices: [],
+    activityLog: []
   },
   updatedAt: Date.now()
 };
@@ -120,7 +131,15 @@ function loadState() {
         ...DEFAULT_STATE,
         ...parsed,
         discordConfig: { ...DEFAULT_STATE.discordConfig, ...(parsed.discordConfig || {}) },
-        rustPlusShopConfig: { ...DEFAULT_STATE.rustPlusShopConfig, ...(parsed.rustPlusShopConfig || {}) },
+        squadKeycards: { ...DEFAULT_STATE.squadKeycards, ...(parsed.squadKeycards || {}) },
+        rustPlusShopConfig: {
+          ...DEFAULT_STATE.rustPlusShopConfig,
+          ...(parsed.rustPlusShopConfig || {}),
+          smartAutomation: {
+            ...DEFAULT_STATE.rustPlusShopConfig.smartAutomation,
+            ...(parsed.rustPlusShopConfig?.smartAutomation || {})
+          }
+        },
         rustPlusTelemetry: { ...DEFAULT_STATE.rustPlusTelemetry, ...(parsed.rustPlusTelemetry || {}) }
       };
       if (rustPlus || markers || mapConfig) saveState(state);
@@ -1628,8 +1647,157 @@ const sentWorldEventAlerts = new Set();
 const sentSmartAlarmAlerts = new Set();
 const sentLowUpkeepAlerts = new Set();
 const processedChatBotKeys = new Set();
+const lastAutomationPhaseByServer = new Map();
 let hasSeededChatBot = false;
 let lastChatBotReplyAt = 0;
+
+function normalizeSmartAutomation(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    duskAutoSwitchIds: Array.isArray(src.duskAutoSwitchIds)
+      ? Array.from(new Set(src.duskAutoSwitchIds.map((id) => String(id).replace(/[^\d]/g, '')).filter(Boolean))).slice(0, 24)
+      : [],
+    alarmDefenseSwitchIds: Array.isArray(src.alarmDefenseSwitchIds)
+      ? Array.from(new Set(src.alarmDefenseSwitchIds.map((id) => String(id).replace(/[^\d]/g, '')).filter(Boolean))).slice(0, 24)
+      : [],
+    switchGroups: Array.isArray(src.switchGroups)
+      ? src.switchGroups
+          .map((g) => ({
+            id: String(g?.id || 'grp-' + Date.now()).slice(0, 40),
+            name: String(g?.name || 'Switch Group').trim().slice(0, 40) || 'Switch Group',
+            entityIds: Array.isArray(g?.entityIds)
+              ? Array.from(new Set(g.entityIds.map((id) => String(id).replace(/[^\d]/g, '')).filter(Boolean))).slice(0, 20)
+              : []
+          }))
+          .filter((g) => g.entityIds.length > 0)
+          .slice(0, 12)
+      : []
+  };
+}
+
+function appendActivityLogEntries(existingLog, newEntries) {
+  const list = Array.isArray(existingLog) ? [...existingLog] : [];
+  const now = Date.now();
+  for (const entry of newEntries || []) {
+    if (!entry || !entry.text) continue;
+    const isDup = list.some(
+      (prev) =>
+        prev.category === entry.category &&
+        prev.text === entry.text &&
+        Math.abs(now - Number(prev.ts || 0)) < 45000
+    );
+    if (isDup) continue;
+    list.unshift({
+      id: `act-${now}-${Math.random().toString(36).slice(2, 6)}`,
+      ts: entry.ts || now,
+      icon: entry.icon || '📡',
+      category: entry.category || 'info',
+      text: String(entry.text).slice(0, 220),
+      grid: String(entry.grid || '').slice(0, 12)
+    });
+  }
+  return list.slice(0, 40);
+}
+
+function findMatchingSwitchesForQuery(query, smartDevices, switchGroups = []) {
+  const q = String(query || '').trim().toLowerCase();
+  const switches = (Array.isArray(smartDevices) ? smartDevices : []).filter((d) => d.entityType === 'switch');
+  if (!q || switches.length === 0) return [];
+  if (q === 'all') return switches;
+  const grpMatch = (Array.isArray(switchGroups) ? switchGroups : []).find(
+    (g) => String(g.name || '').toLowerCase() === q || String(g.name || '').toLowerCase().includes(q)
+  );
+  if (grpMatch) {
+    const idSet = new Set(grpMatch.entityIds.map(String));
+    const grouped = switches.filter((sw) => idSet.has(String(sw.entityId)));
+    if (grouped.length) return grouped;
+  }
+  const exact = switches.filter(
+    (sw) => String(sw.name || '').toLowerCase() === q || String(sw.entityId) === q
+  );
+  if (exact.length) return exact;
+  return switches.filter((sw) => String(sw.name || '').toLowerCase().includes(q));
+}
+
+async function applySmartSwitchBatch(cfg, targetSwitches, nextActive) {
+  const list = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? [...squadState.rustPlusTelemetry.smartDevices] : [];
+  const changed = [];
+  for (const sw of targetSwitches) {
+    const eid = parseInt(String(sw.entityId || '0'), 10);
+    if (!eid) continue;
+    await sendRustPlusCommand(cfg, 15, { entityId: eid, bytes: [0x08, nextActive ? 0x01 : 0x00] });
+    const idx = list.findIndex((d) => String(d.entityId) === String(eid));
+    if (idx >= 0) list[idx] = { ...list[idx], active: Boolean(nextActive) };
+    changed.push(sw.name || `#${eid}`);
+  }
+  if (changed.length > 0) {
+    squadState.rustPlusTelemetry = {
+      ...DEFAULT_STATE.rustPlusTelemetry,
+      ...(squadState.rustPlusTelemetry || {}),
+      smartDevices: list
+    };
+  }
+  return changed;
+}
+
+async function evaluateRustPlusAutomation(cfg, telemetry, serverKey, triggeredAlarms = []) {
+  const auto = normalizeSmartAutomation(cfg?.smartAutomation);
+  const devs = Array.isArray(telemetry?.smartDevices) ? telemetry.smartDevices : [];
+  const switches = devs.filter((d) => d.entityType === 'switch');
+  const logs = [];
+
+  // 1. Dusk / Dawn Edge-Triggered Lights
+  if (telemetry?.time && auto.duskAutoSwitchIds.length > 0 && switches.length > 0) {
+    const phase = telemetry.time.isDay ? 'day' : 'night';
+    const prevPhase = lastAutomationPhaseByServer.get(serverKey);
+    lastAutomationPhaseByServer.set(serverKey, phase);
+    if (prevPhase && prevPhase !== phase) {
+      const wantOn = phase === 'night';
+      const idSet = new Set(auto.duskAutoSwitchIds);
+      const targets = switches.filter((sw) => idSet.has(String(sw.entityId)) && Boolean(sw.active) !== wantOn);
+      if (targets.length > 0) {
+        try {
+          const changed = await applySmartSwitchBatch(cfg, targets, wantOn);
+          if (changed.length > 0) {
+            logs.push({
+              icon: wantOn ? '🌙' : '☀️',
+              category: 'automation',
+              text: `${wantOn ? 'Dusk' : 'Dawn'} auto-switched ${wantOn ? 'ON' : 'OFF'}: ${changed.join(', ')}`
+            });
+          }
+        } catch (err) {
+          console.log('[Rust+ Auto Dusk] Switch toggle error:', err.message);
+        }
+      }
+    }
+  }
+
+  // 2. Smart Alarm Trigger -> Defense Failsafe ON
+  if (triggeredAlarms.length > 0 && auto.alarmDefenseSwitchIds.length > 0 && switches.length > 0) {
+    const idSet = new Set(auto.alarmDefenseSwitchIds);
+    const targets = switches.filter((sw) => idSet.has(String(sw.entityId)) && !sw.active);
+    if (targets.length > 0) {
+      try {
+        const changed = await applySmartSwitchBatch(cfg, targets, true);
+        if (changed.length > 0) {
+          const msg = `🚨 FAIL-SAFE ON (${triggeredAlarms.map((a) => a.name).join(', ')}): ${changed.join(', ')}`;
+          logs.push({ icon: '🛡️', category: 'automation', text: msg });
+          try {
+            await sendRustPlusCommand(cfg, 13, encodeRustPlusSendMessage(`🤖 ${msg}`));
+          } catch (_) {}
+        }
+      } catch (err) {
+        console.log('[Rust+ Auto Alarm] Failsafe switch error:', err.message);
+      }
+    }
+  }
+
+  if (logs.length > 0) {
+    squadState.rustPlusTelemetry.activityLog = appendActivityLogEntries(squadState.rustPlusTelemetry?.activityLog, logs);
+    saveState(squadState);
+    broadcastState('state_update');
+  }
+}
 
 function formatBotTcUpkeep(protectionExpirySec, hasProtection) {
   if (!hasProtection && !protectionExpirySec) return 'No Upkeep';
@@ -1667,10 +1835,12 @@ async function processTeamChatBotCommands(teamChat, cfg, telemetry) {
     if (rawMsg.startsWith('🤖') || !rawMsg.startsWith('!')) continue;
     if (m.time && Math.abs(nowSec - Number(m.time)) > 180) continue;
 
-    const cmd = rawMsg.split(/\s+/)[0].toLowerCase();
+    const parts = rawMsg.split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const arg = parts.slice(1).join(' ').trim();
     let reply = '';
     if (cmd === '!help' || cmd === '!bot') {
-      reply = '🤖 Commands: !time (day/night), !pop (players/queue/wipe), !upkeep (TC left), !timers (active timers)';
+      reply = '🤖 Cmds: !time | !pop | !upkeep | !timers | !switches | !on <name/group> | !off <name/group>';
     } else if (cmd === '!time' || cmd === '!day' || cmd === '!night') {
       const t = telemetry?.time;
       reply = t
@@ -1705,6 +1875,44 @@ async function processTeamChatBotCommands(teamChat, cfg, telemetry) {
             })
             .join(' | ')}`
         : '🤖 No active monument/crate timers.';
+    } else if (cmd === '!switches' || cmd === '!sw') {
+      const sws = (telemetry?.smartDevices || []).filter((d) => d.entityType === 'switch');
+      const grps = normalizeSmartAutomation(cfg?.smartAutomation).switchGroups;
+      if (!sws.length) {
+        reply = '🤖 No Smart Switches linked yet.';
+      } else {
+        const swList = sws.slice(0, 5).map((s) => `${s.name}[${s.active ? 'ON' : 'OFF'}]`).join(', ');
+        const grpTxt = grps.length ? ` | Groups: ${grps.map((g) => g.name).join(', ')}` : '';
+        reply = `🤖 Switches: ${swList}${grpTxt}`.slice(0, 230);
+      }
+    } else if (cmd === '!on' || cmd === '!off') {
+      if (cfg?.chatBotAllowSwitchControl === false) {
+        reply = '🤖 Switch control via Team Chat is disabled.';
+      } else if (!arg) {
+        reply = `🤖 Usage: ${cmd} <switch or group name>`;
+      } else {
+        const desired = cmd === '!on';
+        const grps = normalizeSmartAutomation(cfg?.smartAutomation).switchGroups;
+        const matched = findMatchingSwitchesForQuery(arg, telemetry?.smartDevices, grps);
+        if (!matched.length) {
+          reply = `🤖 No Smart Switch matched "${arg}". Try !switches`;
+        } else {
+          try {
+            const changed = await applySmartSwitchBatch(cfg, matched, desired);
+            if (changed.length > 0) {
+              squadState.rustPlusTelemetry.activityLog = appendActivityLogEntries(
+                squadState.rustPlusTelemetry?.activityLog,
+                [{ icon: '⚡', category: 'chat', text: `${m.name || 'Chat'} turned ${desired ? 'ON' : 'OFF'}: ${changed.join(', ')}` }]
+              );
+              reply = `🤖 ⚡ ${changed.join(', ')} turned ${desired ? 'ON' : 'OFF'}`;
+            } else {
+              reply = `🤖 Could not toggle switch "${arg}".`;
+            }
+          } catch (err) {
+            reply = `🤖 Switch error: ${String(err.message || '').slice(0, 120)}`;
+          }
+        }
+      }
     }
 
     if (reply) {
@@ -1881,6 +2089,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   const nowSec = Math.floor(nowTs / 1000);
   let recentDeaths = (Array.isArray(squadState.rustPlusTelemetry?.recentDeaths) ? squadState.rustPlusTelemetry.recentDeaths : [])
     .filter((d) => d && (nowSec - Number(d.deathTime || 0)) <= 900);
+  const newDeaths = [];
   let mapNotes = Array.isArray(squadState.rustPlusTelemetry?.mapNotes) ? squadState.rustPlusTelemetry.mapNotes : [];
   if (snapshot?.teamInfo && Array.isArray(snapshot.teamInfo.members)) {
     const leaderId = String(snapshot.teamInfo.leaderSteamId || '0');
@@ -1907,7 +2116,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
       if (!tmObj.isAlive && recordedDeathSec > 0 && (nowSec - recordedDeathSec) <= 900) {
         const deathId = `${tmObj.steamId}:${recordedDeathSec}`;
         if (!recentDeaths.some((d) => d.id === deathId)) {
-          recentDeaths.unshift({
+          const dEntry = {
             id: deathId,
             steamId: tmObj.steamId,
             name: tmObj.name,
@@ -1915,7 +2124,9 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
             wy: tmObj.wy,
             grid: tmObj.grid,
             deathTime: recordedDeathSec
-          });
+          };
+          recentDeaths.unshift(dEntry);
+          newDeaths.push(dEntry);
         }
       }
       return tmObj;
@@ -2005,6 +2216,14 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     updatedAt: nowTs
   };
 
+  const newActivityEntries = [
+    ...triggeredAlarms.map((a) => ({ icon: '🚨', category: 'alarm', text: `${a.name} RAID ALARM TRIGGERED!` })),
+    ...lowUpkeepDevices.map((d) => ({ icon: '⚠️', category: 'upkeep', text: `${d.name} upkeep critical (${d.remHours}h left)` })),
+    ...newDeaths.map((d) => ({ icon: '💀', category: 'death', text: `${d.name} died`, grid: d.grid })),
+    ...newEvents.map((e) => ({ icon: e.icon || '⚡', category: 'event', text: `${e.label} spotted`, grid: e.grid }))
+  ];
+  const activityLog = appendActivityLogEntries(squadState.rustPlusTelemetry?.activityLog, newActivityEntries);
+
   squadState.rustPlusTelemetry = {
     serverInfo: nextServerInfo,
     time: timeSummary,
@@ -2015,12 +2234,14 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     mapNotes,
     teamChat,
     smartDevices,
+    activityLog,
     markerSummary
   };
   squadState.rustPlusShopConfig = {
     ...DEFAULT_STATE.rustPlusShopConfig,
     ...(squadState.rustPlusShopConfig || {}),
     ...(cfg || {}),
+    smartAutomation: normalizeSmartAutomation(cfg?.smartAutomation ?? squadState.rustPlusShopConfig?.smartAutomation),
     mapSize,
     ...(nextServerInfo.name ? { serverName: nextServerInfo.name } : {}),
     lastPolledAt: nowTs,
@@ -2031,6 +2252,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   broadcastState('state_update');
 
   await processTeamChatBotCommands(teamChat, squadState.rustPlusShopConfig, squadState.rustPlusTelemetry);
+  await evaluateRustPlusAutomation(squadState.rustPlusShopConfig, squadState.rustPlusTelemetry, serverKey, triggeredAlarms);
 
   const settings = resolveDiscordSettings();
   const hasTarget = Boolean(
@@ -3177,7 +3399,11 @@ const server = http.createServer(async (req, res) => {
         useProxy: Boolean(body.useProxy),
         autoPoll: Boolean(body.autoPoll),
         chatBotEnabled: body.chatBotEnabled !== false,
-        discordAlertEvents: body.discordAlertEvents !== false
+        chatBotAllowSwitchControl: body.chatBotAllowSwitchControl !== false,
+        discordAlertEvents: body.discordAlertEvents !== false,
+        smartAutomation: normalizeSmartAutomation(
+          body.smartAutomation ?? squadState.rustPlusShopConfig?.smartAutomation
+        )
       };
       configureRustPlusShopPoller();
       saveState(squadState);
@@ -3264,34 +3490,55 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/shops/rustplus/smart-switch' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
-      const entityId = parseInt(String(body.entityId || '0'), 10);
-      if (!entityId) return sendJson(res, 400, { error: 'Valid Smart Switch Entity ID required.' });
+      const rawIds = Array.isArray(body.entityIds) ? body.entityIds : [body.entityId];
+      const entityIds = Array.from(new Set(rawIds.map((id) => parseInt(String(id || '0'), 10)).filter((n) => n > 0)));
+      if (!entityIds.length) return sendJson(res, 400, { error: 'Valid Smart Switch Entity ID(s) required.' });
       const nextActive = Boolean(body.active);
       const cfg = squadState.rustPlusShopConfig || {};
       if ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken) {
         return sendJson(res, 400, { error: 'Connect to Rust+ first to toggle Smart Switches.' });
       }
       const list = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? [...squadState.rustPlusTelemetry.smartDevices] : [];
-      const dev = list.find((d) => String(d.entityId) === String(entityId));
-
       try {
-        await sendRustPlusCommand(cfg, 15, { entityId, bytes: [0x08, nextActive ? 0x01 : 0x00] });
-        if (dev) {
-          dev.active = nextActive;
-        } else {
-          list.unshift({ entityId: String(entityId), name: `Smart Switch #${entityId}`, entityType: 'switch', active: nextActive, pairedAt: Date.now() });
+        const changedNames = [];
+        for (const eid of entityIds) {
+          await sendRustPlusCommand(cfg, 15, { entityId: eid, bytes: [0x08, nextActive ? 0x01 : 0x00] });
+          const dev = list.find((d) => String(d.entityId) === String(eid));
+          if (dev) {
+            dev.active = nextActive;
+            changedNames.push(dev.name || `#${eid}`);
+          } else {
+            list.unshift({ entityId: String(eid), name: `Smart Switch #${eid}`, entityType: 'switch', active: nextActive, pairedAt: Date.now() });
+            changedNames.push(`#${eid}`);
+          }
         }
+        const activityLog = appendActivityLogEntries(squadState.rustPlusTelemetry?.activityLog, [
+          { icon: '⚡', category: 'switch', text: `Toggled ${nextActive ? 'ON' : 'OFF'}: ${changedNames.join(', ')}` }
+        ]);
         squadState.rustPlusTelemetry = {
           ...DEFAULT_STATE.rustPlusTelemetry,
           ...(squadState.rustPlusTelemetry || {}),
-          smartDevices: list
+          smartDevices: list,
+          activityLog
         };
         saveState(squadState);
         broadcastState('state_update');
-        return sendJson(res, 200, { ok: true, smartDevices: list });
+        return sendJson(res, 200, { ok: true, smartDevices: list, activityLog });
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
       }
+    }
+
+    if (pathname === '/api/shops/rustplus/activity-clear' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      squadState.rustPlusTelemetry = {
+        ...DEFAULT_STATE.rustPlusTelemetry,
+        ...(squadState.rustPlusTelemetry || {}),
+        activityLog: []
+      };
+      saveState(squadState);
+      broadcastState('state_update');
+      return sendJson(res, 200, { ok: true, activityLog: [] });
     }
 
     if (pathname === '/api/shops/rustplus/smart-device' && req.method === 'POST') {
@@ -3360,15 +3607,15 @@ const server = http.createServer(async (req, res) => {
         ip: cfg.ip || '',
         port: cfg.port || '',
         autoPoll: Boolean(cfg.autoPoll),
+        chatBotEnabled: cfg.chatBotEnabled !== false,
         lastPolledAt: cfg.lastPolledAt || 0,
         lastStatus: cfg.lastStatus || '',
         pairedServersCount: Array.isArray(cfg.pairedServers) ? cfg.pairedServers.length : 0,
         serverInfo: tel.serverInfo || null,
         markerSummary: tel.markerSummary || null,
-        vendingPinsCount: Array.isArray(tel.vendingPins) ? tel.vendingPins.length : 0,
         liveEventsCount: Array.isArray(tel.liveEvents) ? tel.liveEvents.length : 0,
         teamMembersCount: Array.isArray(tel.teamMembers) ? tel.teamMembers.length : 0,
-        customShopsCount: Array.isArray(squadState.customShops) ? squadState.customShops.length : 0
+        activityLogCount: Array.isArray(tel.activityLog) ? tel.activityLog.length : 0
       });
     }
 
@@ -3387,7 +3634,9 @@ const server = http.createServer(async (req, res) => {
         ...(body.useProxy !== undefined ? { useProxy: Boolean(body.useProxy) } : {}),
         ...(body.autoPoll !== undefined ? { autoPoll: Boolean(body.autoPoll) } : {}),
         ...(body.chatBotEnabled !== undefined ? { chatBotEnabled: Boolean(body.chatBotEnabled) } : {}),
-        ...(body.discordAlertEvents !== undefined ? { discordAlertEvents: Boolean(body.discordAlertEvents) } : {})
+        ...(body.chatBotAllowSwitchControl !== undefined ? { chatBotAllowSwitchControl: Boolean(body.chatBotAllowSwitchControl) } : {}),
+        ...(body.discordAlertEvents !== undefined ? { discordAlertEvents: Boolean(body.discordAlertEvents) } : {}),
+        ...(body.smartAutomation !== undefined ? { smartAutomation: normalizeSmartAutomation(body.smartAutomation) } : {})
       };
       try {
         const snapshot = await fetchRustPlusVendingSnapshot(nextCfg, forceMap);

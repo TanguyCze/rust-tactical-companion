@@ -69,7 +69,13 @@
     useProxy: false,
     autoPoll: false,
     chatBotEnabled: true,
+    chatBotAllowSwitchControl: true,
     discordAlertEvents: true,
+    smartAutomation: {
+      duskAutoSwitchIds: [],
+      alarmDefenseSwitchIds: [],
+      switchGroups: []
+    },
     lastPolledAt: 0,
     lastStatus: '',
     mapSize: 4250
@@ -84,7 +90,15 @@
     recentDeaths: [],
     mapNotes: [],
     teamChat: [],
-    smartDevices: []
+    smartDevices: [],
+    activityLog: []
+  };
+
+  const DEFAULT_SQUAD_KEYCARDS = {
+    green: false,
+    blue: false,
+    red: false,
+    fuses: 0
   };
 
   const DEFAULT_RAID_STASH = {
@@ -116,6 +130,7 @@
     discordWebhookUrl: '',
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     squadPins: [],
+    squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS },
     rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
     rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY },
     savedClones: [
@@ -152,7 +167,15 @@
         ...parsedSaved,
         raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
         discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
-        rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(parsedSaved.rustPlusShopConfig || {}) }
+        squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS, ...(parsedSaved.squadKeycards || {}) },
+        rustPlusShopConfig: {
+          ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+          ...(parsedSaved.rustPlusShopConfig || {}),
+          smartAutomation: {
+            ...DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation,
+            ...(parsedSaved.rustPlusShopConfig?.smartAutomation || {})
+          }
+        }
       };
     }
   } catch (_) {}
@@ -222,7 +245,17 @@
               ...msg.state,
               raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) },
               discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
-              rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(appState.rustPlusShopConfig || {}), ...(msg.state.rustPlusShopConfig || {}) },
+              squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS, ...(appState.squadKeycards || {}), ...(msg.state.squadKeycards || {}) },
+              rustPlusShopConfig: {
+                ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+                ...(appState.rustPlusShopConfig || {}),
+                ...(msg.state.rustPlusShopConfig || {}),
+                smartAutomation: {
+                  ...DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation,
+                  ...(appState.rustPlusShopConfig?.smartAutomation || {}),
+                  ...(msg.state.rustPlusShopConfig?.smartAutomation || {})
+                }
+              },
               rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), ...(msg.state.rustPlusTelemetry || {}) },
               squadPins: Array.isArray(msg.state.squadPins) ? msg.state.squadPins : (appState.squadPins || [])
             };
@@ -3406,7 +3439,60 @@
     return diagrams[diagramKey] || diagrams.doorway_peek;
   }
 
+  function getMonumentReadiness(monument) {
+    const kc = appState.squadKeycards || DEFAULT_SQUAD_KEYCARDS;
+    const missing = [];
+    (monument.cardsNeeded || []).forEach((c) => {
+      const k = String(c).toLowerCase();
+      if (!kc[k]) missing.push(`${c} Card`);
+    });
+    const needFuses = Number(monument.fusesNeeded || 0);
+    if (needFuses > Number(kc.fuses || 0)) {
+      missing.push(`${needFuses}× Fuse`);
+    }
+    return { ready: missing.length === 0, missing };
+  }
+
+  function renderMonumentKeycardsStrip() {
+    const strip = document.getElementById('monumentKeycardsStrip');
+    if (!strip) return;
+    const kc = { ...DEFAULT_SQUAD_KEYCARDS, ...(appState.squadKeycards || {}) };
+    const readyCount = DATA.monuments.filter((m) => getMonumentReadiness(m).ready).length;
+    strip.innerHTML = `
+      <span style="font-size:11px; font-family:var(--font-mono); font-weight:700; color:#bae6fd;">🎫 SQUAD KEYCARDS IN BASE:</span>
+      <button type="button" class="filter-pill kc-card-btn ${kc.green ? 'active' : ''}" data-card="green" style="${kc.green ? 'border-color:#22c55e; color:#4ade80;' : ''}">🟢 Green Card ${kc.green ? '✓' : '✕'}</button>
+      <button type="button" class="filter-pill kc-card-btn ${kc.blue ? 'active' : ''}" data-card="blue" style="${kc.blue ? 'border-color:#3b82f6; color:#93c5fd;' : ''}">🔵 Blue Card ${kc.blue ? '✓' : '✕'}</button>
+      <button type="button" class="filter-pill kc-card-btn ${kc.red ? 'active' : ''}" data-card="red" style="${kc.red ? 'border-color:#ef4444; color:#fca5a5;' : ''}">🔴 Red Card ${kc.red ? '✓' : '✕'}</button>
+      <div style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-family:var(--font-mono); color:#fde68a; background:rgba(9,14,22,0.75); padding:2px 8px; border-radius:999px; border:1px solid rgba(245,158,11,0.35);">
+        <span>⚡ Fuses:</span>
+        <button type="button" class="btn btn-sm kc-fuse-step" data-delta="-1" style="padding:0 5px; font-size:11px;">−</button>
+        <strong id="kcFuseCountVal">${Number(kc.fuses || 0)}</strong>
+        <button type="button" class="btn btn-sm kc-fuse-step" data-delta="1" style="padding:0 5px; font-size:11px;">+</button>
+      </div>
+      <span style="margin-left:auto; font-size:11px; font-family:var(--font-mono); color:#86efac;">✅ ${readyCount}/${DATA.monuments.length} runnable</span>
+    `;
+    strip.querySelectorAll('.kc-card-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const card = btn.getAttribute('data-card');
+        appState.squadKeycards = { ...DEFAULT_SQUAD_KEYCARDS, ...(appState.squadKeycards || {}) };
+        appState.squadKeycards[card] = !appState.squadKeycards[card];
+        syncStateToServer();
+        renderMonumentAtlas();
+      });
+    });
+    strip.querySelectorAll('.kc-fuse-step').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const d = parseInt(btn.getAttribute('data-delta'), 10) || 0;
+        appState.squadKeycards = { ...DEFAULT_SQUAD_KEYCARDS, ...(appState.squadKeycards || {}) };
+        appState.squadKeycards.fuses = Math.max(0, Math.min(20, Number(appState.squadKeycards.fuses || 0) + d));
+        syncStateToServer();
+        renderMonumentAtlas();
+      });
+    });
+  }
+
   function renderMonumentAtlas() {
+    renderMonumentKeycardsStrip();
     const detailEl = document.getElementById('selectedMonumentDetail');
     const listEl = document.getElementById('monumentAtlasList');
     if (!detailEl || !listEl) return;
@@ -3564,6 +3650,7 @@
     }
 
     const filtered = DATA.monuments.filter((item) => {
+      if (selectedMonumentFilter === 'ready_now') return getMonumentReadiness(item).ready;
       if (selectedMonumentFilter === 'get_green') return item.cardsFound.includes('Green');
       if (selectedMonumentFilter === 'get_blue') return item.cardsFound.includes('Blue');
       if (selectedMonumentFilter === 'get_red') return item.cardsFound.includes('Red');
@@ -3576,10 +3663,14 @@
     listEl.innerHTML = filtered
       .map((item) => {
         const isAct = item.id === selectedMonumentId;
+        const readiness = getMonumentReadiness(item);
+        const readyPill = readiness.ready
+          ? `<span class="keycard-tag keycard-Green">✅ READY</span>`
+          : `<span class="keycard-tag" style="background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">🔒 Need ${escapeHtml(readiness.missing.join(' + '))}</span>`;
         const fusePill =
           item.fusesNeeded > 0
             ? `<span class="keycard-tag keycard-Fuse">🔌 ${item.fusesNeeded} Fuse</span>`
-            : `<span class="keycard-tag keycard-Green">✅ 0 Fuse</span>`;
+            : `<span class="keycard-tag keycard-Green">0 Fuse</span>`;
         let listGridText = `[${item.defaultPos.grid}]`;
         if (bfMapData && Array.isArray(bfMapData.monuments)) {
           const itemMatches = bfMapData.monuments.filter((rm) => bfDoesMonumentMatchAtlas(rm.type, item));
@@ -3592,11 +3683,14 @@
         }
         return `
           <div class="monument-item ${isAct ? 'active' : ''}" data-mid="${item.id}">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
               <div style="font-family:var(--font-display); font-weight:700; font-size:14px; color:#fff;">
                 ${item.name} <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">${listGridText}</span>
               </div>
-              ${fusePill}
+              <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                ${readyPill}
+                ${fusePill}
+              </div>
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; font-size:11px;">
               <span style="color:var(--text-secondary);">Need: ${item.cardsNeeded.join(' + ') || 'None'}</span>
@@ -6403,7 +6497,261 @@
     });
   }
 
+  const elecDeviceCounts = {};
+  (DATA.electricityDevices || []).forEach((d) => {
+    elecDeviceCounts[d.id] = Number(d.defaultQty || 0);
+  });
+
+  function renderElectricityPlanner() {
+    const gridEl = document.getElementById('elecDevicesGrid');
+    const sumEl = document.getElementById('elecSummaryBox');
+    if (!gridEl || !sumEl) return;
+
+    const devs = DATA.electricityDevices || [];
+    gridEl.innerHTML = devs
+      .map((d) => {
+        const qty = Number(elecDeviceCounts[d.id] || 0);
+        const totalDraw = qty * d.rwm;
+        return `
+          <div class="target-card ${qty > 0 ? 'selected' : ''}" style="padding:10px; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <strong style="font-size:12.5px; color:#f8fafc;">${d.icon} ${escapeHtml(d.name)}</strong>
+              <span style="font-family:var(--font-mono); font-size:10.5px; color:#fbbf24;">${d.rwm} rWm</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <span style="font-size:10.5px; color:var(--text-muted);">${escapeHtml(d.category)} • <strong>${totalDraw}</strong> rWm</span>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button type="button" class="btn btn-sm elec-qty-btn" data-id="${d.id}" data-delta="-1" style="padding:1px 7px;">−</button>
+                <span style="min-width:20px; text-align:center; font-family:var(--font-mono); font-weight:700;">${qty}</span>
+                <button type="button" class="btn btn-sm elec-qty-btn" data-id="${d.id}" data-delta="1" style="padding:1px 7px;">+</button>
+              </div>
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    gridEl.querySelectorAll('.elec-qty-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const delta = parseInt(btn.getAttribute('data-delta'), 10) || 0;
+        elecDeviceCounts[id] = Math.max(0, Math.min(50, Number(elecDeviceCounts[id] || 0) + delta));
+        renderElectricityPlanner();
+      });
+    });
+
+    const totalLoadRwm = devs.reduce((acc, d) => acc + Number(elecDeviceCounts[d.id] || 0) * d.rwm, 0);
+    const batKey = document.getElementById('elecBatterySelect')?.value || 'large';
+    const margin = parseFloat(document.getElementById('elecMarginSelect')?.value || '1.25') || 1.25;
+    const bat = (DATA.batterySpecs && DATA.batterySpecs[batKey]) || { name: 'Large Battery', maxOutRwm: 100, capacityRwMin: 24000, chargeEfficiency: 0.8 };
+    const batteriesNeeded = totalLoadRwm > 0 ? Math.ceil(totalLoadRwm / bat.maxOutRwm) : 0;
+    const activeBatCount = Math.max(1, batteriesNeeded);
+    const totalCapacityRwMin = activeBatCount * bat.capacityRwMin;
+    const runtimeMins = totalLoadRwm > 0 ? Math.round(totalCapacityRwMin / totalLoadRwm) : 0;
+    const rtHours = Math.floor(runtimeMins / 60);
+    const rtRemMins = runtimeMins % 60;
+    const reqChargeInput = Math.ceil((totalLoadRwm / (bat.chargeEfficiency || 0.8)) * margin);
+    const windCount = reqChargeInput > 0 ? Math.ceil(reqChargeInput / 100) : 0;
+    const solarCount = reqChargeInput > 0 ? Math.ceil(reqChargeInput / 15) : 0;
+
+    sumEl.innerHTML = `
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(135px, 1fr)); gap:8px; margin-bottom:12px;">
+        <div style="padding:10px; border-radius:6px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4);">
+          <div style="font-size:10px; font-family:var(--font-mono); color:#fde68a;">TOTAL BASE DRAW</div>
+          <div style="font-size:20px; font-weight:800; color:#fbbf24; font-family:var(--font-mono);">${totalLoadRwm} rWm</div>
+        </div>
+        <div style="padding:10px; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.4);">
+          <div style="font-size:10px; font-family:var(--font-mono); color:#bae6fd;">MIN BATTERIES NEEDED</div>
+          <div style="font-size:20px; font-weight:800; color:#38bdf8; font-family:var(--font-mono);">${batteriesNeeded}× (${batteriesNeeded * bat.maxOutRwm} cap)</div>
+        </div>
+        <div style="padding:10px; border-radius:6px; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.4);">
+          <div style="font-size:10px; font-family:var(--font-mono); color:#bbf7d0;">BACKUP RUNTIME</div>
+          <div style="font-size:20px; font-weight:800; color:#4ade80; font-family:var(--font-mono);">${totalLoadRwm > 0 ? `${rtHours}h ${rtRemMins}m` : '∞'}</div>
+        </div>
+      </div>
+      <div style="padding:10px 12px; border-radius:6px; background:rgba(15,23,42,0.72); border:1px solid var(--border-subtle); font-size:12px; color:#cbd5e1; display:flex; flex-direction:column; gap:5px;">
+        <div>🔌 <strong style="color:#f8fafc;">Required Input Power:</strong> <strong style="color:#fde047;">${reqChargeInput} rWm</strong> (accounts for 80% battery recharge loss + ${Math.round((margin - 1) * 100)}% buffer)</div>
+        <div>💨 <strong style="color:#f8fafc;">Generation Options:</strong> <strong>${windCount}× Wind Turbine</strong> (~100 rWm avg each) <em>OR</em> <strong>${solarCount}× Large Solar Panels</strong> (~15 rWm avg daylight)</div>
+        <div>🛡️ <strong style="color:#f8fafc;">Wiring Tip:</strong> Use Electrical Branches set to exact device totals before battery/root combiners so turbines never trickle-drain overnight.</div>
+      </div>`;
+  }
+
+  const customConveyorFilters = [
+    { item: 'Sulfur Ore', min: 0, max: 0, buf: 0 },
+    { item: 'Metal Ore', min: 0, max: 0, buf: 0 }
+  ];
+
+  function renderConveyorModule() {
+    const presetsEl = document.getElementById('conveyorPresetsList');
+    const customEl = document.getElementById('conveyorCustomList');
+    const slotsBadge = document.getElementById('conveyorSlotsBadge');
+    const itemSel = document.getElementById('conveyorItemSelect');
+
+    if (itemSel && itemSel.options.length === 0 && Array.isArray(DATA.conveyorItemsCatalog)) {
+      itemSel.innerHTML =
+        `<option value="Category: Weapons">📁 Category: Weapons</option>` +
+        `<option value="Category: Ammunition">📁 Category: Ammunition</option>` +
+        `<option value="Category: Component">📁 Category: Components</option>` +
+        `<option value="Category: Resources">📁 Category: Resources</option>` +
+        `<option value="Category: Medical">📁 Category: Medical</option>` +
+        `<option value="Category: Attire">📁 Category: Attire</option>` +
+        DATA.conveyorItemsCatalog
+          .map((it) => `<option value="${escapeHtml(it.name)}">${escapeHtml(it.name)} (${escapeHtml(it.cat)})</option>`)
+          .join('');
+    }
+
+    if (presetsEl) {
+      const q = (document.getElementById('conveyorPresetSearch')?.value || '').trim().toLowerCase();
+      const filtered = (DATA.conveyorPresets || []).filter((p) => {
+        if (!q) return true;
+        return (
+          p.name.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q) ||
+          p.summary.toLowerCase().includes(q) ||
+          (p.conveyors || []).some((c) => c.filters.some((f) => f.item.toLowerCase().includes(q)))
+        );
+      });
+      presetsEl.innerHTML = filtered
+        .map(
+          (p) => `
+          <div style="padding:10px 12px; border-radius:6px; background:rgba(15,23,42,0.72); border:1px solid var(--border-subtle);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+              <div>
+                <strong style="font-size:13px; color:#f8fafc;">${escapeHtml(p.name)}</strong>
+                <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">${escapeHtml(p.summary)}</div>
+              </div>
+              <div style="display:flex; gap:5px; align-items:center;">
+                <span style="font-size:10px; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#7dd3fc;">${p.conveyorsCount} Conv • ${p.powerRwm} rWm</span>
+                <button type="button" class="btn btn-sm conv-load-preset-btn" data-pid="${escapeHtml(p.id)}" style="border-color:#22c55e; color:#86efac;">📥 Load 1st Pipe</button>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px;">
+              ${(p.conveyors || [])
+                .map(
+                  (c) => `
+                  <div style="padding:5px 8px; border-radius:4px; background:rgba(9,14,22,0.65); font-size:11px;">
+                    <div style="font-weight:700; color:#fde68a; margin-bottom:2px;">${escapeHtml(c.label)} <span style="color:#94a3b8; font-weight:400;">(${escapeHtml(p.mode)})</span></div>
+                    <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                      ${c.filters
+                        .map((f) => {
+                          const caps = [f.min > 0 ? `Min:${f.min}` : '', f.max > 0 ? `Max:${f.max}` : '', f.buf > 0 ? `Buf:${f.buf}` : ''].filter(Boolean).join(' ');
+                          return `<span style="font-family:var(--font-mono); font-size:10px; padding:1px 6px; border-radius:4px; background:rgba(30,41,59,0.9); border:1px solid rgba(148,163,184,0.28); color:#e2e8f0;">${escapeHtml(f.item)}${caps ? ` <strong style="color:#38bdf8;">[${caps}]</strong>` : ''}</span>`;
+                        })
+                        .join('')}
+                    </div>
+                  </div>`
+                )
+                .join('')}
+            </div>
+            ${p.proTips?.length ? `<div style="margin-top:6px; font-size:11px; color:#a7f3d0;">💡 ${p.proTips.map((t) => escapeHtml(t)).join(' • ')}</div>` : ''}
+          </div>`
+        )
+        .join('');
+
+      presetsEl.querySelectorAll('.conv-load-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pid = btn.getAttribute('data-pid');
+          const preset = (DATA.conveyorPresets || []).find((x) => x.id === pid);
+          const firstFilters = preset?.conveyors?.[0]?.filters;
+          if (!firstFilters) return;
+          customConveyorFilters.length = 0;
+          firstFilters.slice(0, 12).forEach((f) => customConveyorFilters.push({ ...f }));
+          const modeSel = document.getElementById('conveyorModeSelect');
+          if (modeSel) modeSel.value = /All/i.test(preset.mode || '') ? 'all' : 'any';
+          renderConveyorModule();
+        });
+      });
+    }
+
+    if (slotsBadge) {
+      slotsBadge.textContent = `${customConveyorFilters.length} / 12 Slots • 1 rWm`;
+      slotsBadge.style.color = customConveyorFilters.length >= 12 ? '#fca5a5' : '#7dd3fc';
+    }
+    if (customEl) {
+      customEl.innerHTML = customConveyorFilters.length
+        ? customConveyorFilters
+            .map(
+              (f, idx) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 9px; border-radius:5px; background:rgba(15,23,42,0.72); border:1px solid var(--border-subtle); font-size:12px;">
+                <div>
+                  <strong style="color:#f8fafc;">${escapeHtml(f.item)}</strong>
+                  <span style="font-family:var(--font-mono); font-size:10.5px; color:#7dd3fc; margin-left:6px;">Min: ${f.min} • Max: ${f.max || '∞'} • Buf: ${f.buf}</span>
+                </div>
+                <button type="button" class="btn btn-sm conv-del-slot-btn" data-idx="${idx}" style="padding:1px 6px;">✕</button>
+              </div>`
+            )
+            .join('')
+        : `<div style="padding:12px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px; font-size:11.5px;">No filter slots added (blank Conveyor passes all items). Add items above or load a preset on the left.</div>`;
+
+      customEl.querySelectorAll('.conv-del-slot-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.getAttribute('data-idx'), 10);
+          if (idx >= 0) {
+            customConveyorFilters.splice(idx, 1);
+            renderConveyorModule();
+          }
+        });
+      });
+    }
+  }
+
   function initRecyclerDieselDecayModule() {
+    document.querySelectorAll('.rc-subtab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sub = btn.getAttribute('data-rc-sub');
+        document.querySelectorAll('.rc-subtab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        const map = { main: 'rcSubMain', elec: 'rcSubElec', conveyor: 'rcSubConveyor' };
+        document.querySelectorAll('.rc-subpanel').forEach((p) => p.classList.remove('active'));
+        document.getElementById(map[sub])?.classList.add('active');
+      });
+    });
+
+    document.getElementById('elecResetBtn')?.addEventListener('click', () => {
+      Object.keys(elecDeviceCounts).forEach((k) => (elecDeviceCounts[k] = 0));
+      renderElectricityPlanner();
+    });
+    document.getElementById('elecBatterySelect')?.addEventListener('change', renderElectricityPlanner);
+    document.getElementById('elecMarginSelect')?.addEventListener('change', renderElectricityPlanner);
+
+    document.getElementById('conveyorPresetSearch')?.addEventListener('input', renderConveyorModule);
+    document.getElementById('conveyorItemSelect')?.addEventListener('change', (e) => {
+      const entry = (DATA.conveyorItemsCatalog || []).find((x) => x.name === e.target.value);
+      if (entry) {
+        const minEl = document.getElementById('conveyorMinInput');
+        const maxEl = document.getElementById('conveyorMaxInput');
+        const bufEl = document.getElementById('conveyorBufInput');
+        if (minEl) minEl.value = String(entry.defaultMin || 0);
+        if (maxEl) maxEl.value = String(entry.defaultMax || 0);
+        if (bufEl) bufEl.value = String(entry.defaultBuf || 0);
+      }
+    });
+    document.getElementById('conveyorAddFilterBtn')?.addEventListener('click', () => {
+      if (customConveyorFilters.length >= 12) {
+        alert('Rust Industrial Conveyors support max 12 filter slots per conveyor (or use a Category filter).');
+        return;
+      }
+      const item = document.getElementById('conveyorItemSelect')?.value || 'Sulfur Ore';
+      const min = Math.max(0, parseInt(document.getElementById('conveyorMinInput')?.value, 10) || 0);
+      const max = Math.max(0, parseInt(document.getElementById('conveyorMaxInput')?.value, 10) || 0);
+      const buf = Math.max(0, parseInt(document.getElementById('conveyorBufInput')?.value, 10) || 0);
+      customConveyorFilters.push({ item, min, max, buf });
+      renderConveyorModule();
+    });
+    document.getElementById('conveyorClearBtn')?.addEventListener('click', () => {
+      customConveyorFilters.length = 0;
+      renderConveyorModule();
+    });
+    document.getElementById('conveyorCopyBtn')?.addEventListener('click', async (e) => {
+      const modeTxt = document.getElementById('conveyorModeSelect')?.value === 'all' ? 'Require All (AND)' : 'Require Any (OR)';
+      const lines = [
+        `Industrial Conveyor Filter (${modeTxt}, ${customConveyorFilters.length}/12 slots, 1 rWm):`,
+        ...customConveyorFilters.map((f) => `- ${f.item} | Min: ${f.min} | Max: ${f.max || '0 (No Cap)'} | Buffer: ${f.buf}`)
+      ];
+      try {
+        await navigator.clipboard?.writeText(lines.join('\n'));
+      } catch (_) {}
+      flashButtonFeedback(e.currentTarget, '✓ Copied!');
+    });
+
     document.getElementById('clearRecyclerBtn')?.addEventListener('click', () => {
       Object.keys(recyclerCounts).forEach((k) => (recyclerCounts[k] = 0));
       renderRecyclerCalculator();
@@ -6442,6 +6790,8 @@
     renderRecyclerCalculator();
     renderDieselCalculator();
     renderDecayCalculator();
+    renderElectricityPlanner();
+    renderConveyorModule();
   }
 
   // =========================================================================
@@ -6464,6 +6814,53 @@
   let bfRenderedPins = [];
   let bfNoBuildColliders = { spheres: [], boxes: [], fallback: [] };
   let bfCustomTargetMonument = null;
+  let bfMeasureMode = false;
+  let bfMeasurePoints = []; // max 2 [{ wx, wy, grid }]
+
+  function drawBfRulerOverlay(ctx, toPx) {
+    if (!bfMeasurePoints || bfMeasurePoints.length === 0) return;
+    const pts = bfMeasurePoints.map((pt) => ({ ...pt, ...toPx(pt.wx, pt.wy) }));
+    ctx.save();
+    if (pts.length === 2) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].px, pts[0].py);
+      ctx.lineTo(pts[1].px, pts[1].py);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.6;
+      ctx.setLineDash([7, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const dist = Math.round(Math.hypot(pts[1].wx - pts[0].wx, pts[1].wy - pts[0].wy));
+      const sprintSec = Math.round(dist / 7.5);
+      const heliSec = Math.round(dist / 30);
+      const fmtEta = (s) => (s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${s}s`);
+      const badgeTxt = `📏 ${dist.toLocaleString()}m • 🏃${fmtEta(sprintSec)} • 🚁${fmtEta(heliSec)}`;
+      const mx = (pts[0].px + pts[1].px) / 2;
+      const my = (pts[0].py + pts[1].py) / 2;
+      ctx.font = '700 11px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(badgeTxt).width + 14;
+      ctx.fillStyle = 'rgba(9, 14, 22, 0.92)';
+      ctx.fillRect(mx - tw / 2, my - 22, tw, 20);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(mx - tw / 2, my - 22, tw, 20);
+      ctx.fillStyle = '#bae6fd';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeTxt, mx, my - 12);
+    }
+    pts.forEach((p, idx) => {
+      ctx.beginPath();
+      ctx.arc(p.px, p.py, 7, 0, Math.PI * 2);
+      ctx.fillStyle = idx === 0 ? '#38bdf8' : '#f59e0b';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#090b0e';
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
 
   function bfSwitchSubtab(target) {
     document.querySelectorAll('.bf-subtab-btn').forEach((b) => {
@@ -7738,6 +8135,7 @@
           pinOut: bfRenderedPins
         });
       }
+      drawBfRulerOverlay(ctx, toPx);
       return;
     }
 
@@ -8115,6 +8513,7 @@
         pinOut: bfRenderedPins
       });
     }
+    drawBfRulerOverlay(ctx, toPx);
   }
 
   function bfFormatOffshoreInfo(s) {
@@ -8800,18 +9199,64 @@
     let bfMovingPinId = '';
     let bfDraftPinCoords = { wx: 0, wy: 0, grid: '' };
     let bfDraftPinCat = 'pin';
+    let bfDraftRaidPreset = {};
 
     const pinPopover = document.getElementById('bfPinEditorPopover');
     const pinDropModeBtn = document.getElementById('bfDropPinModeBtn');
+    const measureModeBtn = document.getElementById('bfMeasureModeBtn');
+    const measureBannerEl = document.getElementById('bfMeasureBanner');
     const pinTitleEl = document.getElementById('bfPinEditorTitle');
     const pinLabelEl = document.getElementById('bfPinLabelInput');
     const pinColorEl = document.getElementById('bfPinColorInput');
     const pinCoordsEl = document.getElementById('bfPinCoordsLabel');
+    const pinRaidSumEl = document.getElementById('bfPinRaidSummary');
     const pinSaveBtn = document.getElementById('bfPinSaveBtn');
     const pinMoveBtn = document.getElementById('bfPinMoveBtn');
     const pinFlyBtn = document.getElementById('bfPinFlyBtn');
     const pinDeleteBtn = document.getElementById('bfPinDeleteBtn');
     const pinCancelBtn = document.getElementById('bfPinCancelBtn');
+
+    const formatPinRaidPresetSummary = (preset) => {
+      const labels = {
+        sheet_metal_door: 'Sheet',
+        garage_door: 'Garage',
+        armored_door: 'ArmDoor',
+        stone_wall: 'StoneWall',
+        metal_wall: 'MetalWall'
+      };
+      const entries = Object.entries(preset || {}).filter(([, q]) => Number(q) > 0);
+      return entries.length ? entries.map(([k, q]) => `${q}× ${labels[k] || k}`).join(', ') : 'None tagged';
+    };
+
+    const syncPinRaidUi = () => {
+      if (pinRaidSumEl) pinRaidSumEl.textContent = formatPinRaidPresetSummary(bfDraftRaidPreset);
+    };
+
+    const renderMeasureBanner = () => {
+      if (!measureBannerEl) return;
+      if (!bfMeasureMode && bfMeasurePoints.length === 0) {
+        measureBannerEl.style.display = 'none';
+        return;
+      }
+      measureBannerEl.style.display = 'flex';
+      if (bfMeasurePoints.length === 0) {
+        measureBannerEl.innerHTML = `<span>📏 <strong>Ruler ON:</strong> Click Point A on the map...</span><button type="button" id="bfMeasureClearBtn" class="btn btn-sm" style="padding:1px 6px;">✕ Exit</button>`;
+      } else if (bfMeasurePoints.length === 1) {
+        measureBannerEl.innerHTML = `<span>📏 Start [${escapeHtml(bfMeasurePoints[0].grid)}] — click Point B to calculate distance &amp; travel ETA</span><button type="button" id="bfMeasureClearBtn" class="btn btn-sm" style="padding:1px 6px;">↺ Clear</button>`;
+      } else {
+        const [a, b] = bfMeasurePoints;
+        const dist = Math.round(Math.hypot(b.wx - a.wx, b.wy - a.wy));
+        const fmt = (s) => (s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`);
+        measureBannerEl.innerHTML = `<span>📏 <strong>${escapeHtml(a.grid)} → ${escapeHtml(b.grid)}</strong>: <strong style="color:#fff;">${dist.toLocaleString()}m</strong> • 🏃 ${fmt(Math.round(dist / 7.5))} • 🚁 ${fmt(Math.round(dist / 30))} • 🚤 ${fmt(Math.round(dist / 15))}</span><button type="button" id="bfMeasureClearBtn" class="btn btn-sm" style="padding:1px 6px;">✕ Clear</button>`;
+      }
+      measureBannerEl.querySelector('#bfMeasureClearBtn')?.addEventListener('click', () => {
+        bfMeasurePoints = [];
+        bfMeasureMode = false;
+        syncDropModeBtnUi();
+        renderMeasureBanner();
+        renderBaseFinderMap();
+      });
+    };
 
     const syncDropModeBtnUi = () => {
       if (pinDropModeBtn) {
@@ -8819,9 +9264,27 @@
         pinDropModeBtn.style.background = bfDropPinMode || bfMovingPinId ? 'rgba(245, 158, 11, 0.25)' : '';
         pinDropModeBtn.style.borderColor = bfMovingPinId ? '#38bdf8' : '#f59e0b';
       }
+      if (measureModeBtn) {
+        measureModeBtn.textContent = bfMeasureMode ? '📏 Ruler (ON)' : '📏 Ruler';
+        measureModeBtn.style.background = bfMeasureMode ? 'rgba(56, 189, 248, 0.24)' : '';
+      }
       const cvsEl = document.getElementById('bfMapCanvas');
-      if (cvsEl) cvsEl.style.cursor = bfDropPinMode || bfMovingPinId ? 'crosshair' : 'grab';
+      if (cvsEl) cvsEl.style.cursor = bfDropPinMode || bfMovingPinId || bfMeasureMode ? 'crosshair' : 'grab';
     };
+
+    measureModeBtn?.addEventListener('click', () => {
+      bfMeasureMode = !bfMeasureMode;
+      if (bfMeasureMode) {
+        bfDropPinMode = false;
+        bfMovingPinId = '';
+        bfMeasurePoints = [];
+      } else {
+        bfMeasurePoints = [];
+      }
+      syncDropModeBtnUi();
+      renderMeasureBanner();
+      renderBaseFinderMap();
+    });
 
     const setPinCategoryUi = (cat, customColor = '') => {
       bfDraftPinCat = BF_PIN_CATEGORY_META[cat] ? cat : 'pin';
@@ -8841,6 +9304,8 @@
       const grid = existingPin?.grid || bfWorldToGrid(wx, wy, mapSize);
       bfEditingPinId = existingPin ? String(existingPin.id) : '';
       bfDraftPinCoords = { wx: Number(wx) || 0, wy: Number(wy) || 0, grid };
+      bfDraftRaidPreset = existingPin?.raidPreset ? { ...existingPin.raidPreset } : {};
+      syncPinRaidUi();
       if (pinTitleEl) pinTitleEl.textContent = existingPin ? '✏️ EDIT SHARED SQUAD PIN' : '📌 DROP SHARED SQUAD PIN';
       setPinCategoryUi(existingPin?.category || 'pin', existingPin?.color || '');
       if (pinLabelEl) pinLabelEl.value = existingPin?.label || '';
@@ -8854,6 +9319,37 @@
       pinLabelEl?.focus();
     };
 
+    document.querySelectorAll('#bfPinRaidPresetWrap .bf-pin-raid-add').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const rt = btn.getAttribute('data-rt');
+        if (!rt) return;
+        bfDraftRaidPreset[rt] = (Number(bfDraftRaidPreset[rt]) || 0) + 1;
+        syncPinRaidUi();
+      });
+    });
+    document.getElementById('bfPinRaidClearBtn')?.addEventListener('click', () => {
+      bfDraftRaidPreset = {};
+      syncPinRaidUi();
+    });
+    document.getElementById('bfPinSendRaidBtn')?.addEventListener('click', () => {
+      const entries = Object.entries(bfDraftRaidPreset || {}).filter(([, q]) => Number(q) > 0);
+      if (!entries.length) {
+        alert('Tap +Sheet, +Garage, +StoneWall, etc. first to tag enemy doors/walls on this pin.');
+        return;
+      }
+      entries.forEach(([targetId, qty]) => {
+        const cur = appState.raidQueue || [];
+        const existing = cur.find((x) => x.targetId === targetId && x.mode === 'combo');
+        if (existing) existing.qty += Number(qty);
+        else cur.push({ targetId, qty: Number(qty), mode: 'combo' });
+        appState.raidQueue = cur;
+      });
+      syncStateToServer();
+      renderRaidPlanner();
+      renderRaidStashReadiness();
+      document.querySelector('.nav-tab[data-tab="tab-raid"]')?.click();
+    });
+
     document.querySelectorAll('#bfPinCatBar .filter-pill').forEach((btn) => {
       btn.addEventListener('click', () => {
         setPinCategoryUi(btn.getAttribute('data-pcat') || 'pin');
@@ -8862,8 +9358,11 @@
 
     pinDropModeBtn?.addEventListener('click', () => {
       bfMovingPinId = '';
+      bfMeasureMode = false;
+      bfMeasurePoints = [];
       bfDropPinMode = !bfDropPinMode;
       syncDropModeBtnUi();
+      renderMeasureBanner();
     });
 
     pinCancelBtn?.addEventListener('click', () => {
@@ -8892,6 +9391,7 @@
       const list = Array.isArray(appState.squadPins) ? [...appState.squadPins] : [];
       const myMember = findMyRustPlusTeamMember(appState.rustPlusTelemetry);
       const author = myMember?.name || appState.squadName || 'Squad';
+      const raidPresetCopy = Object.fromEntries(Object.entries(bfDraftRaidPreset || {}).filter(([, q]) => Number(q) > 0));
       if (bfEditingPinId) {
         const idx = list.findIndex((p) => String(p.id) === String(bfEditingPinId));
         if (idx >= 0) {
@@ -8901,6 +9401,7 @@
             icon: catMeta.icon,
             color,
             label,
+            raidPreset: raidPresetCopy,
             updatedAt: Date.now()
           };
         }
@@ -8911,6 +9412,7 @@
           icon: catMeta.icon,
           color,
           label,
+          raidPreset: raidPresetCopy,
           wx: Number(bfDraftPinCoords.wx.toFixed(1)),
           wy: Number(bfDraftPinCoords.wy.toFixed(1)),
           grid: bfDraftPinCoords.grid,
@@ -9014,6 +9516,15 @@
         const scale = (bfCanvas.width / mapSize) * bfZoom;
         const clickWx = (cx - bfCanvas.width / 2) / scale + bfPanX;
         const clickWy = -(cy - bfCanvas.height / 2) / scale + bfPanY;
+
+        if (bfMeasureMode) {
+          const grid = bfWorldToGrid(clickWx, clickWy, mapSize);
+          if (bfMeasurePoints.length >= 2) bfMeasurePoints = [{ wx: clickWx, wy: clickWy, grid }];
+          else bfMeasurePoints = [...bfMeasurePoints, { wx: clickWx, wy: clickWy, grid }];
+          renderMeasureBanner();
+          renderBaseFinderMap();
+          return;
+        }
 
         if (bfMovingPinId) {
           const list = Array.isArray(appState.squadPins) ? [...appState.squadPins] : [];
@@ -9202,7 +9713,10 @@
     const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
     const angleDeg = (Math.atan2(dx, dy) * 180) / Math.PI;
     const compass = dirs[Math.round(((angleDeg + 360) % 360) / 45) % 8];
-    return `📏 ${dist.toLocaleString()}m ${compass} from you`;
+    const sprintSec = Math.round(dist / 7.5);
+    const heliSec = Math.round(dist / 30);
+    const fmt = (s) => (s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${s}s`);
+    return `📏 ${dist.toLocaleString()}m ${compass} from you • 🏃 ${fmt(sprintSec)} • 🚁 ${fmt(heliSec)}`;
   }
 
   function bfRustPlusTokenToCanonicalType(rawToken) {
@@ -9631,14 +10145,37 @@
       `<span style="font-size:10.5px; font-family:var(--font-mono); color:#fde68a; font-weight:700;">📌 SQUAD PINS (${pins.length}):</span>` +
       pins
         .slice(0, 10)
-        .map(
-          (p) =>
-            `<button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${p.wx}" data-wy="${p.wy}" style="border-color:${escapeHtml(p.color || '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>`
-        )
+        .map((p) => {
+          const rpEntries = Object.entries(p.raidPreset || {}).filter(([, q]) => Number(q) > 0);
+          const rpCount = rpEntries.reduce((acc, [, q]) => acc + Number(q), 0);
+          const rpBtn = rpCount > 0
+            ? `<button type="button" class="filter-pill bf-pin-strip-raid-btn" data-pid="${escapeHtml(p.id)}" title="Queue raid breakdown in Raid Calc" style="border-color:#ef4444; color:#fca5a5;">💥 ${rpCount}</button>`
+            : '';
+          return `<span style="display:inline-flex; gap:3px; align-items:center;"><button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${p.wx}" data-wy="${p.wy}" style="border-color:${escapeHtml(p.color || '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>${rpBtn}</span>`;
+        })
         .join('');
     stripEl.querySelectorAll('.bf-shared-pin-pill').forEach((btn) => {
       btn.addEventListener('click', () => {
         setBfMapView(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, 2.0);
+      });
+    });
+    stripEl.querySelectorAll('.bf-pin-strip-raid-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pid = btn.getAttribute('data-pid');
+        const pin = (appState.squadPins || []).find((x) => String(x.id) === String(pid));
+        const entries = Object.entries(pin?.raidPreset || {}).filter(([, q]) => Number(q) > 0);
+        if (!entries.length) return;
+        entries.forEach(([targetId, qty]) => {
+          const cur = appState.raidQueue || [];
+          const existing = cur.find((x) => x.targetId === targetId && x.mode === 'combo');
+          if (existing) existing.qty += Number(qty);
+          else cur.push({ targetId, qty: Number(qty), mode: 'combo' });
+          appState.raidQueue = cur;
+        });
+        syncStateToServer();
+        renderRaidPlanner();
+        renderRaidStashReadiness();
+        document.querySelector('.nav-tab[data-tab="tab-raid"]')?.click();
       });
     });
   }
@@ -9822,18 +10359,37 @@
     const maxV = Math.max(1, ...vals);
     const minV = Math.min(...vals);
     let minIdx = 0;
-    vals.forEach((v, idx) => { if (v < vals[minIdx]) minIdx = idx; });
-    const quietPt = history[minIdx]?.attributes?.timestamp ? new Date(history[minIdx].attributes.timestamp) : null;
-    const quietHour = quietPt && !Number.isNaN(quietPt.getTime())
-      ? `${String(quietPt.getHours()).padStart(2, '0')}:00`
-      : '';
+    let maxIdx = 0;
+    vals.forEach((v, idx) => {
+      if (v < vals[minIdx]) minIdx = idx;
+      if (v > vals[maxIdx]) maxIdx = idx;
+    });
+    const winSpan = Math.min(3, vals.length);
+    let bestWinStart = 0;
+    let bestWinAvg = Infinity;
+    for (let i = 0; i <= vals.length - winSpan; i++) {
+      const slice = vals.slice(i, i + winSpan);
+      const avg = slice.reduce((a, b) => a + b, 0) / winSpan;
+      if (avg < bestWinAvg) {
+        bestWinAvg = avg;
+        bestWinStart = i;
+      }
+    }
+    const fmtHr = (pt) => {
+      const d = pt?.attributes?.timestamp ? new Date(pt.attributes.timestamp) : null;
+      return d && !Number.isNaN(d.getTime()) ? `${String(d.getHours()).padStart(2, '0')}:00` : '';
+    };
+    const quietStart = fmtHr(history[bestWinStart]);
+    const quietEnd = fmtHr(history[Math.min(history.length - 1, bestWinStart + winSpan - 1)]);
+    const peakHour = fmtHr(history[maxIdx]);
     const w = 240;
     const h = 34;
     const bw = w / vals.length;
     const bars = vals
       .map((v, idx) => {
         const bh = Math.max(2, Math.round((v / maxV) * (h - 4)));
-        const col = idx === minIdx ? '#4ade80' : v >= maxV * 0.8 ? '#f97316' : '#38bdf8';
+        const inQuietWin = idx >= bestWinStart && idx < bestWinStart + winSpan;
+        const col = idx === minIdx || inQuietWin ? '#4ade80' : v >= maxV * 0.8 ? '#f97316' : '#38bdf8';
         return `<rect x="${(idx * bw).toFixed(1)}" y="${h - bh}" width="${Math.max(1.5, bw - 1.5).toFixed(1)}" height="${bh}" rx="1" fill="${col}" opacity="0.9"><title>${Math.round(v)} players</title></rect>`;
       })
       .join('');
@@ -9841,7 +10397,8 @@
       <div style="margin-top:6px; padding-top:6px; border-top:1px dashed rgba(148,163,184,0.22); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
         <div>
           <div style="font-size:10px; font-family:var(--font-mono); color:#93c5fd;">📊 24H SERVER POP (${Math.round(minV)}–${Math.round(maxV)})</div>
-          ${quietHour ? `<div style="font-size:10px; color:#86efac;">🌙 Quietest ~${quietHour} (${Math.round(vals[minIdx])}p)</div>` : ''}
+          ${quietStart ? `<div style="font-size:10px; color:#86efac;">🕊️ Quiet Raid Window: ${quietStart}${quietEnd && quietEnd !== quietStart ? `–${quietEnd}` : ''} (~${Math.round(bestWinAvg)}p)</div>` : ''}
+          ${peakHour ? `<div style="font-size:10px; color:#fdba74;">🔥 Peak: ~${peakHour} (${Math.round(vals[maxIdx])}p)</div>` : ''}
         </div>
         <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block; background:rgba(9,14,22,0.7); border-radius:4px; padding:2px;">${bars}</svg>
       </div>`;
@@ -10137,6 +10694,158 @@
         });
       });
     }
+
+    const autoBox = document.getElementById('rpSwitchAutomationBox');
+    const switches = devs.filter((d) => d.entityType === 'switch');
+    const smartAuto = {
+      ...DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation,
+      ...(appState.rustPlusShopConfig?.smartAutomation || {})
+    };
+    const saveAutoConfigToServer = async (nextAuto) => {
+      appState.rustPlusShopConfig = {
+        ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+        ...(appState.rustPlusShopConfig || {}),
+        smartAutomation: nextAuto
+      };
+      saveLocalFallback();
+      try {
+        await fetch('/api/shops/rustplus/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+          body: JSON.stringify(appState.rustPlusShopConfig)
+        });
+      } catch (_) {}
+      renderRustPlusHeaderAndWidgets();
+    };
+    if (autoBox) {
+      if (!switches.length) {
+        autoBox.innerHTML = `<div style="font-size:10.5px; color:var(--text-muted);">Link a Smart Switch to configure Dusk Auto-Lights, Alarm Fail-Safe &amp; Master Switch Groups.</div>`;
+      } else {
+        const groups = Array.isArray(smartAuto.switchGroups) ? smartAuto.switchGroups : [];
+        autoBox.innerHTML = `
+          <div style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#93c5fd; margin-bottom:5px;">🤖 SWITCH AUTOMATION RULES &amp; GROUPS</div>
+          <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:7px;">
+            ${switches
+              .map((sw) => {
+                const eid = String(sw.entityId);
+                const isDusk = (smartAuto.duskAutoSwitchIds || []).includes(eid);
+                const isFail = (smartAuto.alarmDefenseSwitchIds || []).includes(eid);
+                return `
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px;">
+                    <span style="color:#e2e8f0;">⚡ ${escapeHtml(sw.name)}</span>
+                    <div style="display:flex; gap:4px;">
+                      <button type="button" class="filter-pill rp-auto-dusk-btn ${isDusk ? 'active' : ''}" data-eid="${escapeHtml(eid)}" style="padding:1px 6px; font-size:10px; ${isDusk ? 'border-color:#a855f7; color:#e9d5ff;' : ''}">🌙 Dusk Auto ${isDusk ? 'ON' : 'OFF'}</button>
+                      <button type="button" class="filter-pill rp-auto-fail-btn ${isFail ? 'active' : ''}" data-eid="${escapeHtml(eid)}" style="padding:1px 6px; font-size:10px; ${isFail ? 'border-color:#ef4444; color:#fca5a5;' : ''}">🚨 Alarm Failsafe ${isFail ? 'ON' : 'OFF'}</button>
+                    </div>
+                  </div>`;
+              })
+              .join('')}
+          </div>
+          ${groups.length ? `<div style="display:flex; flex-direction:column; gap:4px; margin-bottom:7px;">${groups
+            .map(
+              (g) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 7px; border-radius:4px; background:rgba(9,14,22,0.7); border:1px solid var(--border-subtle); font-size:11px;">
+                <strong style="color:#fde68a;">🎛️ ${escapeHtml(g.name)} (${g.entityIds.length})</strong>
+                <div style="display:flex; gap:4px;">
+                  <button type="button" class="btn btn-sm rp-grp-toggle-btn" data-gid="${escapeHtml(g.id)}" data-active="1" style="padding:1px 6px; font-size:10px; border-color:#4ade80; color:#bbf7d0;">ALL ON</button>
+                  <button type="button" class="btn btn-sm rp-grp-toggle-btn" data-gid="${escapeHtml(g.id)}" data-active="0" style="padding:1px 6px; font-size:10px; border-color:#ef4444; color:#fca5a5;">ALL OFF</button>
+                  <button type="button" class="btn btn-sm rp-grp-del-btn" data-gid="${escapeHtml(g.id)}" style="padding:1px 5px; font-size:10px;">✕</button>
+                </div>
+              </div>`
+            )
+            .join('')}</div>` : ''}
+          <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;">
+            <input id="rpGrpNameInput" type="text" class="input" placeholder="Group name (e.g. Turrets)" style="flex:1; min-width:110px; font-size:11px; padding:3px 7px;" />
+            <button id="rpGrpCreateBtn" type="button" class="btn btn-sm" style="font-size:10.5px;">+ Group Selected/All</button>
+          </div>`;
+
+        autoBox.querySelectorAll('.rp-auto-dusk-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const eid = btn.getAttribute('data-eid');
+            const cur = new Set(smartAuto.duskAutoSwitchIds || []);
+            if (cur.has(eid)) cur.delete(eid);
+            else cur.add(eid);
+            saveAutoConfigToServer({ ...smartAuto, duskAutoSwitchIds: Array.from(cur) });
+          });
+        });
+        autoBox.querySelectorAll('.rp-auto-fail-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const eid = btn.getAttribute('data-eid');
+            const cur = new Set(smartAuto.alarmDefenseSwitchIds || []);
+            if (cur.has(eid)) cur.delete(eid);
+            else cur.add(eid);
+            saveAutoConfigToServer({ ...smartAuto, alarmDefenseSwitchIds: Array.from(cur) });
+          });
+        });
+        autoBox.querySelector('#rpGrpCreateBtn')?.addEventListener('click', () => {
+          const gName = (autoBox.querySelector('#rpGrpNameInput')?.value || '').trim() || 'Turrets';
+          const entityIds = switches.map((sw) => String(sw.entityId));
+          const nextGroups = [
+            ...(smartAuto.switchGroups || []),
+            { id: 'grp-' + Date.now(), name: gName, entityIds }
+          ].slice(0, 12);
+          saveAutoConfigToServer({ ...smartAuto, switchGroups: nextGroups });
+        });
+        autoBox.querySelectorAll('.rp-grp-toggle-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const gid = btn.getAttribute('data-gid');
+            const next = btn.getAttribute('data-active') === '1';
+            const grp = (smartAuto.switchGroups || []).find((g) => String(g.id) === String(gid));
+            if (!grp?.entityIds?.length) return;
+            btn.disabled = true;
+            try {
+              const resp = await fetch('/api/shops/rustplus/smart-switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+                body: JSON.stringify({ entityIds: grp.entityIds, active: next })
+              });
+              const data = await resp.json();
+              if (resp.ok && Array.isArray(data.smartDevices)) {
+                appState.rustPlusTelemetry = {
+                  ...DEFAULT_RUSTPLUS_TELEMETRY,
+                  ...(appState.rustPlusTelemetry || {}),
+                  smartDevices: data.smartDevices,
+                  ...(Array.isArray(data.activityLog) ? { activityLog: data.activityLog } : {})
+                };
+                renderRustPlusHeaderAndWidgets();
+              } else if (data.error) {
+                alert(data.error);
+              }
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+        autoBox.querySelectorAll('.rp-grp-del-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const gid = btn.getAttribute('data-gid');
+            saveAutoConfigToServer({
+              ...smartAuto,
+              switchGroups: (smartAuto.switchGroups || []).filter((g) => String(g.id) !== String(gid))
+            });
+          });
+        });
+      }
+    }
+
+    // Live Raid & Roam Activity Timeline Log
+    const actListEl = document.getElementById('rpActivityLogList');
+    const actBadgeEl = document.getElementById('rpActivityLogBadge');
+    const actLogs = Array.isArray(tel.activityLog) ? tel.activityLog : [];
+    if (actBadgeEl) actBadgeEl.textContent = actLogs.length ? `${actLogs.length} events` : '';
+    if (actListEl) {
+      actListEl.innerHTML = actLogs.length
+        ? actLogs
+            .map((entry) => {
+              const d = entry.ts ? new Date(Number(entry.ts)) : null;
+              const hhmm = d && !Number.isNaN(d.getTime())
+                ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+                : '';
+              return `<div style="padding:3px 6px; border-radius:4px; background:rgba(9,14,22,0.7); border:1px solid rgba(148,163,184,0.14);">${hhmm ? `<span style="color:#64748b; font-family:var(--font-mono); font-size:10px; margin-right:4px;">[${hhmm}]</span>` : ''}<span>${escapeHtml(entry.icon || '📡')}</span> <span style="color:#e2e8f0;">${escapeHtml(entry.text || '')}</span>${entry.grid ? ` <strong style="color:#7dd3fc; font-family:var(--font-mono);">[${escapeHtml(entry.grid)}]</strong>` : ''}</div>`;
+            })
+            .join('')
+        : `<span style="color:var(--text-muted);">No logged alarms, deaths, or world events yet.</span>`;
+    }
   }
 
   function initRustPlusModule() {
@@ -10198,7 +10907,9 @@
         playerToken: document.getElementById('rpShopTokenInput')?.value.trim() || '',
         autoPoll: Boolean(document.getElementById('rpShopAutoPollCb')?.checked),
         chatBotEnabled: document.getElementById('rpChatBotCb')?.checked !== false,
-        discordAlertEvents: document.getElementById('rpShopDiscordEventsCb')?.checked !== false
+        chatBotAllowSwitchControl: document.getElementById('rpChatAllowSwitchCb')?.checked !== false,
+        discordAlertEvents: document.getElementById('rpShopDiscordEventsCb')?.checked !== false,
+        smartAutomation: appState.rustPlusShopConfig?.smartAutomation || DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation
       };
     };
 
@@ -10469,7 +11180,19 @@
     };
     document.getElementById('rpShopAutoPollCb')?.addEventListener('change', saveRustPlusPollSettings);
     document.getElementById('rpChatBotCb')?.addEventListener('change', saveRustPlusPollSettings);
+    document.getElementById('rpChatAllowSwitchCb')?.addEventListener('change', saveRustPlusPollSettings);
     document.getElementById('rpShopDiscordEventsCb')?.addEventListener('change', saveRustPlusPollSettings);
+
+    document.getElementById('rpActivityClearBtn')?.addEventListener('click', async () => {
+      appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), activityLog: [] };
+      renderRustPlusHeaderAndWidgets();
+      try {
+        await fetch('/api/shops/rustplus/activity-clear', {
+          method: 'POST',
+          headers: { ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) }
+        });
+      } catch (_) {}
+    });
 
     document.getElementById('rpShopClearLiveBtn')?.addEventListener('click', () => {
       appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY };
@@ -10605,6 +11328,8 @@
     if (autoCb) autoCb.checked = Boolean(cfg.autoPoll);
     const botCb = document.getElementById('rpChatBotCb');
     if (botCb) botCb.checked = cfg.chatBotEnabled !== false;
+    const swBotCb = document.getElementById('rpChatAllowSwitchCb');
+    if (swBotCb) swBotCb.checked = cfg.chatBotAllowSwitchControl !== false;
     const evtAlertCb = document.getElementById('rpShopDiscordEventsCb');
     if (evtAlertCb) evtAlertCb.checked = cfg.discordAlertEvents !== false;
     const statusEl = document.getElementById('rpShopStatusText');

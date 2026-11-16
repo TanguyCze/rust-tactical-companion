@@ -2207,5 +2207,311 @@ window.RUST_DATA = {
     { id: 'well_jackhammer', shopType: 'npc', monument: 'Water Well', monumentId: 'water_well', vendor: 'Water Well Shopkeeper', category: 'tools', meta: true, bestToBuy: false, tierRank: 'A', drone: false, buyItem: 'Jackhammer (Rotating)', buyQty: 1, payItem: 'Scrap', payQty: 200, notes: 'Stock rotates ~30m (no Safe Zone turrets — watch your back!).' },
     { id: 'well_syringe', shopType: 'npc', monument: 'Water Well', monumentId: 'water_well', vendor: 'Water Well Shopkeeper', category: 'tools', meta: false, bestToBuy: false, tierRank: 'A', drone: false, buyItem: 'Medical Syringe', buyQty: 1, payItem: 'Scrap', payQty: 15, notes: 'Researchable early wipe without T2 Workbench.' },
     { id: 'well_ore_tea', shopType: 'npc', monument: 'Water Well', monumentId: 'water_well', vendor: 'Water Well Shopkeeper', category: 'teas', meta: true, bestToBuy: true, tierRank: 'S', drone: false, buyItem: 'Pure / Advanced Ore Tea', buyQty: 1, payItem: 'Scrap', payQty: 65, whyBest: 'Huge Scrap-to-Sulfur multiplier if spotted in rotating Water Well stock!', notes: '+35% to +50% Sulfur/Metal/Stone per node — rotating vendor stock.' }
+  ],
+
+  // =========================================================================
+  // 8. ELECTRICITY & BATTERY LOAD PLANNER DATA
+  // =========================================================================
+  electricityDevices: [
+    { id: 'auto_turret', name: 'Auto Turret', rwm: 10, defaultQty: 3, category: 'Defense', icon: '🔫' },
+    { id: 'sam_site', name: 'SAM Site', rwm: 25, defaultQty: 0, category: 'Defense', icon: '🚀' },
+    { id: 'conveyor', name: 'Industrial Conveyor', rwm: 1, defaultQty: 4, category: 'Industrial', icon: '📦' },
+    { id: 'crafter', name: 'Industrial Crafter', rwm: 1, defaultQty: 1, category: 'Industrial', icon: '⚙️' },
+    { id: 'elec_furnace', name: 'Electric Furnace', rwm: 3, defaultQty: 6, category: 'Industrial', icon: '🔥' },
+    { id: 'ceiling_light', name: 'Ceiling Light', rwm: 2, defaultQty: 4, category: 'Utility', icon: '💡' },
+    { id: 'industrial_light', name: 'Industrial Wall Light', rwm: 1, defaultQty: 2, category: 'Utility', icon: '🚨' },
+    { id: 'door_controller', name: 'Door Controller', rwm: 1, defaultQty: 2, category: 'Utility', icon: '🚪' },
+    { id: 'seismic_sensor', name: 'Seismic Sensor', rwm: 1, defaultQty: 1, category: 'Rust+', icon: '📡' },
+    { id: 'hbhf_sensor', name: 'HBHF Sensor', rwm: 1, defaultQty: 1, category: 'Rust+', icon: '👁️' },
+    { id: 'smart_switch', name: 'Smart Switch', rwm: 1, defaultQty: 2, category: 'Rust+', icon: '⚡' },
+    { id: 'smart_alarm', name: 'Smart Alarm', rwm: 1, defaultQty: 1, category: 'Rust+', icon: '🔔' },
+    { id: 'storage_monitor', name: 'Storage Monitor (TC)', rwm: 1, defaultQty: 1, category: 'Rust+', icon: '🏛️' },
+    { id: 'rf_broadcaster', name: 'RF Broadcaster / Receiver', rwm: 1, defaultQty: 0, category: 'Rust+', icon: '📻' },
+    { id: 'searchlight', name: 'Search Light', rwm: 10, defaultQty: 0, category: 'Defense', icon: '🔦' },
+    { id: 'tesla_coil', name: 'Tesla Coil (Trap)', rwm: 35, defaultQty: 0, category: 'Defense', icon: '⚡' }
+  ],
+
+  batterySpecs: {
+    large: { id: 'large', name: 'Large Rechargeable Battery', maxOutRwm: 100, capacityRwMin: 24000, chargeEfficiency: 0.8 },
+    medium: { id: 'medium', name: 'Medium Rechargeable Battery', maxOutRwm: 50, capacityRwMin: 9000, chargeEfficiency: 0.8 },
+    small: { id: 'small', name: 'Small Rechargeable Battery', maxOutRwm: 10, capacityRwMin: 150, chargeEfficiency: 0.8 }
+  },
+
+  // =========================================================================
+  // 9. INDUSTRIAL CONVEYOR FILTER PRESETS & ITEM CATALOG
+  // =========================================================================
+  conveyorItemsCatalog: [
+    { name: 'Sulfur Ore', shortname: 'sulfur.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Sulfur', shortname: 'sulfur', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Ore', shortname: 'metal.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Fragments', shortname: 'metal.fragments', cat: 'Ores & Mats', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'High Quality Metal Ore', shortname: 'hq.metal.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'High Quality Metal', shortname: 'metal.refined', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Stones', shortname: 'stones', cat: 'Ores & Mats', defaultMax: 10000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Wood', shortname: 'wood', cat: 'Ores & Mats', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Charcoal', shortname: 'charcoal', cat: 'Ores & Mats', defaultMax: 3000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Gun Powder', shortname: 'gunpowder', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Explosives', shortname: 'explosives', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Rocket', shortname: 'ammo.rocket.basic', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Timed Explosive Charge', shortname: 'explosive.timed', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Satchel Charge', shortname: 'explosive.satchel', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: '5.56 Rifle Ammo', shortname: 'ammo.rifle', cat: 'Ammo & Meds', defaultMax: 384, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Incendiary 5.56 Rifle Ammo', shortname: 'ammo.rifle.incendiary', cat: 'Ammo & Meds', defaultMax: 128, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Explosive 5.56 Rifle Ammo', shortname: 'ammo.rifle.explosive', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pistol Bullet', shortname: 'ammo.pistol', cat: 'Ammo & Meds', defaultMax: 256, defaultMin: 0, defaultBuf: 0 },
+    { name: '12 Gauge Buckshot', shortname: 'ammo.shotgun', cat: 'Ammo & Meds', defaultMax: 64, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Medical Syringe', shortname: 'syringe.medical', cat: 'Ammo & Meds', defaultMax: 4, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Bandage', shortname: 'bandage', cat: 'Ammo & Meds', defaultMax: 3, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Low Grade Fuel', shortname: 'lowgradefuel', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Scrap', shortname: 'scrap', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Cloth', shortname: 'cloth', cat: 'Ores & Mats', defaultMax: 1000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Crude Oil', shortname: 'crude.oil', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Assault Rifle', shortname: 'rifle.ak', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'MP5A4', shortname: 'smg.mp5', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Thompson', shortname: 'smg.thompson', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Semi-Automatic Rifle', shortname: 'rifle.semiauto', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Facemask', shortname: 'metal.facemask', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Chest Plate', shortname: 'metal.plate.torso', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Road Sign Jacket', shortname: 'roadsign.jacket', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Road Sign Kilt', shortname: 'roadsign.kilt', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Hazmat Suit', shortname: 'hazmatsuit', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Tech Trash', shortname: 'techparts', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Pipe', shortname: 'metalpipe', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Spring', shortname: 'metalspring', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Gears', shortname: 'gears', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Sewing Kit', shortname: 'sewingkit', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Blue Berry', shortname: 'blue.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Yellow Berry', shortname: 'yellow.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Red Berry', shortname: 'red.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 },
+    { name: 'White Berry', shortname: 'white.berry', cat: 'Teas', defaultMax: 20, defaultMin: 0, defaultBuf: 0 }
+  ],
+
+  conveyorPresets: [
+    {
+      id: 'depot_sorter',
+      name: '📥 Drop-Box Depot Auto-Sorter',
+      category: 'Sorting',
+      powerRwm: 6,
+      conveyorsCount: 6,
+      mode: 'Require Any (OR)',
+      summary: 'Dump all roam loot in Drop Boxes → Industrial Combiner → Splitter → 5 category Conveyors + 1 Overflow.',
+      proTips: [
+        'Always add a 6th Conveyor with NO filter on low priority (or splitter fallback) so unsorted junk never clogs the Drop Box.',
+        'Use Category Filters ("Weapons", "Construction", "Items", "Resources", "Component", "Ammunition") when you want 1 slot to cover 50+ items without hitting the 12-filter cap!'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor 1 → Ores & Mats Box',
+          filters: [
+            { item: 'Sulfur Ore', min: 0, max: 0, buf: 0 },
+            { item: 'Metal Ore', min: 0, max: 0, buf: 0 },
+            { item: 'High Quality Metal Ore', min: 0, max: 0, buf: 0 },
+            { item: 'Stones', min: 0, max: 0, buf: 0 },
+            { item: 'Wood', min: 0, max: 0, buf: 0 },
+            { item: 'Low Grade Fuel', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor 2 → Boom & Sulfur Box',
+          filters: [
+            { item: 'Sulfur', min: 0, max: 0, buf: 0 },
+            { item: 'Gun Powder', min: 0, max: 0, buf: 0 },
+            { item: 'Charcoal', min: 0, max: 0, buf: 0 },
+            { item: 'Explosives', min: 0, max: 0, buf: 0 },
+            { item: 'Rocket', min: 0, max: 0, buf: 0 },
+            { item: 'Timed Explosive Charge', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor 3 → Comps & Scrap Box',
+          filters: [
+            { item: 'Category: Components', min: 0, max: 0, buf: 0 },
+            { item: 'Scrap', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor 4 → Guns & Ammo Box',
+          filters: [
+            { item: 'Category: Weapons', min: 0, max: 0, buf: 0 },
+            { item: 'Category: Ammunition', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor 5 → Armor & Meds Box',
+          filters: [
+            { item: 'Category: Attire', min: 0, max: 0, buf: 0 },
+            { item: 'Category: Medical', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor 6 → Overflow Misc Box',
+          filters: [{ item: '(Blank / No Filter — catches remaining items)', min: 0, max: 0, buf: 0 }]
+        }
+      ]
+    },
+    {
+      id: 'auto_smelter',
+      name: '🔥 Electric Furnace Auto-Smelt Loop',
+      category: 'Smelting',
+      powerRwm: 20,
+      conveyorsCount: 2,
+      mode: 'Require Any (OR)',
+      summary: 'Ore Box → Conveyor IN → Splitters → 6 Electric Furnaces (3 rWm ea) → Combiners → Conveyor OUT → Ingot/Sulfur Box.',
+      proTips: [
+        'Leave Min/Max at 0 on Conveyor IN so every open furnace ore slot stays saturated evenly.',
+        'Set Buffer = 100 on Conveyor OUT if you want fewer industrial ticks when grabbing cooked Sulf/Metal, or keep Buffer = 0 for instant transfer to Boom/Upkeep pipes.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor IN (Ore Box → Furnaces)',
+          filters: [
+            { item: 'Sulfur Ore', min: 0, max: 0, buf: 0 },
+            { item: 'Metal Ore', min: 0, max: 0, buf: 0 },
+            { item: 'High Quality Metal Ore', min: 0, max: 0, buf: 0 },
+            { item: 'Crude Oil', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor OUT (Furnaces → Ingot Box)',
+          filters: [
+            { item: 'Sulfur', min: 0, max: 0, buf: 0 },
+            { item: 'Metal Fragments', min: 0, max: 0, buf: 0 },
+            { item: 'High Quality Metal', min: 0, max: 0, buf: 0 },
+            { item: 'Low Grade Fuel', min: 0, max: 0, buf: 0 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'tc_upkeep',
+      name: '🏛️ TC Auto-Upkeep Feeder (No Overfill)',
+      category: 'Base Defense',
+      powerRwm: 1,
+      conveyorsCount: 1,
+      mode: 'Require Any (OR)',
+      summary: 'Mats Box → Conveyor (with exact Max caps) → Storage Adaptor on Tool Cupboard.',
+      proTips: [
+        'Setting MAX caps prevents Stone from filling all 24 TC slots and locking out HQM or Metal Frags!',
+        'Only pipe 1 TC per Conveyor if you want strict per-TC Max caps; Splitter to multiple external TCs shares logic across connected inventories.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor → Main TC (48h Buffer Caps)',
+          filters: [
+            { item: 'Stones', min: 0, max: 10000, buf: 0 },
+            { item: 'Metal Fragments', min: 0, max: 6000, buf: 0 },
+            { item: 'High Quality Metal', min: 0, max: 400, buf: 0 },
+            { item: 'Wood', min: 0, max: 4000, buf: 0 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'turret_ammo',
+      name: '🔫 Auto Turret Ammo Restocker',
+      category: 'Base Defense',
+      powerRwm: 1,
+      conveyorsCount: 1,
+      mode: 'Require Any (OR)',
+      summary: 'Ammo Box → Conveyor (Max 384 / 3 stacks) → Splitter → Storage Adaptors on Auto Turrets.',
+      proTips: [
+        'Max = 384 (3 full 128 stacks) ensures each turret has 3 stacks loaded+reserve without wasting all base ammo if 1 turret gets destroyed!',
+        'Use Max = 256 if you have 6+ turrets on one branch so early-wipe ammo spreads evenly.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor → Turret Pods',
+          filters: [
+            { item: '5.56 Rifle Ammo', min: 0, max: 384, buf: 32 },
+            { item: 'Incendiary 5.56 Rifle Ammo', min: 0, max: 128, buf: 16 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'locker_kits',
+      name: '🪖 Auto-Locker Full Kit Restocker',
+      category: 'Kits & Combat',
+      powerRwm: 2,
+      conveyorsCount: 2,
+      mode: 'Require Any (OR)',
+      summary: 'Wait-zero Locker refills! Use separate Armor/Weapons Box + Ammo/Meds Box piped into a Storage Adaptor on top of your Locker.',
+      proTips: [
+        'WARNING: One Storage Adaptor feeds ALL 3 Locker rows combined! Set Max = 3 for 3 full kits across all 3 rows, or Max = 12 Medical Syringes (4 per kit).',
+        'Buffer = 0 keeps empty slots topped up automatically right after your squad grabs a respawn kit.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor → Locker (3 Full AK Kits Combined)',
+          filters: [
+            { item: 'Assault Rifle', min: 0, max: 3, buf: 0 },
+            { item: 'Metal Facemask', min: 0, max: 3, buf: 0 },
+            { item: 'Metal Chest Plate', min: 0, max: 3, buf: 0 },
+            { item: 'Road Sign Kilt', min: 0, max: 3, buf: 0 },
+            { item: '5.56 Rifle Ammo', min: 0, max: 384, buf: 0 },
+            { item: 'Medical Syringe', min: 0, max: 12, buf: 0 },
+            { item: 'Bandage', min: 0, max: 9, buf: 0 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'auto_crafter_gp',
+      name: '💥 Auto-Crafter: Charcoal + Sulfur → Gun Powder',
+      category: 'Crafting',
+      powerRwm: 3,
+      conveyorsCount: 2,
+      mode: 'Require All (AND)',
+      summary: 'Sulfur + Charcoal Boxes → Conveyor IN (Max caps prevent stalling!) → Industrial Crafter (WB2/WB3) → Conveyor OUT → Boom Box.',
+      proTips: [
+        'NEVER leave Max = 0 on Industrial Crafter input! Without Max caps, Charcoal fills every input slot and locks out Sulfur!',
+        'Set Charcoal Max = 2000 and Sulfur Max = 1500 so both ingredients always fit inside the Crafter simultaneously.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor IN → Industrial Crafter (Gun Powder)',
+          filters: [
+            { item: 'Charcoal', min: 30, max: 2000, buf: 0 },
+            { item: 'Sulfur', min: 20, max: 1500, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor OUT (Crafter → Boom Box)',
+          filters: [
+            { item: 'Gun Powder', min: 0, max: 0, buf: 0 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'berry_tea',
+      name: '🧪 Auto Berry Sorter → Mixing Table & Tea Fridge',
+      category: 'Farming & Teas',
+      powerRwm: 2,
+      conveyorsCount: 2,
+      mode: 'Require Any (OR)',
+      summary: 'Planter Harvest Box → Conveyor IN (Berries capped at Max = 40 each) → Mixing Table → Conveyor OUT → Fridge.',
+      proTips: [
+        'Keep each Berry type capped at Max = 40 inside the Mixing Table so all 4 colors have room.',
+        'Works great alongside Pure Ore Tea (+50% Sulfur) cloning!'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor IN → Mixing Table (Ore + Scrap Berries)',
+          filters: [
+            { item: 'Blue Berry', min: 0, max: 40, buf: 0 },
+            { item: 'Yellow Berry', min: 0, max: 40, buf: 0 },
+            { item: 'White Berry', min: 0, max: 40, buf: 0 },
+            { item: 'Red Berry', min: 0, max: 40, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor OUT → Tea Fridge',
+          filters: [
+            { item: 'Category: Tea', min: 0, max: 0, buf: 0 }
+          ]
+        }
+      ]
+    }
   ]
 };

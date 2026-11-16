@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116j" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116k" />
 </head>
 <body>
 
@@ -63,7 +63,7 @@
         💥 Raid &amp; Sulfur <span class="nav-badge">COMBOS</span>
       </button>
       <button class="nav-tab" data-tab="tab-recycler">
-        ♻️ Recycler &amp; Decay <span class="nav-badge">SCRAP + BOOM</span>
+        ⚡ Utility, Elec &amp; Pipes <span class="nav-badge">RECYCLE + IND</span>
       </button>
       <button class="nav-tab" data-tab="tab-genetics">
         🌱 Genetics &amp; Tea <span class="nav-badge">6-GENE</span>
@@ -337,8 +337,10 @@
             <div class="panel-subtitle">Keycards, fuses, crates &amp; puzzle steps for every monument (up to date with rusthelp.com) — click "Completed!" to start a squad respawn timer</div>
           </div>
         </div>
+        <div id="monumentKeycardsStrip" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:8px 12px; margin-bottom:10px; border-radius:6px; background:rgba(15,23,42,0.65); border:1px solid var(--border-subtle);"></div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;" id="monumentFilterBar">
           <button class="filter-pill active" data-mfilter="all">All</button>
+          <button class="filter-pill" data-mfilter="ready_now">✅ Ready Now</button>
           <button class="filter-pill" data-mfilter="get_green">Gives Green Card</button>
           <button class="filter-pill" data-mfilter="get_blue">Gives Blue Card</button>
           <button class="filter-pill" data-mfilter="get_red">Gives Red Card</button>
@@ -683,74 +685,184 @@
     </section>
 
     <!-- ==================================================================
-         TAB 5: RECYCLER, DIESEL EXCAVATOR & BASE DECAY LAB
+         TAB 5: RECYCLER, DIESEL, DECAY, ELECTRICITY & CONVEYOR FILTERS
          ================================================================== -->
     <section id="tab-recycler" class="tab-panel">
-      <div class="grid-2">
-        <!-- Left Column: Component Recycler Calculator (Monument 60% vs Safe Zone 40%) -->
-        <div class="panel">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">♻️ Component Recycler Calculator (Monument 60% vs Safe Zone 40%)</div>
-              <div class="panel-subtitle">Click components to add them — compares Radtown Monument vs Outpost/Bandit recycler output</div>
+      <div class="rc-subtabs">
+        <button type="button" class="rc-subtab-btn active" data-rc-sub="main">♻️ Recycler, Diesel &amp; Decay</button>
+        <button type="button" class="rc-subtab-btn" data-rc-sub="elec">⚡ Electricity &amp; Battery Planner</button>
+        <button type="button" class="rc-subtab-btn" data-rc-sub="conveyor">📦 Conveyor Filters &amp; Pipelines</button>
+      </div>
+
+      <div id="rcSubMain" class="rc-subpanel active">
+        <div class="grid-2">
+          <!-- Left Column: Component Recycler Calculator (Monument 60% vs Safe Zone 40%) -->
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">♻️ Component Recycler Calculator (Monument 60% vs Safe Zone 40%)</div>
+                <div class="panel-subtitle">Click components to add them — compares Radtown Monument vs Outpost/Bandit recycler output</div>
+              </div>
+              <button id="clearRecyclerBtn" class="btn btn-sm">Reset</button>
             </div>
-            <button id="clearRecyclerBtn" class="btn btn-sm">Reset</button>
+
+            <div id="recyclerTotalsComparison" style="margin-bottom: 16px;"></div>
+            <div id="recyclerComponentsGrid" class="target-grid"></div>
           </div>
 
-          <div id="recyclerTotalsComparison" style="margin-bottom: 16px;"></div>
-          <div id="recyclerComponentsGrid" class="target-grid"></div>
+          <!-- Right Column: Giant Excavator Diesel Calculator + Decaying Base Wall Timer -->
+          <div style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- Giant Excavator & Quarry Diesel Barrel Calculator -->
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">🛢️ Diesel Barrel & Giant Excavator Yield Calculator</div>
+                  <div class="panel-subtitle">1 Diesel = 2 mins runtime at Giant Excavator (2,000 Sulfur Ore or 100 HQM per barrel!)</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;">
+                <div>
+                  <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DIESEL BARRELS COUNT</label>
+                  <input id="dieselCountInput" type="number" class="input" value="10" min="1" max="100" style="width: 130px;" />
+                </div>
+                <button id="startExcavatorTimerBtn" class="btn btn-primary">⏱️ Start Excavator Run Timer</button>
+              </div>
+              <div id="dieselYieldResult"></div>
+            </div>
+
+            <!-- Decaying Base Wall Countdown Calculator -->
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">🏚️ Decaying Clan Base Countdown Calculator</div>
+                  <div class="panel-subtitle">Found a decaying base? Enter the wall tier & current HP to know the exact minute it crumbles</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;">
+                <div style="flex: 1; min-width: 170px;">
+                  <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">WALL / DOOR TIER</label>
+                  <select id="decayTierSelect" class="select" style="width: 100%;"></select>
+                </div>
+                <div>
+                  <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">CURRENT HP</label>
+                  <input id="decayCurrentHpInput" type="number" class="input" value="180" min="1" max="2000" style="width: 110px;" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">GRID COORD</label>
+                  <input id="decayGridInput" type="text" class="input" value="Q14" placeholder="Q14" style="width: 80px;" />
+                </div>
+                <div style="flex: 1; min-width: 170px;">
+                  <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">PLACEMENT</label>
+                  <select id="decayExposureSelect" class="select" style="width: 100%;">
+                    <option value="outside" selected>Outside / Exposed (1×)</option>
+                    <option value="inside">Inside / Sheltered (0.1× / 10× slower)</option>
+                  </select>
+                </div>
+              </div>
+              <div id="decayResultBox"></div>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <!-- Right Column: Giant Excavator Diesel Calculator + Decaying Base Wall Timer -->
-        <div style="display: flex; flex-direction: column; gap: 20px;">
-          <!-- Giant Excavator & Quarry Diesel Barrel Calculator -->
+      <div id="rcSubElec" class="rc-subpanel">
+        <div class="grid-2" style="align-items:start;">
           <div class="panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">🛢️ Diesel Barrel & Giant Excavator Yield Calculator</div>
-                <div class="panel-subtitle">1 Diesel = 2 mins runtime at Giant Excavator (2,000 Sulfur Ore or 100 HQM per barrel!)</div>
+                <div class="panel-title">⚡ Base Electricity Load Builder</div>
+                <div class="panel-subtitle">Set counts for turrets, furnaces, conveyors &amp; Rust+ sensors — auto-computes real rWm power &amp; backup runtime</div>
               </div>
+              <button id="elecResetBtn" type="button" class="btn btn-sm">Reset</button>
             </div>
-            <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;">
-              <div>
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DIESEL BARRELS COUNT</label>
-                <input id="dieselCountInput" type="number" class="input" value="10" min="1" max="100" style="width: 130px;" />
-              </div>
-              <button id="startExcavatorTimerBtn" class="btn btn-primary">⏱️ Start Excavator Run Timer</button>
-            </div>
-            <div id="dieselYieldResult"></div>
+            <div id="elecDevicesGrid" class="target-grid"></div>
           </div>
-
-          <!-- Decaying Base Wall Countdown Calculator -->
           <div class="panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">🏚️ Decaying Clan Base Countdown Calculator</div>
-                <div class="panel-subtitle">Found a decaying base? Enter the wall tier & current HP to know the exact minute it crumbles</div>
+                <div class="panel-title">🔋 Battery Backup &amp; Generation Sizing</div>
+                <div class="panel-subtitle">Accounts for Rust's 80% battery charge efficiency + shows offline raid survival runtime</div>
               </div>
             </div>
-            <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px;">
-              <div style="flex: 1; min-width: 170px;">
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">WALL / DOOR TIER</label>
-                <select id="decayTierSelect" class="select" style="width: 100%;"></select>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+              <div style="flex:1; min-width:170px;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATTERY TIER</label>
+                <select id="elecBatterySelect" class="select" style="width:100%;">
+                  <option value="large" selected>Large Battery (100 rWm max • 24,000 rWm)</option>
+                  <option value="medium">Medium Battery (50 rWm max • 9,000 rWm)</option>
+                  <option value="small">Small Battery (10 rWm max • 150 rWm)</option>
+                </select>
               </div>
-              <div>
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">CURRENT HP</label>
-                <input id="decayCurrentHpInput" type="number" class="input" value="180" min="1" max="2000" style="width: 110px;" />
-              </div>
-              <div>
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">GRID COORD</label>
-                <input id="decayGridInput" type="text" class="input" value="Q14" placeholder="Q14" style="width: 80px;" />
-              </div>
-              <div style="flex: 1; min-width: 170px;">
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">PLACEMENT</label>
-                <select id="decayExposureSelect" class="select" style="width: 100%;">
-                  <option value="outside" selected>Outside / Exposed (1×)</option>
-                  <option value="inside">Inside / Sheltered (0.1× / 10× slower)</option>
+              <div style="width:140px;">
+                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SAFETY MARGIN</label>
+                <select id="elecMarginSelect" class="select" style="width:100%;">
+                  <option value="1.25" selected>+25% Recharge</option>
+                  <option value="1.5">+50% Cloudy/Low Wind</option>
+                  <option value="1.0">Exact 1.0×</option>
                 </select>
               </div>
             </div>
-            <div id="decayResultBox"></div>
+            <div id="elecSummaryBox"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="rcSubConveyor" class="rc-subpanel">
+        <div class="grid-2" style="align-items:start;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">📦 Ready-to-Use Conveyor Filter Pipelines</div>
+                <div class="panel-subtitle">Proven Rust Industrial presets (max 12 filters/conveyor, 1 rWm ea, Min/Max/Buffer pre-tuned)</div>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+              <input id="conveyorPresetSearch" type="search" class="input" style="flex:1; min-width:180px;" placeholder="Filter presets (smelter, tc, locker, turret, crafter...)" />
+            </div>
+            <div id="conveyorPresetsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🛠️ Custom Conveyor Filter Builder</div>
+                <div class="panel-subtitle">Build up to 12 filter slots with exact Min / Max / Buffer caps &amp; copy directly for your squad</div>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button id="conveyorCopyBtn" type="button" class="btn btn-sm btn-primary">📋 Copy Specs</button>
+                <button id="conveyorClearBtn" type="button" class="btn btn-sm">Clear</button>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;">
+              <div style="flex:1; min-width:160px;">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">ITEM / CATEGORY</label>
+                <select id="conveyorItemSelect" class="select" style="width:100%;"></select>
+              </div>
+              <div style="width:72px;">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">MIN</label>
+                <input id="conveyorMinInput" type="number" class="input" value="0" min="0" style="width:100%;" />
+              </div>
+              <div style="width:82px;">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">MAX (CAP)</label>
+                <input id="conveyorMaxInput" type="number" class="input" value="0" min="0" style="width:100%;" />
+              </div>
+              <div style="width:76px;">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">BUFFER</label>
+                <input id="conveyorBufInput" type="number" class="input" value="0" min="0" style="width:100%;" />
+              </div>
+              <button id="conveyorAddFilterBtn" type="button" class="btn btn-sulfur">+ Add Slot</button>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:10px; font-size:11.5px;">
+              <label style="display:flex; align-items:center; gap:6px;">
+                <span>Filter Mode:</span>
+                <select id="conveyorModeSelect" class="select" style="padding:3px 7px; font-size:11.5px;">
+                  <option value="any">Require Any (OR — Sorting / Restock)</option>
+                  <option value="all">Require All (AND — Dual-Input Crafters)</option>
+                </select>
+              </label>
+              <span id="conveyorSlotsBadge" style="font-family:var(--font-mono); font-size:11px; color:#7dd3fc;">0 / 12 Slots</span>
+            </div>
+            <div id="conveyorCustomList" style="display:flex; flex-direction:column; gap:6px;"></div>
           </div>
         </div>
       </div>
@@ -875,9 +987,11 @@
               <button id="bfZoomFitBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
               <button id="bfZoomResetBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
               <button id="shopMapCenterMeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
+              <button id="bfMeasureModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#38bdf8; color:#bae6fd;" title="Click two points on the map to measure distance &amp; travel ETA">📏 Ruler</button>
               <button id="bfDropPinModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#f59e0b; color:#fde68a;" title="Click empty map spots (or Shift+Click anytime) to drop a Shared Squad Pin / Stash">📌 + Pin</button>
             </div>
           </div>
+          <div id="bfMeasureBanner" style="display:none; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px; padding:6px 10px; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45); font-size:11.5px; font-family:var(--font-mono); color:#bae6fd;"></div>
           <div id="shopLiveAlertBanner" style="display:none; margin-bottom:8px;"></div>
           <div id="shopLiveTeamStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
           <div id="shopLiveEventsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
@@ -906,6 +1020,23 @@
                 <input id="bfPinColorInput" type="color" value="#38bdf8" title="Custom pin color" style="width:30px; height:28px; padding:1px; border:1px solid var(--border-subtle); border-radius:4px; background:transparent; cursor:pointer;" />
               </div>
               <div id="bfPinCoordsLabel" style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:7px;"></div>
+              <div id="bfPinRaidPresetWrap" style="margin-bottom:8px; padding:6px 8px; border-radius:5px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);">
+                <div style="font-size:10px; font-family:var(--font-mono); color:#fca5a5; margin-bottom:5px; font-weight:700;">💥 TARGET RAID BREAKDOWN (OPTIONAL)</div>
+                <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:5px;">
+                  <button type="button" class="filter-pill bf-pin-raid-add" data-rt="sheet_metal_door" style="padding:2px 6px; font-size:10px;">+Sheet</button>
+                  <button type="button" class="filter-pill bf-pin-raid-add" data-rt="garage_door" style="padding:2px 6px; font-size:10px;">+Garage</button>
+                  <button type="button" class="filter-pill bf-pin-raid-add" data-rt="armored_door" style="padding:2px 6px; font-size:10px;">+ArmDoor</button>
+                  <button type="button" class="filter-pill bf-pin-raid-add" data-rt="stone_wall" style="padding:2px 6px; font-size:10px;">+StoneWall</button>
+                  <button type="button" class="filter-pill bf-pin-raid-add" data-rt="metal_wall" style="padding:2px 6px; font-size:10px;">+MetalWall</button>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                  <span id="bfPinRaidSummary" style="font-size:10.5px; color:#fecaca; font-family:var(--font-mono);">None tagged</span>
+                  <div style="display:flex; gap:4px;">
+                    <button id="bfPinRaidClearBtn" type="button" class="btn btn-sm" style="padding:1px 5px; font-size:10px;">↺</button>
+                    <button id="bfPinSendRaidBtn" type="button" class="btn btn-sm" style="padding:2px 6px; font-size:10px; border-color:#ef4444; color:#fca5a5;">💥 Queue Raid</button>
+                  </div>
+                </div>
+              </div>
               <div style="display:flex; gap:5px; flex-wrap:wrap;">
                 <button id="bfPinSaveBtn" type="button" class="btn btn-sm btn-primary" style="flex:1;">💾 Save Pin</button>
                 <button id="bfPinMoveBtn" type="button" class="btn btn-sm" style="display:none; border-color:#38bdf8; color:#bae6fd;" title="Click new location on map to move this pin">🎯 Move</button>
@@ -1010,7 +1141,11 @@
                 </label>
                 <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
                   <input id="rpChatBotCb" type="checkbox" checked />
-                  <span>🤖 In-Game Team Chat Bot (auto-reply to <code>!time</code>, <code>!pop</code>, <code>!upkeep</code>, <code>!timers</code>)</span>
+                  <span>🤖 In-Game Team Chat Bot (<code>!time</code>, <code>!pop</code>, <code>!upkeep</code>, <code>!timers</code>)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                  <input id="rpChatAllowSwitchCb" type="checkbox" checked />
+                  <span>⚡ Allow <code>!on</code> / <code>!off</code> / <code>!switches</code> in Team Chat</span>
                 </label>
                 <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
                   <input id="rpShopDiscordEventsCb" type="checkbox" checked />
@@ -1030,7 +1165,7 @@
                   <span id="rpTeamChatCountBadge" style="font-size:10px; font-family:var(--font-mono); color:#7dd3fc;"></span>
                 </summary>
                 <div style="font-size:10px; font-family:var(--font-mono); color:#c4b5fd; margin-top:4px;">
-                  Bot cmds in-game: <code>!time</code> • <code>!pop</code> • <code>!upkeep</code> • <code>!timers</code> • <code>!help</code>
+                  Bot cmds: <code>!time</code> • <code>!pop</code> • <code>!upkeep</code> • <code>!timers</code> • <code>!switches</code> • <code>!on &lt;name&gt;</code> • <code>!off &lt;name&gt;</code>
                 </div>
                 <div id="rpTeamChatList" style="max-height:135px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;">
@@ -1061,6 +1196,19 @@
                   <input id="rpSmartDevNameInput" type="text" class="input" style="flex:1; min-width:100px; font-size:11px;" placeholder="Label (Main TC, Turrets)" />
                   <button id="rpSmartDevAddBtn" type="button" class="btn btn-sm">+ Add Device</button>
                 </div>
+                <div id="rpSwitchAutomationBox" style="margin-top:8px; padding-top:8px; border-top:1px dashed rgba(148,163,184,0.22);"></div>
+              </details>
+
+              <details id="rpActivityLogDrawer" style="padding:8px 10px; border-radius:6px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
+                <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#c4b5fd; display:flex; justify-content:space-between; align-items:center;">
+                  <span>📜 Live Raid &amp; Roam Activity Timeline</span>
+                  <span id="rpActivityLogBadge" style="font-size:10px; font-family:var(--font-mono); color:#a78bfa;"></span>
+                </summary>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                  <span style="font-size:10.5px; color:var(--text-muted);">Logs Smart Alarms, Teammate Deaths, World Events, Low Upkeep &amp; Auto-Switches</span>
+                  <button id="rpActivityClearBtn" type="button" class="btn btn-sm" style="padding:1px 6px; font-size:10px;">Clear</button>
+                </div>
+                <div id="rpActivityLogList" style="max-height:145px; overflow-y:auto; margin-top:6px; display:flex; flex-direction:column; gap:4px; font-size:11px;"></div>
               </details>
 
               <details id="rpPopupConnectSection" style="padding:8px 10px; border-radius:6px; background:rgba(37,99,235,0.1); border:1px solid rgba(96,165,250,0.4);">
@@ -1161,7 +1309,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116j"></script>
-  <script src="js/app.js?v=20261116j"></script>
+  <script src="js/data.js?v=20261116k"></script>
+  <script src="js/app.js?v=20261116k"></script>
 </body>
 </html>
