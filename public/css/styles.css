@@ -1322,3 +1322,54 @@ body::before {
   padding: 22px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
 }
+
+.btn-flash-ok {
+  border-color: var(--card-green) !important;
+  background: rgba(34, 197, 94, 0.2) !important;
+  color: #86efac !important;
+}
+
+.bf-legend-details {
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.bf-legend-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.bf-legend-summary::-webkit-details-marker {
+  display: none;
+}
+
+.bf-legend-toggle-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.bf-legend-details[open] .bf-legend-summary {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 6px;
+}
+
+.bf-legend-full {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-secondary);
+}

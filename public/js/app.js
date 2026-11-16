@@ -20,12 +20,32 @@
       .replace(/'/g, '&#39;');
   }
 
+  function flashButtonFeedback(btn, label = '✅ Started!', durationMs = 1200) {
+    if (!btn) return;
+    if (!btn.dataset.origLabel) {
+      btn.dataset.origLabel = btn.textContent;
+    }
+    if (btn._flashTimer) {
+      clearTimeout(btn._flashTimer);
+    }
+    btn.textContent = label;
+    btn.classList.add('btn-flash-ok');
+    btn._flashTimer = setTimeout(() => {
+      if (btn.isConnected && btn.dataset.origLabel) {
+        btn.textContent = btn.dataset.origLabel;
+      }
+      btn.classList.remove('btn-flash-ok');
+      delete btn.dataset.origLabel;
+      btn._flashTimer = null;
+    }, durationMs);
+  }
+
   // =========================================================================
   // APPLICATION STATE & SQUAD REAL-TIME SYNC
   // =========================================================================
   const LOCAL_STORAGE_KEY = 'rust_tactical_companion_state_v1';
   const PIN_STORAGE_KEY = 'rust_tactical_companion_pin';
-  const BM_TOKEN_KEY = 'rust_tactical_companion_bm_token';
+  const ACTIVE_TAB_KEY = 'rust_tactical_active_tab';
 
   const DEFAULT_RAID_STASH = {
     sulfur: 0,
@@ -109,10 +129,6 @@
 
   function getSquadPin() {
     return localStorage.getItem(PIN_STORAGE_KEY) || '';
-  }
-
-  function getBmToken() {
-    return localStorage.getItem(BM_TOKEN_KEY) || '';
   }
 
   let lastSyncedStateJson = '';
@@ -227,10 +243,14 @@
   // NAVIGATION & HEADER CONTROLS
   // =========================================================================
   function switchAppTab(targetId) {
+    if (!targetId || !document.getElementById(targetId)?.classList.contains('tab-panel')) return;
     const tabs = document.querySelectorAll('.nav-tab');
     const panels = document.querySelectorAll('.tab-panel');
     tabs.forEach((t) => t.classList.toggle('active', t.getAttribute('data-tab') === targetId));
     panels.forEach((p) => p.classList.toggle('active', p.id === targetId));
+    try {
+      localStorage.setItem(ACTIVE_TAB_KEY, targetId);
+    } catch (_) {}
   }
 
   function initNavigation() {
@@ -240,6 +260,13 @@
         switchAppTab(tab.getAttribute('data-tab'));
       });
     });
+
+    try {
+      const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+      if (savedTab && document.getElementById(savedTab)?.classList.contains('tab-panel')) {
+        switchAppTab(savedTab);
+      }
+    } catch (_) {}
 
     // Audio toggle
     const audioBtn = document.getElementById('audioToggleBtn');
@@ -261,6 +288,16 @@
 
     document.getElementById('closeSettingsModalBtn').addEventListener('click', () => {
       modal.classList.remove('open');
+    });
+
+    modal?.addEventListener('click', (e) => {
+      if (e.target === modal) modal.classList.remove('open');
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal?.classList.contains('open')) {
+        modal.classList.remove('open');
+      }
     });
 
     document.getElementById('testDiscordWebhookBtn')?.addEventListener('click', async () => {
@@ -1556,8 +1593,9 @@
     `;
 
     if (smeltTimerMeta) {
-      readinessEl.querySelector('#startSmeltTimerBtn')?.addEventListener('click', () => {
+      readinessEl.querySelector('#startSmeltTimerBtn')?.addEventListener('click', (e) => {
         startSquadTimer(smeltTimerMeta.label, smeltTimerMeta.sec, '#f59e0b');
+        flashButtonFeedback(e.currentTarget);
       });
     }
 
@@ -3196,10 +3234,11 @@
         </div>
       `;
 
-      detailEl.querySelector('#startMonumentTimerBtn')?.addEventListener('click', () => {
+      detailEl.querySelector('#startMonumentTimerBtn')?.addEventListener('click', (e) => {
         const suffix = m.safeZone ? 'Safe Zone Hostile' : 'Respawn';
         const color = m.safeZone ? '#ef4444' : '#3b82f6';
         startSquadTimer(`${m.name} [${activeGrid}] — ${suffix}`, m.respawnMin * 60, color);
+        flashButtonFeedback(e.currentTarget);
       });
     }
 
@@ -3262,7 +3301,7 @@
   const alerted60sIds = new Set();
   const alertedDoneIds = new Set();
   const DESKTOP_NOTIFY_KEY = 'rust_desktop_notify_enabled';
-  let selectedTimerPresetFilter = 'all';
+  let selectedTimerPresetFilter = 'essential';
   let desktopNotificationsEnabled =
     typeof Notification !== 'undefined' &&
     Notification.permission === 'granted' &&
@@ -3448,9 +3487,11 @@
     const grid = document.getElementById('timerPresetsGrid');
     if (!grid) return;
 
-    const presets = (DATA.timerPresets || []).filter(
-      (p) => selectedTimerPresetFilter === 'all' || p.group === selectedTimerPresetFilter
-    );
+    const presets = (DATA.timerPresets || []).filter((p) => {
+      if (selectedTimerPresetFilter === 'all') return true;
+      if (selectedTimerPresetFilter === 'essential') return Boolean(p.essential);
+      return p.group === selectedTimerPresetFilter;
+    });
 
     grid.innerHTML = presets
       .map((p) => {
@@ -3526,6 +3567,12 @@
       document.title = `[READY x${readyCount}] — ${BASE_DOC_TITLE}`;
     } else {
       document.title = BASE_DOC_TITLE;
+    }
+
+    const clearDoneBtn = document.getElementById('clearDoneTimersBtn');
+    if (clearDoneBtn) {
+      clearDoneBtn.style.display = readyCount > 0 ? '' : 'none';
+      if (readyCount > 0) clearDoneBtn.textContent = `🧹 Clear Done (${readyCount})`;
     }
 
     // Update Header HUD Strip without thrashing active nodes
@@ -3794,6 +3841,20 @@
       playAlertSound('complete');
     });
 
+    document.getElementById('clearDoneTimersBtn')?.addEventListener('click', () => {
+      const now = Date.now();
+      appState.activeTimers = (appState.activeTimers || []).filter((t) => {
+        const isDone = Math.ceil(getTimerRemainingMs(t, now) / 1000) <= 0;
+        if (isDone) {
+          alerted60sIds.delete(t.id);
+          alertedDoneIds.delete(t.id);
+        }
+        return !isDone;
+      });
+      syncStateToServer();
+      renderTimersTick();
+    });
+
     document.getElementById('clearAllTimersBtn')?.addEventListener('click', () => {
       appState.activeTimers = [];
       alerted60sIds.clear();
@@ -3802,7 +3863,7 @@
       renderTimersTick();
     });
 
-    document.getElementById('startCustomTimerBtn')?.addEventListener('click', () => {
+    const submitCustomTimer = () => {
       const labelEl = document.getElementById('customTimerLabel');
       const label = labelEl?.value.trim() || 'Custom Squad Timer';
       const hrs = Math.max(0, parseInt(document.getElementById('customTimerHour')?.value, 10) || 0);
@@ -3812,6 +3873,16 @@
       if (total <= 0) return;
       startSquadTimer(label, total, '#eab308');
       if (labelEl) labelEl.value = '';
+    };
+
+    document.getElementById('startCustomTimerBtn')?.addEventListener('click', submitCustomTimer);
+    ['customTimerLabel', 'customTimerHour', 'customTimerMin', 'customTimerSec'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitCustomTimer();
+        }
+      });
     });
   }
 
@@ -4562,6 +4633,7 @@
           const name = btn.getAttribute('data-tname') || 'Berry Tea Buff';
           const mins = Math.max(1, parseInt(btn.getAttribute('data-tmins'), 10) || 30);
           startSquadTimer(`🧪 ${name}`, mins * 60, '#22c55e');
+          flashButtonFeedback(btn);
         });
       });
     }
@@ -4704,6 +4776,16 @@
       const goalSel = document.getElementById('geneticsTargetGoal');
       if (goalSel && goalSel.value === 'CUSTOM') goalSel.value = 'GGGYYY';
       solveBestCrossbreed();
+    });
+
+    document.getElementById('toggleGeneAdvancedBtn')?.addEventListener('click', (e) => {
+      const drawer = document.getElementById('geneAdvancedDrawer');
+      if (!drawer) return;
+      const isOpen = drawer.style.display !== 'none';
+      drawer.style.display = isOpen ? 'none' : 'block';
+      const btn = e.currentTarget;
+      btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      btn.textContent = isOpen ? '⚙️ Solver & Slot Filters ▾' : '⚙️ Solver & Slot Filters ▴';
     });
 
     document.getElementById('runGeneticsSolverBtn')?.addEventListener('click', solveBestCrossbreed);
@@ -5694,424 +5776,6 @@
   }
 
   // =========================================================================
-  // MODULE 5: BATTLEMETRICS RAID WINDOW & SERVER INTELLIGENCE
-  // =========================================================================
-  let currentServerTelemetry = {
-    name: 'Rustoria.co - EU Main (High Pop Profile)',
-    id: '9565287',
-    players: 385,
-    maxPlayers: 500,
-    queuedPlayers: 14,
-    rank: 2,
-    seed: '1337420',
-    size: 4500,
-    lastWipe: '2 days ago',
-    hourlyPop: [
-      240, 185, 130, 92, 68, 54, 48, 52, 65, 95, 140, 195,
-      260, 320, 380, 430, 475, 500, 500, 495, 480, 440, 370, 305
-    ]
-  };
-
-  async function fetchBattleMetricsSearch(query) {
-    const resultsEl = document.getElementById('bmSearchResults');
-    if (!resultsEl) return;
-    resultsEl.innerHTML = `<div style="padding:10px; font-family:var(--font-mono); color:var(--sulfur-yellow);">📡 Querying BattleMetrics API for "${query}"...</div>`;
-
-    try {
-      // Support bare Server ID OR full BattleMetrics URL (e.g. https://www.battlemetrics.com/servers/rust/28653982)
-      const bmUrlMatch = query.trim().match(/battlemetrics\.com\/servers\/(?:rust\/)?(\d+)/i);
-      const directId = bmUrlMatch ? bmUrlMatch[1] : (/^\d+$/.test(query.trim()) ? query.trim() : null);
-      if (directId) {
-        const ok = await loadBattleMetricsServerById(directId);
-        if (ok) resultsEl.innerHTML = '';
-        return;
-      }
-
-      let data = null;
-      let apiErr = '';
-      try {
-        const res = await fetch(`/api/battlemetrics/search?q=${encodeURIComponent(query)}`, {
-          headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {}
-        });
-        const json = await res.json().catch(() => null);
-        if (res.ok) data = json;
-        else if (json?.error) apiErr = json.error;
-      } catch (_) {}
-
-      // Browser direct fallback if running without Node proxy
-      if (!data && !apiErr) {
-        const directRes = await fetch(
-          `https://api.battlemetrics.com/servers?filter[game]=rust&filter[search]=${encodeURIComponent(query)}&page[size]=8`,
-          { headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {} }
-        );
-        const directJson = await directRes.json().catch(() => null);
-        if (directRes.ok) data = directJson;
-        else apiErr = directJson?.errors?.[0]?.detail || `HTTP ${directRes.status}`;
-      }
-
-      if (apiErr) {
-        resultsEl.innerHTML = `<div style="padding:10px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:6px; color:#fca5a5; font-size:12.5px;">
-          ⚠️ <strong>BattleMetrics API blocked:</strong> ${apiErr}<br/>
-          <span style="color:#cbd5e1;">BattleMetrics now requires a BattleMetrics API Token (add it in <strong>⚙️ Squad Settings</strong>). For map analysis without BattleMetrics, paste a <strong>RustMaps URL</strong> or <code>size_seed</code> directly into <strong>📍 Base Finder</strong>.</span>
-        </div>`;
-        return;
-      }
-
-      const list = data?.data || [];
-      if (list.length === 0) {
-        resultsEl.innerHTML = `<div style="padding:10px; color:var(--text-secondary);">No Rust servers matched "${query}". Try another keyword or Server ID.</div>`;
-        return;
-      }
-
-      resultsEl.innerHTML = `
-        <div style="display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto; background:var(--bg-input); padding:8px; border-radius:6px; border:1px solid var(--border-subtle);">
-          ${list
-            .map((srv) => {
-              const a = srv.attributes || {};
-              return `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:var(--bg-card); border-radius:5px;">
-                  <div>
-                    <div style="font-weight:700; color:#fff;">${a.name}</div>
-                    <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-                      ID: ${srv.id} • Pop: <span style="color:#4ade80;">${a.players}/${a.maxPlayers}</span> • Rank #${a.rank || '-'}
-                    </div>
-                  </div>
-                  <button class="btn btn-sm btn-primary select-bm-server-btn" data-sid="${srv.id}">
-                    Analyze Raid Window
-                  </button>
-                </div>
-              `;
-            })
-            .join('')}
-        </div>
-      `;
-
-      resultsEl.querySelectorAll('.select-bm-server-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          loadBattleMetricsServerById(btn.getAttribute('data-sid'));
-          resultsEl.innerHTML = '';
-        });
-      });
-    } catch (err) {
-      resultsEl.innerHTML = `<div style="padding:10px; color:#f87171;">BattleMetrics lookup failed (${err.message}). Loaded tactical profile below.</div>`;
-    }
-  }
-
-  async function loadBattleMetricsServerById(serverId) {
-    const resultsEl = document.getElementById('bmSearchResults');
-    try {
-      let payload = null;
-      let apiErr = '';
-      try {
-        const res = await fetch(`/api/battlemetrics/server/${serverId}`, {
-          headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {}
-        });
-        const json = await res.json().catch(() => null);
-        if (res.ok) payload = json;
-        else if (json?.error) apiErr = json.error;
-      } catch (_) {}
-
-      if (!payload && !apiErr) {
-        const directRes = await fetch(`https://api.battlemetrics.com/servers/${serverId}`, {
-          headers: getBmToken() ? { Authorization: `Bearer ${getBmToken()}` } : {}
-        });
-        const srvJson = await directRes.json().catch(() => null);
-        if (directRes.ok && srvJson?.data) {
-          payload = { server: srvJson, history: [] };
-        } else {
-          apiErr = srvJson?.errors?.[0]?.detail || `HTTP ${directRes.status}`;
-        }
-      }
-
-      const srv = payload?.server?.data;
-      if (!srv) {
-        if (resultsEl) {
-          resultsEl.innerHTML = `<div style="padding:10px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:6px; color:#fca5a5; font-size:12.5px;">
-            ⚠️ <strong>Could not load BattleMetrics Server #${serverId}:</strong> ${apiErr || 'No server data returned.'}<br/>
-            <span style="color:#cbd5e1;">BattleMetrics API requires a BattleMetrics API Token (add it in <strong>⚙️ Squad Settings</strong>). To analyze the map right now, paste the <strong>RustMaps URL</strong> or <code>size_seed</code> directly into <strong>📍 Base Finder</strong>.</span>
-          </div>`;
-        }
-        return false;
-      }
-      const a = srv.attributes || {};
-      const details = a.details || {};
-
-      // Build 24h hourly buckets from history or realistic curve scaled to maxPlayers
-      const maxP = a.maxPlayers || 300;
-      const curP = a.players || 100;
-      const hourly = new Array(24).fill(0);
-
-      if (Array.isArray(payload.history) && payload.history.length >= 12) {
-        payload.history.slice(-24).forEach((pt, idx) => {
-          const val = pt.attributes?.value ?? pt.attributes?.max ?? curP;
-          hourly[idx % 24] = val;
-        });
-      } else {
-        const baseCurve = [
-          0.42, 0.32, 0.24, 0.18, 0.13, 0.11, 0.10, 0.12, 0.16, 0.24, 0.35, 0.48,
-          0.62, 0.74, 0.85, 0.92, 0.98, 1.0, 1.0, 0.96, 0.90, 0.82, 0.68, 0.54
-        ];
-        baseCurve.forEach((r, hr) => {
-          hourly[hr] = Math.round(maxP * r);
-        });
-      }
-
-      currentServerTelemetry = {
-        name: a.name || `Rust Server #${serverId}`,
-        id: srv.id,
-        players: curP,
-        maxPlayers: maxP,
-        queuedPlayers: details.rust_queued_players || 0,
-        rank: a.rank || '-',
-        seed: details.rust_world_seed || '-',
-        size: details.rust_world_size || '-',
-        lastWipe: details.rust_last_wipe ? new Date(details.rust_last_wipe).toLocaleString() : 'Active Wipe',
-        hourlyPop: hourly
-      };
-
-      appState.battlemetrics.serverId = srv.id;
-      appState.battlemetrics.serverName = currentServerTelemetry.name;
-
-      syncStateToServer();
-      renderBattleMetricsDashboard();
-      return true;
-    } catch (err) {
-      if (resultsEl) {
-        resultsEl.innerHTML = `<div style="padding:10px; color:#fca5a5;">⚠️ BattleMetrics error: ${err.message}</div>`;
-      }
-      return false;
-    }
-  }
-
-  function renderBattleMetricsDashboard() {
-    const cardEl = document.getElementById('bmServerTelemetryCard');
-    const summaryEl = document.getElementById('bmRaidWindowSummary');
-    const heatmapEl = document.getElementById('bmHeatmapContainer');
-    const advisorEl = document.getElementById('bmRaidMethodAdvisor');
-    const watchEl = document.getElementById('bmWatchlistContainer');
-
-    const s = currentServerTelemetry;
-    const popPct = Math.round((s.players / Math.max(1, s.maxPlayers)) * 100);
-
-    if (cardEl) {
-      cardEl.innerHTML = `
-        <div style="background:var(--bg-card); border:1px solid var(--border-highlight); border-radius:8px; padding:14px;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
-            <div>
-              <div style="font-family:var(--font-display); font-size:17px; font-weight:700; color:#fff;">
-                🌐 ${s.name}
-              </div>
-              <div style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-                BattleMetrics ID: ${s.id} • Rank #${s.rank} • Last Wipe: ${s.lastWipe}
-              </div>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <button id="bmAnalyzeInBaseFinderBtn" class="btn btn-sm btn-primary" style="font-size:11.5px;">📍 Analyze Map in Base Finder</button>
-              <span class="keycard-tag ${popPct > 75 ? 'keycard-Red' : popPct > 40 ? 'keycard-Fuse' : 'keycard-Green'}">
-                ${popPct}% CAPACITY (${s.players}/${s.maxPlayers})
-              </span>
-            </div>
-          </div>
-
-          <div class="resource-grid" style="margin-top:12px;">
-            <div class="resource-box">
-              <div class="resource-val" style="color:#4ade80;">${s.players} / ${s.maxPlayers}</div>
-              <div class="resource-label">Online Players</div>
-            </div>
-            <div class="resource-box">
-              <div class="resource-val" style="color:var(--sulfur-yellow);">${s.queuedPlayers}</div>
-              <div class="resource-label">Queue Size</div>
-            </div>
-            <div class="resource-box">
-              <div class="resource-val">${s.seed}</div>
-              <div class="resource-label">Map Seed (${s.size})</div>
-            </div>
-          </div>
-        </div>
-      `;
-      document.getElementById('bmAnalyzeInBaseFinderBtn')?.addEventListener('click', () => {
-        const bfTabBtn = document.querySelector('.nav-tab[data-tab="tab-basefinder"]');
-        const bfInput = document.getElementById('bfMapUrlInput');
-        const bfBtn = document.getElementById('bfAnalyzeBtn');
-        if (bfInput) {
-          bfInput.value = s.id ? `https://www.battlemetrics.com/servers/rust/${s.id}` : `${s.size}_${s.seed}`;
-        }
-        bfTabBtn?.click();
-        bfBtn?.click();
-      });
-    }
-
-    // Find lowest 4-hour raid window & peak window
-    let minHour = 5;
-    let minVal = Infinity;
-    let maxHour = 18;
-    let maxVal = 0;
-
-    s.hourlyPop.forEach((val, hr) => {
-      if (val < minVal) {
-        minVal = val;
-        minHour = hr;
-      }
-      if (val > maxVal) {
-        maxVal = val;
-        maxHour = hr;
-      }
-    });
-
-    const windowStart = String((minHour + 23) % 24).padStart(2, '0') + ':00';
-    const windowEnd = String((minHour + 3) % 24).padStart(2, '0') + ':00';
-
-    if (summaryEl) {
-      summaryEl.innerHTML = `
-        <div class="grid-3">
-          <div style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.4); border-radius:6px; padding:12px;">
-            <div style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">🟢 BEST OFFLINE RAID WINDOW</div>
-            <div style="font-family:var(--font-display); font-size:20px; font-weight:700; color:#fff; margin:4px 0;">
-              ${windowStart} – ${windowEnd}
-            </div>
-            <div style="font-size:11px; color:var(--text-secondary);">Lowest server pop (~${minVal} players). Minimal counter-raiders.</div>
-          </div>
-
-          <div style="background:rgba(234,179,8,0.12); border:1px solid rgba(234,179,8,0.4); border-radius:6px; padding:12px;">
-            <div style="font-family:var(--font-mono); font-size:11px; color:var(--sulfur-yellow); font-weight:700;">🟡 LOW-COUNTER SHOULDER</div>
-            <div style="font-family:var(--font-display); font-size:20px; font-weight:700; color:#fff; margin:4px 0;">
-              01:00 – 04:00
-            </div>
-            <div style="font-size:11px; color:var(--text-secondary);">Zergs logging off. Ideal for Silenced Explo Ammo + FOB raids.</div>
-          </div>
-
-          <div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:6px; padding:12px;">
-            <div style="font-family:var(--font-mono); font-size:11px; color:#f87171; font-weight:700;">🔴 PEAK COUNTER DANGER</div>
-            <div style="font-family:var(--font-display); font-size:20px; font-weight:700; color:#fff; margin:4px 0;">
-              ${String((maxHour + 22) % 24).padStart(2, '0')}:00 – ${String((maxHour + 2) % 24).padStart(2, '0')}:00
-            </div>
-            <div style="font-size:11px; color:var(--text-secondary);">Peak pop (~${maxVal} players). Use C4 + Turret FOB if raiding now!</div>
-          </div>
-        </div>
-      `;
-    }
-
-    if (heatmapEl) {
-      const peak = Math.max(...s.hourlyPop, 1);
-      heatmapEl.innerHTML = s.hourlyPop
-        .map((val, hr) => {
-          const pct = Math.max(6, Math.round((val / peak) * 100));
-          let barColor = '#22c55e';
-          if (pct > 75) barColor = '#ef4444';
-          else if (pct > 45) barColor = '#eab308';
-          return `
-            <div class="bm-bar-col" title="${String(hr).padStart(2, '0')}:00 — ${val} Players">
-              <div class="bm-bar" style="height:${pct}%; background:${barColor};"></div>
-              <span class="bm-hour-label">${String(hr).padStart(2, '0')}</span>
-            </div>
-          `;
-        })
-        .join('');
-    }
-
-    if (advisorEl) {
-      let recommendation = '';
-      if (popPct >= 70) {
-        recommendation = `
-          <strong style="color:#f87171;">HIGH POP RAID PROTOCOL (${popPct}% Server Full):</strong>
-          Avoid slow Satchel or pure Explosive Ammo raids right now. Use <strong>C4 + Rocket Speed Combos</strong> (e.g. <em>1 Rocket + 8 Explo</em> per Sheet Door, <em>2 C4</em> per Stone Wall) to breach and seal TC in under 45 seconds, and place an Auto Turret Raid Base (FOB) before booming.
-        `;
-      } else if (popPct >= 35) {
-        recommendation = `
-          <strong style="color:var(--sulfur-yellow);">MODERATE POP RAID PROTOCOL (${popPct}% Server Full):</strong>
-          Optimal time for <strong>Mixed Sulfur-Saving Combos</strong> (<em>2 Rockets + 10 Explo 5.56</em> for Garage Doors, <em>3 C4 + 30 Explo</em> for Metal Walls) with a teammate holding roof watch.
-        `;
-      } else {
-        recommendation = `
-          <strong style="color:#4ade80;">LOW POP / OFFLINE RAID WINDOW (${popPct}% Server Full):</strong>
-          Prime window for <strong>Silenced Explosive 5.56 Ammo</strong>, <strong>0-Sulfur Molotovs</strong>, and <strong>Jackhammer Soft-Side Eco Raids</strong> to maximize Sulfur savings without drawing counters!
-        `;
-      }
-
-      advisorEl.innerHTML = `
-        <div style="background:var(--bg-card); border-left:4px solid var(--rust-orange); padding:12px 14px; border-radius:5px; font-size:13px;">
-          💡 ${recommendation}
-        </div>
-      `;
-    }
-
-    if (watchEl) {
-      const list = appState.battlemetrics?.watchlist || [];
-      watchEl.innerHTML = list
-        .map(
-          (w, idx) => `
-          <div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
-            <div>
-              <div style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
-                🎯 ${w.name} <span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">[${w.grid}]</span>
-              </div>
-              <div style="font-family:var(--font-mono); font-size:11px; color:#4ade80; margin:3px 0;">
-                🕒 Best Raid Window (Offline): ${w.typicalOffline}
-              </div>
-              <div style="font-size:12px; color:var(--text-secondary);">${w.notes || ''}</div>
-            </div>
-            <button class="btn btn-sm remove-watch-btn" data-idx="${idx}">✕</button>
-          </div>
-        `
-        )
-        .join('');
-
-      watchEl.querySelectorAll('.remove-watch-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-idx'), 10);
-          appState.battlemetrics.watchlist.splice(idx, 1);
-          syncStateToServer();
-          renderBattleMetricsDashboard();
-        });
-      });
-    }
-  }
-
-  function initBattleMetricsModule() {
-    document.getElementById('bmSearchBtn')?.addEventListener('click', () => {
-      const q = document.getElementById('bmSearchInput')?.value.trim();
-      if (q) fetchBattleMetricsSearch(q);
-    });
-
-    document.getElementById('bmSearchInput')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const q = e.target.value.trim();
-        if (q) fetchBattleMetricsSearch(q);
-      }
-    });
-
-    document.getElementById('bmSimulatePresetBtn')?.addEventListener('click', () => {
-      renderBattleMetricsDashboard();
-    });
-
-    document.getElementById('addWatchlistBtn')?.addEventListener('click', () => {
-      const name = document.getElementById('watchNameInput')?.value.trim();
-      const grid = document.getElementById('watchGridInput')?.value.trim().toUpperCase() || 'M13';
-      const typicalOffline = document.getElementById('watchOfflineInput')?.value.trim() || '04:00 - 09:00';
-      const notes = document.getElementById('watchNotesInput')?.value.trim() || '';
-      if (!name) return;
-
-      if (!appState.battlemetrics) appState.battlemetrics = { watchlist: [] };
-      if (!Array.isArray(appState.battlemetrics.watchlist)) appState.battlemetrics.watchlist = [];
-
-      appState.battlemetrics.watchlist.unshift({
-        id: 'w-' + Date.now(),
-        name,
-        grid,
-        typicalOffline,
-        notes
-      });
-
-      document.getElementById('watchNameInput').value = '';
-      document.getElementById('watchNotesInput').value = '';
-      syncStateToServer();
-      renderBattleMetricsDashboard();
-    });
-
-    renderBattleMetricsDashboard();
-  }
-
-  // =========================================================================
   // MODULE 6: RECYCLER (60% vs 40%), DIESEL EXCAVATOR & BASE DECAY LAB
   // =========================================================================
   const recyclerCounts = {
@@ -6292,9 +5956,10 @@
       </div>
     `;
 
-    out.querySelector('#startDecayTimerBtn')?.addEventListener('click', () => {
+    out.querySelector('#startDecayTimerBtn')?.addEventListener('click', (e) => {
       const shelTag = isInside ? ' [Sheltered]' : '';
       startSquadTimer(`🏚️ Decaying ${rate.name} [${grid}]${shelTag}`, secondsRemaining, '#eab308');
+      flashButtonFeedback(e.currentTarget);
       if (appState.discordWebhookUrl) {
         sendDiscordAlert(
           `🏚️ Decaying Base Tracked at [${grid}]`,
@@ -6312,9 +5977,10 @@
     });
 
     document.getElementById('dieselCountInput')?.addEventListener('input', renderDieselCalculator);
-    document.getElementById('startExcavatorTimerBtn')?.addEventListener('click', () => {
+    document.getElementById('startExcavatorTimerBtn')?.addEventListener('click', (e) => {
       const count = Math.max(1, parseInt(document.getElementById('dieselCountInput')?.value, 10) || 10);
       startSquadTimer(`🛢️ Giant Excavator (${count}x Diesel)`, count * 120, '#eab308');
+      flashButtonFeedback(e.currentTarget);
     });
 
     const decaySel = document.getElementById('decayTierSelect');

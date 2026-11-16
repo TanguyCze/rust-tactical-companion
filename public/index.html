@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116a" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116b" />
 </head>
 <body>
 
@@ -363,6 +363,7 @@
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button id="desktopNotifyBtn" class="btn btn-sm" title="Enable Desktop Notifications when timers hit 60s or finish">🔔 Desktop Notify: OFF</button>
             <button id="testAudioAlarmBtn" class="btn btn-sm">🔊 Test Alarm Sound</button>
+            <button id="clearDoneTimersBtn" class="btn btn-sm" style="display:none;" title="Remove finished READY timers without stopping active countdowns">🧹 Clear Done</button>
             <button id="clearAllTimersBtn" class="btn btn-sm">🗑️ Clear All Timers</button>
           </div>
         </div>
@@ -380,7 +381,8 @@
             </div>
           </div>
           <div id="timerPresetFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-            <button class="filter-pill active" data-tfilter="all">All</button>
+            <button class="filter-pill active" data-tfilter="essential">⚡ Essential (8)</button>
+            <button class="filter-pill" data-tfilter="all">All (32)</button>
             <button class="filter-pill" data-tfilter="hacks">Crates &amp; Cargo</button>
             <button class="filter-pill" data-tfilter="events">Bradley, Heli &amp; Rig</button>
             <button class="filter-pill" data-tfilter="puzzles">Card Puzzles</button>
@@ -558,8 +560,15 @@
                 <div id="scanResultsContainer" style="margin-top:10px;"></div>
               </div>
 
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle);">
+                <span style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono);">WEIGHTS: <span style="color:#4ade80;">G/Y/H = 0.6</span> • <span style="color:#f87171;">W/X = 1.0</span></span>
+                <button id="toggleGeneAdvancedBtn" type="button" class="btn btn-sm" aria-expanded="false">⚙️ Solver &amp; Slot Filters ▾</button>
+              </div>
+            </div>
+
+            <div id="geneAdvancedDrawer" style="display:none; margin-bottom:12px;">
               <!-- Solver Options Row (RustBreeder style) -->
-              <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle); font-size:11.5px; color:var(--text-secondary);">
+              <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; margin-bottom:8px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px; font-size:11.5px; color:var(--text-secondary);">
                 <label style="display:flex; align-items:center; gap:5px;">
                   <span>Donors:</span>
                   <select id="geneticsMinDonors" class="select" style="padding:3px 6px; font-size:11.5px;">
@@ -587,32 +596,28 @@
                 </label>
               </div>
 
-              <div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
-                WEIGHTS: <span style="color:#4ade80;">G / Y / H = 0.6</span> • <span style="color:#f87171;">W / X = 1.0</span> (2× Green = 1.2 beats 1× Red 1.0; equal tie = 50% RNG)
+              <!-- RustBreeder-Style Result Filters -->
+              <div class="rb-filter-bar" style="margin-bottom:0;">
+                <span style="font-family:var(--font-mono); font-size:11px; color:var(--sulfur-yellow); font-weight:700;">FILTER RESULTS:</span>
+                <label class="rb-filter-field">G <input id="filterCountG" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
+                <label class="rb-filter-field">Y <input id="filterCountY" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
+                <label class="rb-filter-field">H <input id="filterCountH" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <span style="font-size:11px; color:var(--text-secondary);">Slots:</span>
+                  <input id="filterSlot1" maxlength="1" placeholder="1" class="input rb-slot-input" />
+                  <input id="filterSlot2" maxlength="1" placeholder="2" class="input rb-slot-input" />
+                  <input id="filterSlot3" maxlength="1" placeholder="3" class="input rb-slot-input" />
+                  <input id="filterSlot4" maxlength="1" placeholder="4" class="input rb-slot-input" />
+                  <input id="filterSlot5" maxlength="1" placeholder="5" class="input rb-slot-input" />
+                  <input id="filterSlot6" maxlength="1" placeholder="6" class="input rb-slot-input" />
+                </div>
+                <select id="filterMinChance" class="select" style="padding:3px 6px; font-size:11.5px;">
+                  <option value="0">Any Odds</option>
+                  <option value="0.5">50%+ Odds</option>
+                  <option value="1">100% Guaranteed Only</option>
+                </select>
+                <button id="resetGeneFiltersBtn" class="btn btn-sm">Reset Filters</button>
               </div>
-            </div>
-
-            <!-- RustBreeder-Style Result Filters -->
-            <div class="rb-filter-bar">
-              <span style="font-family:var(--font-mono); font-size:11px; color:var(--sulfur-yellow); font-weight:700;">FILTER RESULTS:</span>
-              <label class="rb-filter-field">G <input id="filterCountG" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
-              <label class="rb-filter-field">Y <input id="filterCountY" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
-              <label class="rb-filter-field">H <input id="filterCountH" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
-              <div style="display:flex; align-items:center; gap:4px;">
-                <span style="font-size:11px; color:var(--text-secondary);">Slots:</span>
-                <input id="filterSlot1" maxlength="1" placeholder="1" class="input rb-slot-input" />
-                <input id="filterSlot2" maxlength="1" placeholder="2" class="input rb-slot-input" />
-                <input id="filterSlot3" maxlength="1" placeholder="3" class="input rb-slot-input" />
-                <input id="filterSlot4" maxlength="1" placeholder="4" class="input rb-slot-input" />
-                <input id="filterSlot5" maxlength="1" placeholder="5" class="input rb-slot-input" />
-                <input id="filterSlot6" maxlength="1" placeholder="6" class="input rb-slot-input" />
-              </div>
-              <select id="filterMinChance" class="select" style="padding:3px 6px; font-size:11.5px;">
-                <option value="0">Any Odds</option>
-                <option value="0.5">50%+ Odds</option>
-                <option value="1">100% Guaranteed Only</option>
-              </select>
-              <button id="resetGeneFiltersBtn" class="btn btn-sm">Reset Filters</button>
             </div>
 
             <!-- Optimal Crossbreed Result & 3x3 Planter Layout -->
@@ -850,8 +855,17 @@
             <div id="bfMapTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 20; background: rgba(9, 14, 22, 0.94); border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 6px; padding: 8px 10px; text-align: left; font-size: 11.5px; color: #e2e8f0; box-shadow: 0 8px 24px rgba(0,0,0,0.55); max-width: 260px;"></div>
             <div id="bfMapHudReadout" style="display: none; position: absolute; bottom: 8px; left: 8px; pointer-events: none; z-index: 15; background: rgba(9, 14, 22, 0.85); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; color: #cbd5e1;"></div>
           </div>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--text-secondary);">
-            <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build Grids</span>
+          <details class="bf-legend-details">
+            <summary class="bf-legend-summary">
+              <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build</span>
+              <span><strong style="color:#a855f7;">🥷</strong> Under-Radar</span>
+              <span><strong style="color:#f59e0b;">⛏️</strong> Farm</span>
+              <span><strong style="color:#38bdf8;">⚡</strong> Target</span>
+              <span><strong style="color:#fb923c;">🚫</strong> No-Build</span>
+              <span class="bf-legend-toggle-hint">Full Legend (12) ▾</span>
+            </summary>
+            <div class="bf-legend-full">
+              <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build Grids</span>
             <span><strong style="color:#a855f7;">🥷</strong> Best Under-Radar Overall</span>
             <span><strong style="color:#f59e0b;">⛏️</strong> Top Farm Zones</span>
             <span><strong style="color:#38bdf8;">⚡</strong> Target Monument</span>
@@ -863,7 +877,8 @@
             <span><strong style="color:#ef4444;">🛢️</strong> Large / Small Oil Rig</span>
             <span><strong style="color:#ef4444;">🔴</strong> High-Traffic / Zerg Hub</span>
             <span><strong style="color:#fb923c;">🚫</strong> Monument No-Build Zone</span>
-          </div>
+            </div>
+          </details>
         </div>
 
         <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips) -->
@@ -952,7 +967,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116a"></script>
-  <script src="js/app.js?v=20261116a"></script>
+  <script src="js/data.js?v=20261116b"></script>
+  <script src="js/app.js?v=20261116b"></script>
 </body>
 </html>

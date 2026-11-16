@@ -1687,14 +1687,14 @@ window.RUST_DATA = {
   // 4. MONUMENT & EVENT TIMER PRESETS (VERIFIED VANILLA TIMINGS)
   // =========================================================================
   timerPresets: [
-    { id: 'small_rig_hack', name: 'Small Oil Rig — Crate Hack', category: 'Hack (15m)', group: 'hacks', durationSec: 15 * 60, color: '#ef4444', hint: 'Default 900s (15m) locked crate hack' },
-    { id: 'large_rig_hack', name: 'Large Oil Rig — Crate Hack', category: 'Hack (15m)', group: 'hacks', durationSec: 15 * 60, color: '#ef4444', hint: 'Default 900s (15m) + 12x Heavy Scientists' },
+    { id: 'small_rig_hack', name: 'Small Oil Rig — Crate Hack', category: 'Hack (15m)', group: 'hacks', essential: true, durationSec: 15 * 60, color: '#ef4444', hint: 'Default 900s (15m) locked crate hack' },
+    { id: 'large_rig_hack', name: 'Large Oil Rig — Crate Hack', category: 'Hack (15m)', group: 'hacks', essential: true, durationSec: 15 * 60, color: '#ef4444', hint: 'Default 900s (15m) + 12x Heavy Scientists' },
     { id: 'chinook_hack', name: 'Chinook CH47 — Crate Hack', category: 'Hack (15m)', group: 'hacks', durationSec: 15 * 60, color: '#f97316', hint: 'Default 900s (15m) locked crate unlock' },
-    { id: 'cargo_next_crate', name: 'Cargo Ship — Next Crate Spawn', category: 'Cargo (10m)', group: 'hacks', durationSec: 10 * 60, color: '#22c55e', hint: 'Horn sounds ~10m for each additional locked crate' },
-    { id: 'cargo_harbor_dock', name: 'Cargo Ship — Harbor Dock Stay', category: 'Harbor (10m)', group: 'events', durationSec: 10 * 60, color: '#14b8a6', hint: 'Stays docked ~10m; horn blows 60s before leaving' },
+    { id: 'cargo_next_crate', name: 'Cargo Ship — Next Crate Spawn', category: 'Cargo (10m)', group: 'hacks', essential: true, durationSec: 10 * 60, color: '#22c55e', hint: 'Horn sounds ~10m for each additional locked crate' },
+    { id: 'cargo_harbor_dock', name: 'Cargo Ship — Harbor Dock Stay', category: 'Harbor (10m)', group: 'events', essential: true, durationSec: 10 * 60, color: '#14b8a6', hint: 'Stays docked ~10m; horn blows 60s before leaving' },
     { id: 'cargo_active', name: 'Cargo Ship — Map Duration', category: 'Event (50m)', group: 'events', durationSec: 50 * 60, color: '#22c55e', hint: 'Default cargoship.event_duration_minutes = 50 (spawns ~2–4h)' },
-    { id: 'bradley_fire', name: 'Bradley APC — Crates Fire Cooldown', category: 'Fire (4m)', group: 'events', durationSec: 4 * 60, color: '#f97316', hint: 'Crates cool at ~4m (body ~5m); instant if in water' },
-    { id: 'heli_fire', name: 'Patrol Heli — Crash Crate Fire', category: 'Fire (5m)', group: 'events', durationSec: 5 * 60, color: '#f97316', hint: 'Crates burn ~3–5m unless extinguished in water' },
+    { id: 'bradley_fire', name: 'Bradley APC — Crates Fire Cooldown', category: 'Fire (4m)', group: 'events', essential: true, durationSec: 4 * 60, color: '#f97316', hint: 'Crates cool at ~4m (body ~5m); instant if in water' },
+    { id: 'heli_fire', name: 'Patrol Heli — Crash Crate Fire', category: 'Fire (5m)', group: 'events', essential: true, durationSec: 5 * 60, color: '#f97316', hint: 'Crates burn ~3–5m unless extinguished in water' },
     { id: 'bradley_respawn', name: 'Bradley APC — Respawn', category: 'Respawn (60m)', group: 'events', durationSec: 60 * 60, color: '#eab308', hint: 'Vanilla bradley.respawndelayminutes = 60' },
     { id: 'heli_active', name: 'Patrol Helicopter — Patrol Stay', category: 'Event (30m)', group: 'events', durationSec: 30 * 60, color: '#a855f7', hint: 'Vanilla heli.lifetimeminutes = 30 if unengaged' },
     { id: 'heli_respawn', name: 'Patrol Helicopter — 2–4h Window', category: 'Window (2–4h)', group: 'events', durationSec: 120 * 60, color: '#a855f7', hint: 'Vanilla spawns randomly every ~2–4 hours (2h min alert)' },
@@ -1714,9 +1714,9 @@ window.RUST_DATA = {
     { id: 'radtown_puzzle', name: 'Radtown — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
     { id: 'sewer_puzzle', name: 'Sewer Branch — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
     { id: 'sat_puzzle', name: 'Satellite Dish — Green Card Reset', category: 'Puzzle (15–30m)', group: 'puzzles', durationSec: 30 * 60, color: '#22c55e', hint: 'Up to 30m low-pop (~15m high-pop)' },
-    { id: 'day_cycle', name: 'Daylight Phase (Day → Sunset)', category: 'World (~45m)', group: 'world', durationSec: 45 * 60, color: '#eab308', hint: 'Vanilla 60m cycle: ~45m Day / ~15m Night' },
+    { id: 'day_cycle', name: 'Daylight Phase (Day → Sunset)', category: 'World (~45m)', group: 'world', essential: true, durationSec: 45 * 60, color: '#eab308', hint: 'Vanilla 60m cycle: ~45m Day / ~15m Night' },
     { id: 'night_cycle', name: 'Nighttime Phase (Night → Dawn)', category: 'World (~15m)', group: 'world', durationSec: 15 * 60, color: '#6366f1', hint: 'Vanilla 60m cycle: ~15m Night' },
-    { id: 'safezone_hostile', name: 'Safe Zone Hostile Timer', category: 'Aggro (30m)', group: 'world', durationSec: 30 * 60, color: '#ef4444', hint: 'Outpost/Bandit aggro (resets to 30m if spotted)' },
+    { id: 'safezone_hostile', name: 'Safe Zone Hostile Timer', category: 'Aggro (30m)', group: 'world', essential: true, durationSec: 30 * 60, color: '#ef4444', hint: 'Outpost/Bandit aggro (resets to 30m if spotted)' },
     { id: 'electric_fuse', name: 'Electric Fuse Burnout', category: 'Fuse (3m20s)', group: 'world', durationSec: 200, color: '#60a5fa', hint: '200s per 100% durability Electric Fuse in fuse box' },
     { id: 'excavator_5diesel', name: 'Giant Excavator — 5x Diesel Airdrop', category: 'Excavator (10m)', group: 'world', durationSec: 10 * 60, color: '#eab308', hint: '2m/diesel -> 5 barrels (10m) reaches 100% signal' }
   ],
