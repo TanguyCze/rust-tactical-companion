@@ -8825,11 +8825,22 @@
       });
     }
 
-    // B. Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Vendor) + Heading Arrows
+    // B. Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Vendor, Named Event Zones)
     if (showEvents && Array.isArray(tel.liveEvents)) {
       tel.liveEvents.forEach((ev) => {
         const { px, py } = toPx(ev.wx, ev.wy);
         ctx.save();
+        if (ev.type === 7 && ev.radius > 0) {
+          ctx.beginPath();
+          ctx.arc(px, py, Math.max(14, ev.radius * scale), 0, Math.PI * 2);
+          ctx.fillStyle = `${ev.color || '#a855f7'}22`;
+          ctx.fill();
+          ctx.setLineDash([5, 4]);
+          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = ev.color || '#a855f7';
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.beginPath();
         ctx.arc(px, py, 14, 0, Math.PI * 2);
         ctx.fillStyle = `${ev.color || '#ef4444'}33`;
@@ -9143,7 +9154,7 @@
               return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
             })
             .join('')
-        : `<span style="font-size:11px; color:var(--text-muted);">No active Cargo / Heli / Crate markers on map right now.</span>`;
+        : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).` : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
       eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
         btn.addEventListener('click', () => {
           shopMapPanX = parseFloat(btn.getAttribute('data-wx')) || 0;
@@ -10138,6 +10149,11 @@
 
     if (badgeEl) {
       badgeEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'TRADE' : 'TRADES'}`;
+    }
+    const customFilterPill = document.querySelector('#shopFilterBar .filter-pill[data-sfilter="custom"]');
+    if (customFilterPill) {
+      const liveCnt = (appState.customShops || []).length;
+      customFilterPill.textContent = liveCnt > 0 ? `📌 My Server Shops (${liveCnt})` : '📌 My Server Shops';
     }
 
     const pinBanner = document.getElementById('shopSelectedPinFilterBanner');

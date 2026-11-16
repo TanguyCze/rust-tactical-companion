@@ -1143,6 +1143,26 @@ function decodeRustPlusMapMarkers(buf) {
   return markers;
 }
 
+function decodeRustPlusAppError(buf) {
+  let pos = 0;
+  let errMsg = '';
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2 && fn === 1) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      errMsg = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return errMsg || buf.toString('utf8').replace(/[^\x20-\x7e]/g, '').trim() || 'unknown_error';
+}
+
 function decodeRustPlusResponseMessage(buf) {
   let pos = 0;
   while (pos < buf.length) {
@@ -1171,7 +1191,7 @@ function decodeRustPlusResponseMessage(buf) {
           rpos = rlen.offset;
           const sub = respBuf.slice(rpos, rpos + Number(rlen.value));
           rpos += Number(rlen.value);
-          if (rfn === 4) resp.error = sub.toString('utf8');
+          if (rfn === 4) resp.error = decodeRustPlusAppError(sub);
           else if (rfn === 6) resp.info = decodeRustPlusAppInfo(sub);
           else if (rfn === 7) resp.time = decodeRustPlusAppTime(sub);
           else if (rfn === 8) resp.map = decodeRustPlusAppMap(sub);
@@ -1317,21 +1337,14 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
     }, timeoutMs);
 
     const req = transport.request(reqOpts);
-    req.on('upgrade', (_res, socket) => {
+    req.on('upgrade', (_res, socket, head) => {
       sock = socket;
       socket.setNoDelay(true);
-      try {
-        handlers.onOpen(socket, { playerId, playerToken, mode, finish });
-      } catch (err) {
-        return finish(err);
-      }
-
-      let recvBuf = Buffer.alloc(0);
+      let recvBuf = head && head.length ? Buffer.from(head) : Buffer.alloc(0);
       let fragChunks = [];
       let fragOpcode = 0;
 
-      socket.on('data', (chunk) => {
-        recvBuf = Buffer.concat([recvBuf, chunk]);
+      const processRecvBuf = () => {
         while (recvBuf.length >= 2) {
           const b0 = recvBuf[0];
           const b1 = recvBuf[1];
@@ -1390,6 +1403,18 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
             if (resp) handlers.onResponse(resp, { finish });
           }
         }
+      };
+
+      try {
+        handlers.onOpen(socket, { playerId, playerToken, mode, finish });
+      } catch (err) {
+        return finish(err);
+      }
+
+      if (recvBuf.length > 0) processRecvBuf();
+      socket.on('data', (chunk) => {
+        recvBuf = Buffer.concat([recvBuf, chunk]);
+        processRecvBuf();
       });
 
       socket.on('error', (err) => finish(err));
@@ -1444,6 +1469,13 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
   let markersResult = null;
   const entityInfoById = {};
   let graceTimer = null;
+  let retryMarkersTimer = null;
+  let markerError = '';
+
+  const clearAttemptTimers = () => {
+    if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
+    if (retryMarkersTimer) { clearTimeout(retryMarkersTimer); retryMarkersTimer = null; }
+  };
 
   const buildSnapshot = () => ({
     info: infoResult,
@@ -1453,6 +1485,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
     map: mapResult,
     markers: markersResult,
     entityInfoById,
+    markerError,
     mode,
     usedProxy: mode !== 'direct'
   });
@@ -1473,11 +1506,23 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
         entityIds.forEach((eid, idx) => {
           sendRawWsBinary(socket, encodeRustPlusRequest(100 + idx, playerId, playerToken, 14, { entityId: eid })); // getEntityInfo
         });
+        // Auto-retry getMapMarkers once if relay/rate-limit dropped seq 2 during initial burst
+        retryMarkersTimer = setTimeout(() => {
+          if (markersResult === null && !socket.destroyed) {
+            try {
+              sendRawWsBinary(socket, encodeRustPlusRequest(92, playerId, playerToken, 18));
+            } catch (_) {}
+          }
+        }, 1800);
       },
       onResponse(resp, { finish }) {
-        if (resp.error && resp.seq === 2 && !markersResult) {
-          if (graceTimer) clearTimeout(graceTimer);
-          return finish(new Error(`Rust+ server rejected request (check PlayerToken / pairing): ${resp.error}`));
+        if (resp.error && (resp.seq === 2 || resp.seq === 92) && !markersResult) {
+          markerError = String(resp.error);
+          if (resp.seq === 92 || !/rate_limit|throttle/i.test(markerError)) {
+            clearAttemptTimers();
+            return finish(new Error(`Rust+ getMapMarkers failed (check PlayerToken / pairing): ${markerError}`));
+          }
+          return;
         }
         if (resp.info) infoResult = resp.info;
         if (resp.time) timeResult = resp.time;
@@ -1500,26 +1545,29 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
           (!needMap || mapResult !== null);
 
         if (allDone) {
-          if (graceTimer) clearTimeout(graceTimer);
+          clearAttemptTimers();
           return finish(null, buildSnapshot());
         }
         if (markersResult !== null && !graceTimer) {
           graceTimer = setTimeout(() => {
+            clearAttemptTimers();
             finish(null, buildSnapshot());
-          }, needMap ? 2000 : 500);
+          }, needMap ? 2000 : 600);
         }
       },
       onTimeout() {
+        clearAttemptTimers();
         if (markersResult !== null) return buildSnapshot();
+        if (markerError) return undefined;
         return undefined;
       },
       onClose() {
-        if (graceTimer) clearTimeout(graceTimer);
+        clearAttemptTimers();
         if (markersResult !== null) return buildSnapshot();
         return undefined;
       }
     },
-    needMap ? 10500 : 7500
+    needMap ? 10500 : 8500
   );
 }
 
@@ -1644,9 +1692,13 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   const prevInfo = squadState.rustPlusTelemetry?.serverInfo || {};
   const mapSize = Number(snapshot?.info?.mapSize || cfg?.mapSize || prevInfo.mapSize || 4250);
   const serverKey = `${cfg?.serverId || cfg?.ip || 'live'}:${cfg?.port || '28082'}`;
-  const vmMarkers = (snapshot?.markers || []).filter(
-    (m) => m.type === 3 && Array.isArray(m.sellOrders) && m.sellOrders.length > 0
-  );
+  const rawMarkers = Array.isArray(snapshot?.markers) ? snapshot.markers : [];
+  const byType = {};
+  for (const m of rawMarkers) {
+    const tk = String(m?.type ?? 'u');
+    byType[tk] = (byType[tk] || 0) + 1;
+  }
+  const vmMarkers = rawMarkers.filter((m) => m.type === 3);
 
   const liveShops = [];
   const vendingPins = [];
@@ -1667,7 +1719,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     let inStockCount = 0;
     let stealCount = 0;
 
-    for (const so of mk.sellOrders) {
+    for (const so of mk.sellOrders || []) {
       const buyInfo = resolveRustItemInfo(so.itemId);
       const buyItem = so.itemIsBlueprint ? `${buyInfo.name} (BP)` : buyInfo.name;
       const buyQty = Math.max(1, Number(so.quantity) || 1);
@@ -1769,11 +1821,13 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     hasSeededShopSnapshot = true;
   }
 
-  // Decode Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Travelling Vendor)
+  // Decode Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Travelling Vendor, Named Event Zones)
   const liveEvents = [];
   const newEvents = [];
-  for (const mk of snapshot?.markers || []) {
-    const meta = RUST_EVENT_MARKER_META[mk.type];
+  for (const mk of rawMarkers) {
+    const meta = RUST_EVENT_MARKER_META[mk.type] || (mk.type === 7 && String(mk.name || '').trim()
+      ? { label: String(mk.name).trim(), icon: '📡', color: '#a855f7' }
+      : null);
     if (!meta) continue;
     const nx = Math.min(1, Math.max(0, mk.x / mapSize));
     const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
@@ -1927,6 +1981,17 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   const manualShops = (Array.isArray(squadState.customShops) ? squadState.customShops : []).filter(
     (cs) => cs && cs.liveSource !== 'rustplus'
   );
+  const markerSummary = {
+    total: rawMarkers.length,
+    byType,
+    vendingCount: vmMarkers.length,
+    ordersCount: liveShops.length,
+    eventsCount: liveEvents.length,
+    mode: snapshot?.mode || 'auto',
+    markerError: snapshot?.markerError || '',
+    updatedAt: nowTs
+  };
+
   squadState.customShops = [...liveShops, ...manualShops];
   squadState.rustPlusTelemetry = {
     serverInfo: nextServerInfo,
@@ -1937,7 +2002,8 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     teamMembers,
     mapNotes,
     teamChat,
-    smartDevices
+    smartDevices,
+    markerSummary
   };
   squadState.rustPlusShopConfig = {
     ...DEFAULT_STATE.rustPlusShopConfig,
@@ -1946,8 +2012,9 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     mapSize,
     ...(nextServerInfo.name ? { serverName: nextServerInfo.name } : {}),
     lastPolledAt: nowTs,
-    lastStatus: `🟢 Live Rust+ • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • 🛒 ${vmMarkers.length} shops • ⚡ ${liveEvents.length} events`
+    lastStatus: `🟢 Live Rust+ (${snapshot?.mode || 'relay'}) • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • 🛒 ${vmMarkers.length} shops (${liveShops.length} deals) • ⚡ ${liveEvents.length} events • 📍 ${rawMarkers.length} markers`
   };
+  console.log(`[Rust+] Sync OK (${snapshot?.mode}): server=${nextServerInfo.name || serverKey} markers=${rawMarkers.length} byType=${JSON.stringify(byType)} shops=${vmMarkers.length} orders=${liveShops.length} events=${liveEvents.length} team=${teamMembers.length}`);
   saveState(squadState);
   broadcastState('state_update');
 
@@ -3234,6 +3301,28 @@ const server = http.createServer(async (req, res) => {
       saveState(squadState);
       broadcastState('state_update');
       return sendJson(res, 200, { ok: true, smartDevices: list });
+    }
+
+    if (pathname === '/api/shops/rustplus/debug' && req.method === 'GET') {
+      const cfg = squadState.rustPlusShopConfig || {};
+      const tel = squadState.rustPlusTelemetry || {};
+      return sendJson(res, 200, {
+        ok: true,
+        hasAuthToken: Boolean(cfg.authToken),
+        serverId: cfg.serverId || '',
+        ip: cfg.ip || '',
+        port: cfg.port || '',
+        autoPoll: Boolean(cfg.autoPoll),
+        lastPolledAt: cfg.lastPolledAt || 0,
+        lastStatus: cfg.lastStatus || '',
+        pairedServersCount: Array.isArray(cfg.pairedServers) ? cfg.pairedServers.length : 0,
+        serverInfo: tel.serverInfo || null,
+        markerSummary: tel.markerSummary || null,
+        vendingPinsCount: Array.isArray(tel.vendingPins) ? tel.vendingPins.length : 0,
+        liveEventsCount: Array.isArray(tel.liveEvents) ? tel.liveEvents.length : 0,
+        teamMembersCount: Array.isArray(tel.teamMembers) ? tel.teamMembers.length : 0,
+        customShopsCount: Array.isArray(squadState.customShops) ? squadState.customShops.length : 0
+      });
     }
 
     if (pathname === '/api/shops/rustplus/poll' && req.method === 'POST') {
