@@ -3299,6 +3299,126 @@
   // =========================================================================
   // MODULE 2: MONUMENT GUIDE (KEYCARDS, FUSES, CRATES & RESPAWN TIMERS)
   // =========================================================================
+  function renderNpcCheeseDiagramSvg(diagramKey) {
+    const diagrams = {
+      crane_funnel: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <rect x="18" y="22" width="76" height="28" rx="4" fill="#1e293b" stroke="#f59e0b" stroke-width="1.6"/>
+          <text x="56" y="39" fill="#fde047" font-size="9.5" font-weight="700" text-anchor="middle">CRANE CAB / VENT</text>
+          <circle cx="56" cy="14" r="6" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
+          <text x="56" y="17" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <path d="M94 38 L195 84 L350 84" stroke="#94a3b8" stroke-width="3" fill="none" stroke-dasharray="4,3"/>
+          <text x="150" y="54" fill="#cbd5e1" font-size="8.5" text-anchor="middle">Stair Bottleneck</text>
+          <line x1="63" y1="16" x2="188" y2="75" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
+          <circle cx="192" cy="77" r="6" fill="#ef4444" stroke="#090b0e"/>
+          <circle cx="210" cy="77" r="6" fill="#ef4444" stroke="#090b0e"/>
+          <circle cx="228" cy="77" r="6" fill="#ef4444" stroke="#090b0e"/>
+          <text x="210" y="99" fill="#fca5a5" font-size="8.5" font-weight="700" text-anchor="middle">Heavies Clump + F1 Nades</text>
+          <rect x="292" y="64" width="44" height="20" rx="3" fill="#451a03" stroke="#f59e0b"/>
+          <text x="314" y="77" fill="#fde68a" font-size="8.5" font-weight="700" text-anchor="middle">🔒 CRATE</text>
+        </svg>`,
+      stair_grate: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <line x1="35" y1="36" x2="220" y2="36" stroke="#64748b" stroke-width="4"/>
+          <line x1="80" y1="36" x2="210" y2="36" stroke="#38bdf8" stroke-width="2" stroke-dasharray="3,4"/>
+          <text x="125" y="25" fill="#93c5fd" font-size="8.5" text-anchor="middle">Grate / Railing Gap (Half-Flight UP)</text>
+          <circle cx="62" cy="24" r="7" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
+          <text x="62" y="27" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <line x1="69" y1="26" x2="232" y2="85" stroke="#4ade80" stroke-width="1.8"/>
+          <line x1="160" y1="88" x2="345" y2="88" stroke="#64748b" stroke-width="4"/>
+          <circle cx="238" cy="86" r="6.5" fill="#ef4444" stroke="#090b0e"/>
+          <circle cx="262" cy="86" r="6.5" fill="#ef4444" stroke="#090b0e"/>
+          <line x1="232" y1="84" x2="155" y2="41" stroke="#f87171" stroke-width="1.4" stroke-dasharray="3,3"/>
+          <text x="195" y="64" fill="#fca5a5" font-size="8.5" text-anchor="middle">AI shots blocked by lower stairs</text>
+          <text x="275" y="106" fill="#e2e8f0" font-size="8.5" font-weight="700" text-anchor="middle">Open Door → Step Back to Corner</text>
+        </svg>`,
+      doorway_peek: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <rect x="112" y="14" width="18" height="44" fill="#475569" stroke="#94a3b8"/>
+          <rect x="112" y="76" width="18" height="32" fill="#475569" stroke="#94a3b8"/>
+          <text x="121" y="70" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">DOOR</text>
+          <circle cx="80" cy="48" r="7" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
+          <text x="80" y="51" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <text x="64" y="34" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">Right-Peek</text>
+          <text x="64" y="74" fill="#94a3b8" font-size="8" text-anchor="middle">Solid Cover</text>
+          <line x1="88" y1="50" x2="262" y2="66" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
+          <rect x="266" y="50" width="52" height="30" rx="4" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.6"/>
+          <text x="292" y="68" fill="#fecaca" font-size="8.5" font-weight="700" text-anchor="middle">NPC / TANK</text>
+          <line x1="266" y1="58" x2="132" y2="34" stroke="#f87171" stroke-width="1.4" stroke-dasharray="3,3"/>
+          <text x="200" y="106" fill="#cbd5e1" font-size="8.5" text-anchor="middle">Break LOS behind concrete 4s → Step out → Peek / HV</text>
+        </svg>`,
+      ridge_snipe: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <polygon points="10,104 10,44 92,44 142,88 370,88 370,104" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+          <circle cx="58" cy="36" r="7" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
+          <text x="58" y="39" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <text x="54" y="22" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">Rock Ridge / Rim</text>
+          <line x1="158" y1="24" x2="158" y2="96" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="4,3"/>
+          <text x="163" y="28" fill="#fde047" font-size="8" font-weight="700">AI Chase Boundary</text>
+          <line x1="66" y1="36" x2="270" y2="78" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
+          <circle cx="275" cy="79" r="6" fill="#ef4444"/>
+          <circle cx="305" cy="79" r="6" fill="#ef4444"/>
+          <circle cx="332" cy="79" r="6" fill="#ef4444"/>
+          <text x="295" y="66" fill="#fca5a5" font-size="8.5" font-weight="700" text-anchor="middle">Roam AI Won't Climb Out</text>
+        </svg>`,
+      moonpool_door: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <rect x="20" y="68" width="90" height="38" fill="#0c4a6e" stroke="#38bdf8"/>
+          <text x="65" y="90" fill="#bae6fd" font-size="8.5" font-weight="700" text-anchor="middle">🌊 MOONPOOL SAFE</text>
+          <rect x="110" y="24" width="246" height="44" fill="#1e293b" stroke="#64748b"/>
+          <line x1="210" y1="24" x2="210" y2="48" stroke="#f59e0b" stroke-width="3"/>
+          <text x="210" y="18" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">Crack Bulkhead Door</text>
+          <circle cx="152" cy="52" r="7" fill="#22c55e"/>
+          <text x="152" y="55" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <line x1="160" y1="52" x2="295" y2="52" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
+          <circle cx="302" cy="52" r="6.5" fill="#ef4444"/>
+          <text x="302" y="38" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">1-Way Funnel</text>
+          <text x="240" y="92" fill="#94a3b8" font-size="8.5" text-anchor="middle">Drop down water ladder anytime to heal</text>
+        </svg>`,
+      cargo_bridge: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <polygon points="36,88 310,88 352,58 72,58" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
+          <rect x="128" y="42" width="48" height="16" rx="2" fill="#ca8a04" stroke="#fde047"/>
+          <text x="152" y="53" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">CONTAINERS</text>
+          <rect x="242" y="24" width="54" height="34" rx="3" fill="#334155" stroke="#94a3b8"/>
+          <text x="269" y="44" fill="#f8fafc" font-size="8.5" font-weight="700" text-anchor="middle">BRIDGE</text>
+          <circle cx="96" cy="50" r="7" fill="#22c55e"/>
+          <text x="96" y="53" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <line x1="103" y1="50" x2="236" y2="48" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
+          <circle cx="242" cy="48" r="6" fill="#ef4444"/>
+          <text x="195" y="106" fill="#bae6fd" font-size="8.5" font-weight="700" text-anchor="middle">Stern Board → Container Peek → Hold Bridge Stairs (Sub Escape)</text>
+        </svg>`,
+      heli_tower: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <rect x="28" y="32" width="58" height="72" rx="3" fill="#1e293b" stroke="#4ade80" stroke-width="1.6"/>
+          <text x="57" y="52" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">TC-AUTH</text>
+          <text x="57" y="64" fill="#cbd5e1" font-size="8" text-anchor="middle">Embrasures</text>
+          <text x="57" y="92" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">No Rockets!</text>
+          <circle cx="76" cy="40" r="6" fill="#22c55e"/>
+          <ellipse cx="268" cy="42" rx="34" ry="12" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.6"/>
+          <line x1="226" y1="24" x2="310" y2="24" stroke="#f59e0b" stroke-width="3"/>
+          <text x="268" y="17" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle">Main Rotor (900 HP)</text>
+          <line x1="302" y1="42" x2="342" y2="38" stroke="#ef4444" stroke-width="4"/>
+          <circle cx="344" cy="38" r="6" fill="none" stroke="#f59e0b" stroke-width="2"/>
+          <text x="336" y="57" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">Tail (500 HP)</text>
+          <line x1="82" y1="39" x2="262" y2="25" stroke="#4ade80" stroke-width="1.7" stroke-dasharray="5,3"/>
+          <line x1="82" y1="41" x2="338" y2="38" stroke="#4ade80" stroke-width="1.4" stroke-dasharray="4,4"/>
+        </svg>`,
+      safe_zone: `
+        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
+          <rect x="132" y="20" width="180" height="80" rx="8" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-dasharray="5,3"/>
+          <text x="222" y="38" fill="#86efac" font-size="9" font-weight="700" text-anchor="middle">SAFE ZONE PERIMETER</text>
+          <text x="222" y="56" fill="#e2e8f0" font-size="8.5" text-anchor="middle">Holster Weapons &gt;5s Outside</text>
+          <text x="222" y="72" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle">Buy Blue Card (100) + F1 Nades (8 Scrap)</text>
+          <text x="222" y="88" fill="#fca5a5" font-size="8" text-anchor="middle">Do NOT farm barrels in Sentry LOS (30m ban)</text>
+          <circle cx="72" cy="60" r="7" fill="#22c55e"/>
+          <text x="72" y="63" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
+          <line x1="80" y1="60" x2="128" y2="60" stroke="#4ade80" stroke-width="1.8"/>
+        </svg>`
+    };
+    return diagrams[diagramKey] || diagrams.doorway_peek;
+  }
+
   function renderMonumentAtlas() {
     const detailEl = document.getElementById('selectedMonumentDetail');
     const listEl = document.getElementById('monumentAtlasList');
@@ -3373,12 +3493,19 @@
           </div>`
         : '';
 
+      const cheeseVideoUrl = m.npcCheese?.videoQuery
+        ? `https://www.youtube.com/results?search_query=${encodeURIComponent(m.npcCheese.videoQuery)}`
+        : '';
       const npcCheeseHtml = m.npcCheese
         ? `<div style="margin-top:12px; padding:11px 12px; border-radius:6px; background:rgba(168, 85, 247, 0.1); border:1px solid rgba(168, 85, 247, 0.45);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
               <strong style="font-size:12.5px; color:#e9d5ff;">🥷 NPC CHEESE &amp; SAFE CLEAR PLAYBOOK</strong>
-              <span style="font-family:var(--font-mono); font-size:10.5px; color:#c084fc;">AI Pathing &amp; Angle Control</span>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                ${cheeseVideoUrl ? `<a href="${cheeseVideoUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.45); color:#fecaca; text-decoration:none; font-weight:700;">🎥 Watch Clip Guides ↗</a>` : ''}
+                ${m.rusthelpUrl ? `<a href="${m.rusthelpUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(59,130,246,0.18); border:1px solid rgba(96,165,250,0.45); color:#bfdbfe; text-decoration:none; font-weight:700;">📖 RustHelp ↗</a>` : ''}
+              </div>
             </div>
+            ${m.npcCheese.diagram ? renderNpcCheeseDiagramSvg(m.npcCheese.diagram) : ''}
             <div style="font-size:11.5px; color:#cbd5e1; margin-bottom:4px;">
               <strong style="color:#fca5a5;">Threat:</strong> ${escapeHtml(m.npcCheese.aiThreat)}
             </div>
@@ -3510,17 +3637,22 @@
         </div>
         <div class="grid-2" style="gap:12px;">
           ${DATA.bossNpcCheese
-            .map(
-              (b) => `
+            .map((b) => {
+              const bUrl = b.videoQuery ? `https://www.youtube.com/results?search_query=${encodeURIComponent(b.videoQuery)}` : '';
+              return `
                 <div style="padding:12px; border-radius:7px; background:rgba(168, 85, 247, 0.08); border:1px solid rgba(168, 85, 247, 0.35);">
-                  <div style="font-weight:700; font-size:13.5px; color:#fff; margin-bottom:4px;">${escapeHtml(b.name)}</div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+                    <div style="font-weight:700; font-size:13.5px; color:#fff;">${escapeHtml(b.name)}</div>
+                    ${bUrl ? `<a href="${bUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.45); color:#fecaca; text-decoration:none; font-weight:700;">🎥 Watch Clips ↗</a>` : ''}
+                  </div>
+                  ${b.diagram ? renderNpcCheeseDiagramSvg(b.diagram) : ''}
                   <div style="font-size:11px; color:#fca5a5; margin-bottom:3px;"><strong>Threat:</strong> ${escapeHtml(b.threat)}</div>
                   <div style="font-size:11px; color:#86efac; margin-bottom:7px;"><strong>Kit:</strong> ${escapeHtml(b.kit)}</div>
                   <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:#cbd5e1; line-height:1.45;">
                     ${(b.tips || []).map((t) => `<li>${escapeHtml(t)}</li>`).join('')}
                   </ul>
-                </div>`
-            )
+                </div>`;
+            })
             .join('')}
         </div>`;
     }

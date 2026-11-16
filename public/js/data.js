@@ -1268,6 +1268,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 3, normal: 4, diesel: 0 },
       utilities: ['Computer Station', 'MLRS Aiming Terminal (Variant)', 'CCTV: COMPOUND****', 'No Recycler'],
       npcCheese: {
+        diagram: 'ridge_snipe',
+        videoQuery: 'rust abandoned military base solo scientist cheese',
         aiThreat: '~7× Desert Military Scientists (LR-300 / M92, Roaming)',
         recommendedKit: 'Compound Bow / SAR + Bandages + Leather/Roadsign',
         tips: [
@@ -1297,6 +1299,8 @@ window.RUST_DATA = {
       powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Small Oil Refinery', 'Cargo Ship Docking', 'Stage 1 Power Grid Room (1 Heavy Fuse)'],
       npcCheese: {
+        diagram: 'cargo_bridge',
+        videoQuery: 'rust cargo ship harbor dock scientist cheese',
         aiThreat: '0 Normally (Cargo Ship Scientists ~16x ONLY when Cargo docks for 10m)',
         recommendedKit: 'Crossbow / DB / SAR — hold shipping container roofs',
         tips: [
@@ -1432,6 +1436,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 5, normal: 18, diesel: 0 },
       utilities: ['1x Green Recycler', 'Snowmobile Puzzle Spawn', '10x Arctic Scientists'],
       npcCheese: {
+        diagram: 'ridge_snipe',
+        videoQuery: 'rust arctic research base solo cheese scientists',
         aiThreat: '10× Cold-Weather Arctic Scientists (Roam courtyard & garages)',
         recommendedKit: 'Compound Bow or Silenced SAR + Jacket/Hazmat + Heat Packs',
         tips: [
@@ -1485,6 +1491,8 @@ window.RUST_DATA = {
       powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['1x Green Recycler', 'Coaling Tower Unloader', '4x Scientists', 'Stage 2 Power Grid Room (4 Heavy Fuses)'],
       npcCheese: {
+        diagram: 'doorway_peek',
+        videoQuery: 'rust train yard scientist puzzle solo guide',
         aiThreat: '4× Yard Tunnel Scientists (spawn near Coaling Tower / Fuse area)',
         recommendedKit: 'Crossbow + Nailgun or Revolver / SAR',
         tips: [
@@ -1513,6 +1521,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 5, normal: 18, diesel: 3 },
       utilities: ['2x Green Recyclers', 'Tunnel Entrance', 'Chinook Drop Zone', '3x Motorbike Spawns'],
       npcCheese: {
+        diagram: 'doorway_peek',
+        videoQuery: 'rust airfield blue room scientists trap',
         aiThreat: '3× Underground Blue-Room Scientists (spawn on Blue Door swipe)',
         recommendedKit: 'DB / Pump Shotgun or SMG / SAR + Torch/NVG',
         tips: [
@@ -1563,6 +1573,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 4, normal: 14, diesel: 0 },
       utilities: ['1x Green Recycler', 'Diesel Mining Arm (120s/Barrel)', 'Supply Drop Signal Computer', 'Tunnel Entrance'],
       npcCheese: {
+        diagram: 'ridge_snipe',
+        videoQuery: 'rust giant excavator solo cheese compound bow',
         aiThreat: '18× Excavator Pit Scientists (Heavy pit roamers + upper walkway guards)',
         recommendedKit: 'Compound Bow / Bolt / SAR (8x/Holo helpful) + Meds',
         tips: [
@@ -1593,6 +1605,8 @@ window.RUST_DATA = {
       powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['No Recycler', '2x Blueprint Books (NEW)', 'Computer Station & Telephone', 'CCTV: SILOEXIT1/2, SILOMISSILE, SILOSHIPPING, SILOTOWER'],
       npcCheese: {
+        diagram: 'stair_grate',
+        videoQuery: 'rust missile silo stairwell cheese solo',
         aiThreat: '4× Outside Scientists + 23× Underground Silo Scientists (tight CQB + grenades)',
         recommendedKit: 'MP5/SAR/Thommy + Shotgun/Flashlight + Hazmat + 6+ Syringes',
         tips: [
@@ -1625,6 +1639,8 @@ window.RUST_DATA = {
       powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', 'Bradley APC (7 HV Rockets)', 'Stage 3 Powered Loot Room (8 Crates)'],
       npcCheese: {
+        diagram: 'doorway_peek',
+        videoQuery: 'rust bradley apc hv rocket cheese cobalt launch site',
         aiThreat: 'Bradley APC (7 HV Rockets) + 8× Rocket Factory Scientists',
         recommendedKit: 'Rocket Launcher + 7× HV Rockets + SAR/MP5 + Hazmat + Jug of Water',
         tips: [
@@ -1655,6 +1671,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 6, military: 8, normal: 14, diesel: 3 },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', '33x Scientist Spawns'],
       npcCheese: {
+        diagram: 'doorway_peek',
+        videoQuery: 'rust military tunnels solo cheese fuse room train',
         aiThreat: '33× Tunnel Scientists (Heavy F1 Grenade spam + fast lane pushes)',
         recommendedKit: 'SAR/MP5/Thommy (Flashlight/NVG) + 6–8 Syringes + 30+ Bandages',
         tips: [
@@ -1684,6 +1702,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 2, military: 6, normal: 12, diesel: 0 },
       utilities: ['No Recycler', 'Blueprint Books & Pages (NEW)', 'CCTV: LAB****'],
       npcCheese: {
+        diagram: 'moonpool_door',
+        videoQuery: 'rust underwater labs solo scientist cheese',
         aiThreat: '~4–8× Underwater Lab Dwellers (Modular hallway ambushers)',
         recommendedKit: 'Pump/DB Shotgun or MP5 + Compound Bow + Diving Tank/Flippers',
         tips: [
@@ -1713,6 +1733,8 @@ window.RUST_DATA = {
       crates: { locked: 1, elite: 1, military: 5, normal: 10, diesel: 0 },
       utilities: ['No Recycler', '15m Hackable Locked Crate', '15x Scientists + 6x Heavy Scientists', 'CCTV: OILRIG1DOCK/HELI/L1-L4'],
       npcCheese: {
+        diagram: 'crane_funnel',
+        videoQuery: 'rust small oil rig crane cheese heavy scientists bow',
         aiThreat: '15× Oil Rig Scientists (L1–L4) + 6× Heavy Scientists (after Locked Crate trigger)',
         recommendedKit: 'Budget Solo: Compound Bow + Nailgun/Revolver + 2× F1 Grenades ( bandies/cloth ) OR SAR + 40 5.56',
         tips: [
@@ -1742,6 +1764,8 @@ window.RUST_DATA = {
       crates: { locked: 1, elite: 2, military: 8, normal: 10, diesel: 4 },
       utilities: ['No Recycler', 'Research Table', '15m Hackable Locked Crate', '27x Scientists + 12x Heavy Scientists', 'CCTV: OILRIG2DOCK/EXHAUST/HELI/L1-L6'],
       npcCheese: {
+        diagram: 'crane_funnel',
+        videoQuery: 'rust large oil rig crane cheese heavy scientists solo',
         aiThreat: '27× Oil Rig Scientists (L1–L6) + 12× Heavy Scientists (M249/Minigun/SPAS)',
         recommendedKit: 'Compound Bow + SAR/AK + 3× F1 Grenades + Hazmat + 6+ Syringes + Cloth',
         tips: [
@@ -1772,6 +1796,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['3x Yellow Recyclers (40% Safe)', '2x Tier 1 Workbenches', 'Research Table & Repair Bench', '7x NPC Vending Shops (Blue Card = 100 Scrap)', 'Missions: CZ-721 & Vagabond'],
       npcCheese: {
+        diagram: 'safe_zone',
+        videoQuery: 'rust outpost cz721 oil rig mission tips',
         aiThreat: 'Safe Zone Peacekeeper Sentries (Instant laser kill + 30m hostility cooldown)',
         recommendedKit: 'Holster everything >5s away from fence — zero barrels/pigs hit in sight',
         tips: [
@@ -1801,6 +1827,8 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['2x Yellow Recyclers (40% Safe)', 'Tier 1 Workbench & Clan Table', 'Research Table & Repair Bench', 'Airwolf Heli Vendor & Casino', 'CCTV: AIRWOLF, CASINO, TOWNWEAPONS'],
       npcCheese: {
+        diagram: 'safe_zone',
+        videoQuery: 'rust bandit camp f1 grenade fertilizer scrap',
         aiThreat: 'Bandit Guards (AI with LRs — hostile 30m if weapon drawn)',
         recommendedKit: 'Keep hotbar clean; bring Scrap / Horse Fertilizer',
         tips: [
@@ -1817,6 +1845,8 @@ window.RUST_DATA = {
   bossNpcCheese: [
     {
       name: '🚁 Patrol Helicopter (Attack Heli)',
+      diagram: 'heli_tower',
+      videoQuery: 'rust patrol helicopter solo take down cheese tower',
       threat: '10,000 HP (Main Rotor 900 HP / Tail Rotor 500 HP — 2× damage weakspots)',
       kit: 'Dedicated Stone/Metal Shooting Floor (TC-Authed!) + Window Embrasures + SAR / M249 / HMLMG',
       tips: [
@@ -1827,6 +1857,8 @@ window.RUST_DATA = {
     },
     {
       name: '🚢 Cargo Ship (Offshore Sea Boss)',
+      diagram: 'cargo_bridge',
+      videoQuery: 'rust cargo ship solo cheese boarding',
       threat: '~16× Deck & Cabin Scientists + up to 3–4× Locked Crates (10m horn intervals)',
       kit: 'Crossbow/Compound + SAR/SMG + Boat/Sub/Mini + 2× F1 Grenades',
       tips: [
