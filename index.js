@@ -500,9 +500,16 @@ const server = http.createServer(async (req, res) => {
           buildingBlockAreaUrl: mapData.buildingBlockAreaUrl || '',
           buildingBlockArea,
           biomePercentages: mapData.biomePercentages || {},
+          waterPipeMarkers: Array.isArray(mapData.waterPipeMarkers) ? mapData.waterPipeMarkers : [],
           heatMaps: (Array.isArray(mapData.heatMaps) ? mapData.heatMaps : []).reduce((acc, h) => {
             if (h?.name && h?.url) {
               acc[h.name] = h.url.endsWith('/') ? `${h.url}0/0/0.png` : `${h.url}/0/0/0.png`;
+            }
+            return acc;
+          }, {}),
+          heatMapBaseUrls: (Array.isArray(mapData.heatMaps) ? mapData.heatMaps : []).reduce((acc, h) => {
+            if (h?.name && h?.url) {
+              acc[h.name] = h.url.endsWith('/') ? h.url : `${h.url}/`;
             }
             return acc;
           }, {}),

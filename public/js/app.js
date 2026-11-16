@@ -3175,24 +3175,22 @@
 
       const realMatches =
         bfMapData && Array.isArray(bfMapData.monuments)
-          ? bfMapData.monuments.filter((rm) => {
-              const rt = String(rm.type || '').toLowerCase();
-              const mn = String(m.name || '').toLowerCase();
-              return rt.includes(mn) || mn.includes(rt) || (m.id === 'powerplant' && rt.includes('powerplant')) || (m.id === 'dome' && rt.includes('sphere tank')) || (m.id === 'water_treatment' && rt.includes('water treatment'));
-            })
+          ? bfMapData.monuments.filter((rm) => bfDoesMonumentMatchAtlas(rm.type, m))
           : [];
       const selSpot = getSelectedBuildSpot();
       const resolvedGrids = realMatches.map((rm) => bfWorldToGrid(rm.x, rm.y, bfMapData.size));
-      const activeGrid = resolvedGrids[0] || m.defaultPos.grid;
+      const activeGrid = resolvedGrids[0] || (bfMapData ? 'N/A' : m.defaultPos.grid);
       const gridBadgeText =
-        realMatches.length > 0
-          ? realMatches
-              .map((rm, idx) => {
-                const g = resolvedGrids[idx];
-                const d = selSpot ? ` (${Math.round(Math.hypot(rm.x - selSpot.wx, rm.y - selSpot.wy))}m)` : '';
-                return `[${g}]${d}`;
-              })
-              .join(' • ')
+        bfMapData
+          ? realMatches.length > 0
+            ? realMatches
+                .map((rm, idx) => {
+                  const g = resolvedGrids[idx];
+                  const d = selSpot ? ` (${Math.round(Math.hypot(rm.x - selSpot.wx, rm.y - selSpot.wy))}m)` : '';
+                  return `[${g}]${d}`;
+                })
+                .join(' • ')
+            : '[N/A on Map]'
           : `[${m.defaultPos.grid}]`;
 
       detailEl.innerHTML = `
@@ -3257,11 +3255,21 @@
           item.fusesNeeded > 0
             ? `<span class="keycard-tag keycard-Fuse">🔌 ${item.fusesNeeded} Fuse</span>`
             : `<span class="keycard-tag keycard-Green">✅ 0 Fuse</span>`;
+        let listGridText = `[${item.defaultPos.grid}]`;
+        if (bfMapData && Array.isArray(bfMapData.monuments)) {
+          const itemMatches = bfMapData.monuments.filter((rm) => bfDoesMonumentMatchAtlas(rm.type, item));
+          if (itemMatches.length > 0) {
+            const grids = Array.from(new Set(itemMatches.map((rm) => bfWorldToGrid(rm.x, rm.y, bfMapData.size))));
+            listGridText = grids.length <= 2 ? `[${grids.join(', ')}]` : `[${grids.slice(0, 2).join(', ')} +${grids.length - 2}]`;
+          } else {
+            listGridText = '[—]';
+          }
+        }
         return `
           <div class="monument-item ${isAct ? 'active' : ''}" data-mid="${item.id}">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <div style="font-family:var(--font-display); font-weight:700; font-size:14px; color:#fff;">
-                ${item.name} <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">[${item.defaultPos.grid}]</span>
+                ${item.name} <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">${listGridText}</span>
               </div>
               ${fusePill}
             </div>
@@ -6069,12 +6077,106 @@
     return s;
   }
 
+  function bfGridCount(mapSize) {
+    return Math.max(1, Math.floor(((mapSize || 4000) * 7) / 1024));
+  }
+
   function bfWorldToGrid(wx, wy, mapSize) {
-    const count = Math.max(1, Math.ceil(mapSize / 150));
+    const count = bfGridCount(mapSize);
     const cellSize = mapSize / count;
     const col = Math.min(count - 1, Math.max(0, Math.floor((wx + mapSize / 2) / cellSize)));
     const row = Math.min(count - 1, Math.max(0, Math.floor((mapSize / 2 - wy) / cellSize)));
     return `${bfColLabel(col)}${row}`;
+  }
+
+  function bfWorldToSubGrid(wx, wy, mapSize) {
+    const count = bfGridCount(mapSize);
+    const cellSize = mapSize / count;
+    const gxFloat = (wx + mapSize / 2) / cellSize;
+    const gyFloat = (mapSize / 2 - wy) / cellSize;
+    const col = Math.min(count - 1, Math.max(0, Math.floor(gxFloat)));
+    const row = Math.min(count - 1, Math.max(0, Math.floor(gyFloat)));
+    const u = Math.max(0, Math.min(0.999, gxFloat - col));
+    const v = Math.max(0, Math.min(0.999, gyFloat - row));
+    const ns = v < 0.34 ? 'N' : v > 0.66 ? 'S' : '';
+    const ew = u < 0.34 ? 'W' : u > 0.66 ? 'E' : '';
+    const quad = `${ns}${ew}` || 'Center';
+    return `${bfColLabel(col)}${row}·${quad}`;
+  }
+
+  function bfIsOffshoreTarget(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return t.includes('underwater lab') || t.includes('oil');
+  }
+
+  function bfDoesMonumentMatchAtlas(rmType, atlasItem) {
+    if (!atlasItem) return false;
+    const rt = String(rmType || '').toLowerCase();
+    const id = String(atlasItem.id || '').toLowerCase();
+    switch (id) {
+      case 'lighthouse':
+        return rt.includes('lighthouse');
+      case 'supermarket':
+        return rt.includes('supermarket');
+      case 'gas_station':
+        return rt.includes('gas station');
+      case 'mining_outpost':
+        return rt.includes('warehouse') || rt.includes('mining outpost');
+      case 'water_well':
+        return rt.includes('water well');
+      case 'abandoned_cabins':
+        return rt.includes('cabins') || rt.includes('swamp');
+      case 'junkyard':
+        return rt.includes('junkyard');
+      case 'jungle_ziggurat':
+        return rt.includes('ziggurat');
+      case 'abandoned_military_base':
+        return rt.includes('military base') || rt.includes('abandoned military');
+      case 'harbor':
+        return rt.includes('harbor');
+      case 'ferry_terminal':
+        return rt.includes('ferry');
+      case 'radtown':
+        return rt.includes('radtown');
+      case 'the_dome':
+        return rt.includes('sphere tank') || rt.includes('dome');
+      case 'sewer_branch':
+        return bfIsSewerBranch(rt);
+      case 'satellite_dish':
+        return rt.includes('satellite');
+      case 'arctic_research':
+        return rt.includes('arctic research');
+      case 'water_treatment':
+        return rt.includes('water treatment');
+      case 'train_yard':
+        return rt.includes('trainyard') || rt.includes('train yard');
+      case 'airfield':
+        return rt.includes('airfield');
+      case 'power_plant':
+        return rt.includes('powerplant') || rt.includes('power plant');
+      case 'giant_excavator':
+        return rt.includes('excavator');
+      case 'missile_silo':
+        return rt.includes('missile silo');
+      case 'launch_site':
+        return rt.includes('launch site');
+      case 'military_tunnels':
+        return rt.includes('military tunnel');
+      case 'underwater_labs':
+        return rt.includes('underwater lab');
+      case 'small_oil_rig':
+        return rt.includes('small oil') || rt.includes('oilrig_small') || (rt.includes('oil') && !rt.includes('large'));
+      case 'large_oil_rig':
+        return rt.includes('large oil') || rt.includes('oilrig_large');
+      case 'outpost':
+        return rt.includes('outpost') && !rt.includes('mining');
+      case 'bandit_camp':
+        return rt.includes('bandit');
+      default: {
+        const mn = String(atlasItem.name || '').toLowerCase();
+        return !rt.includes('cave') && (rt.includes(mn) || mn.includes(rt));
+      }
+    }
   }
 
   function bfMatchesTarget(typeStr, targetKey) {
@@ -6083,27 +6185,42 @@
     if (targetKey === 'water_treatment') return t.includes('water treatment');
     if (targetKey === 'train_yard') return t.includes('train yard') || t.includes('trainyard');
     if (targetKey === 'airfield') return t.includes('airfield');
+    if (targetKey === 'arctic_research') return t.includes('arctic research');
+    if (targetKey === 'the_dome') return t.includes('sphere tank') || t.includes('dome');
+    if (targetKey === 'radtown') return t.includes('radtown');
+    if (targetKey === 'abandoned_military') return t.includes('military base') || t.includes('abandoned military');
     if (targetKey === 'launch_site') return t.includes('launch site');
     if (targetKey === 'missile_silo') return t.includes('missile silo');
     if (targetKey === 'military_tunnels') return t.includes('military tunnel');
-    if (targetKey === 'sewer_branch') return t.includes('sewer branch');
+    if (targetKey === 'sewer_branch') return bfIsSewerBranch(t);
+    if (targetKey === 'ferry_terminal') return t.includes('ferry');
+    if (targetKey === 'harbor') return t.includes('harbor');
     if (targetKey === 'underwater_lab') return t.includes('underwater lab');
     if (targetKey === 'large_oil_rig') return t.includes('large oil') || t.includes('oilrig_large');
     if (targetKey === 'small_oil_rig') return t.includes('small oil') || t.includes('oilrig_small') || (t.includes('oil rig') && !t.includes('large'));
     return false;
   }
 
-  function bfIsHighTraffic(typeStr) {
+  function bfIsZergHub(typeStr) {
     const t = String(typeStr || '').toLowerCase();
     return (
-      t.includes('outpost') ||
+      (t.includes('outpost') && !t.includes('mining')) ||
       t.includes('bandit') ||
       t.includes('launch site') ||
       t.includes('missile silo') ||
       t.includes('military tunnel') ||
       t.includes('excavator') ||
+      t.includes('sulfur quarry')
+    );
+  }
+
+  function bfIsHighTraffic(typeStr) {
+    const t = String(typeStr || '').toLowerCase();
+    return (
+      bfIsZergHub(t) ||
       t.includes('airfield') ||
       t.includes('train yard') ||
+      t.includes('trainyard') ||
       t.includes('arctic research')
     );
   }
@@ -6122,8 +6239,9 @@
   function bfTier2ProgWeight(typeStr) {
     const t = String(typeStr || '').toLowerCase();
     if (t.includes('water treatment') || t.includes('powerplant') || t.includes('power plant')) return 1.0;
-    if (t.includes('train yard') || t.includes('airfield')) return 0.94;
-    if (t.includes('sphere tank') || t.includes('arctic research') || t.includes('abandoned military')) return 0.88;
+    if (t.includes('train yard') || t.includes('trainyard') || t.includes('airfield')) return 0.94;
+    if (t.includes('sphere tank') || t.includes('arctic research') || t.includes('abandoned military') || t.includes('military base') || t.includes('apartments')) return 0.88;
+    if (t.includes('radtown')) return 0.85;
     return 0;
   }
 
@@ -6132,7 +6250,7 @@
     return !t.includes('cave') && (t.includes('sewer branch') || t.includes('sewer_branch'));
   }
 
-  // Tier 0/1 support monuments (Green card, early scrap/recycler, or Metro tunnel access)
+  // Tier 0/1 support monuments (Green card, early scrap/recycler, or Starter POI)
   function bfIsTier01Support(typeStr) {
     const t = String(typeStr || '').toLowerCase();
     return (
@@ -6145,7 +6263,8 @@
       t.includes('harbor') ||
       t.includes('ferry') ||
       t.includes('lighthouse') ||
-      t.includes('tunnel')
+      t.includes('radtown') ||
+      t.includes('ziggurat')
     );
   }
 
@@ -6162,11 +6281,12 @@
       t.includes('water treatment') ||
       t.includes('train yard') ||
       t.includes('trainyard') ||
-      t.includes('outpost') ||
+      (t.includes('outpost') && !t.includes('mining')) ||
       t.includes('bandit') ||
       t.includes('missile silo') ||
       t.includes('military tunnel') ||
       t.includes('military base') ||
+      t.includes('apartments') ||
       t.includes('arctic research') ||
       t.includes('ferry')
     ) {
@@ -6231,7 +6351,7 @@
         const y = Number(s?.center?.y);
         const r = Number(s?.radius);
         if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(r) || r <= 0) continue;
-        spheres.push({ x, y, r, isLarge: r >= 20 });
+        spheres.push({ x, y, r, isLarge: r >= 35 });
       }
     }
     if (bb && Array.isArray(bb.boxes)) {
@@ -6251,8 +6371,9 @@
         }
         const edge0 = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
         const edge1 = Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y);
+        const minDim = Math.min(edge0, edge1);
         const maxDim = Math.max(edge0, edge1);
-        boxes.push({ corners, minX, maxX, minY, maxY, maxDim, isLarge: maxDim >= 20 });
+        boxes.push({ corners, minX, maxX, minY, maxY, minDim, maxDim, isLarge: minDim >= 35 });
       }
     }
     const fallback = (data?.monuments || [])
@@ -6281,24 +6402,11 @@
         }
       }
       for (const b of bfNoBuildColliders.boxes) {
+        const dx = Math.max(0, b.minX - wx, wx - b.maxX);
+        const dy = Math.max(0, b.minY - wy, wy - b.maxY);
+        const aabbDist = Math.hypot(dx, dy);
         const margin = b.isLarge ? Math.max(majorMargin, 10) : Math.max(minorMargin, 10);
-        if (wx < b.minX - margin && b.isLarge) {
-          const fastX = b.minX - wx;
-          if (fastX < minMajorEdge) minMajorEdge = Math.min(minMajorEdge, Math.hypot(fastX, Math.max(0, b.minY - wy, wy - b.maxY)));
-          continue;
-        }
-        if (wx > b.maxX + margin && b.isLarge) {
-          const fastX = wx - b.maxX;
-          if (fastX < minMajorEdge) minMajorEdge = Math.min(minMajorEdge, Math.hypot(fastX, Math.max(0, b.minY - wy, wy - b.maxY)));
-          continue;
-        }
-        if (wy < b.minY - margin || wy > b.maxY + margin || wx < b.minX - margin || wx > b.maxX + margin) {
-          if (b.isLarge) {
-            const dx = Math.max(0, b.minX - wx, wx - b.maxX);
-            const dy = Math.max(0, b.minY - wy, wy - b.maxY);
-            const aabbDist = Math.hypot(dx, dy);
-            if (aabbDist < minMajorEdge) minMajorEdge = aabbDist;
-          }
+        if (aabbDist >= margin && (!b.isLarge || aabbDist >= minMajorEdge) && aabbDist >= minAnyEdge) {
           continue;
         }
         const edgeDist = bfPointToBoxDist(wx, wy, b);
@@ -6341,7 +6449,7 @@
     return { ok: true, minClearance: center.minClearance };
   }
 
-  function bfBuildLandMask(img, mapSize) {
+  function bfBuildLandMask(img, mapSize, monuments = bfMapData?.monuments || []) {
     const N = 240;
     const off = document.createElement('canvas');
     off.width = N;
@@ -6350,6 +6458,9 @@
     ctx.drawImage(img, 0, 0, N, N);
     const pixels = ctx.getImageData(0, 0, N, N).data;
     const isWater = new Uint8Array(N * N);
+    const isOcean = new Uint8Array(N * N);
+    const isHazard = new Uint8Array(N * N);
+    const biomeGrid = new Uint8Array(N * N);
     const lum = new Float32Array(N * N);
     const roughness = new Float32Array(N * N);
 
@@ -6357,10 +6468,19 @@
       const r = pixels[i * 4];
       const g = pixels[i * 4 + 1];
       const b = pixels[i * 4 + 2];
-      lum[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      // RustMaps ocean & rivers/lakes where Blue clearly exceeds Red
-      if (b > r + 14 && r < 105 && b > 65) {
+      const l = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      lum[i] = l;
+      // RustMaps ocean, shallow shelf & rivers/lakes where Blue/Cyan exceeds Red
+      if ((b > r + 12 && r < 135 && b > 65) || (b > r + 8 && g > r + 10 && r < 135 && b > 75)) {
         isWater[i] = 1;
+      } else if (r > 185 && g > 190 && b > 190 && Math.abs(r - b) < 22) {
+        biomeGrid[i] = 1; // Snow
+      } else if (r > 135 && r - b >= 28 && g >= b + 18 && l >= 0.46) {
+        biomeGrid[i] = 2; // Desert
+      } else if (g > r + 6 && g > b + 24 && l < 0.44) {
+        biomeGrid[i] = 4; // Jungle
+      } else if (l >= 0.50 && l < 0.78 && r - b < 28) {
+        biomeGrid[i] = 3; // Tundra
       }
     }
 
@@ -6379,11 +6499,60 @@
       }
     }
 
+    // Flood-fill true connected ocean from border cells so inland lakes/oases/rivers are excluded from coastDist
+    const queue = new Int32Array(N * N);
+    let qHead = 0;
+    let qTail = 0;
+    const pushOceanSeed = (idx) => {
+      if (isWater[idx] && !isOcean[idx]) {
+        isOcean[idx] = 1;
+        queue[qTail++] = idx;
+      }
+    };
+    for (let i = 0; i < N; i++) {
+      pushOceanSeed(i);
+      pushOceanSeed((N - 1) * N + i);
+      pushOceanSeed(i * N);
+      pushOceanSeed(i * N + (N - 1));
+    }
+    while (qHead < qTail) {
+      const cur = queue[qHead++];
+      const cx = cur % N;
+      const cy = (cur - cx) / N;
+      if (cx > 0) pushOceanSeed(cur - 1);
+      if (cx < N - 1) pushOceanSeed(cur + 1);
+      if (cy > 0) pushOceanSeed(cur - N);
+      if (cy < N - 1) pushOceanSeed(cur + N);
+    }
+
+    // Mark inland water basins (Lake, Oasis, Ice Lake, Swamp, Canyon) unbuildable after ocean flood-fill
+    if (Array.isArray(monuments) && mapSize > 0) {
+      const basinRadCells = Math.max(2, Math.round((75 / mapSize) * N));
+      for (const m of monuments) {
+        const mt = String(m?.type || '').toLowerCase();
+        if (!(mt.includes('lake') || mt.includes('oasis') || mt.includes('swamp') || mt.includes('canyon'))) continue;
+        const nx = (Number(m.x) || 0) / mapSize + 0.5;
+        const ny = 0.5 - (Number(m.y) || 0) / mapSize;
+        const cx = Math.round(nx * N);
+        const cy = Math.round(ny * N);
+        const r2 = basinRadCells * basinRadCells;
+        for (let dy = -basinRadCells; dy <= basinRadCells; dy++) {
+          const yy = cy + dy;
+          if (yy < 0 || yy >= N) continue;
+          for (let dx = -basinRadCells; dx <= basinRadCells; dx++) {
+            const xx = cx + dx;
+            if (xx < 0 || xx >= N || dx * dx + dy * dy > r2) continue;
+            isHazard[yy * N + xx] = 1;
+          }
+        }
+      }
+    }
+
     const oceanPts = [];
     for (let gy = 0; gy < N; gy++) {
       for (let gx = 0; gx < N; gx++) {
-        if (!isWater[gy * N + gx]) continue;
-        // Edge of water (adjacent to land) speeds up coastline distance checks
+        if (!isOcean[gy * N + gx]) continue;
+        // Edge of true ocean (adjacent to non-water land) speeds up Deep Sea coastline distance checks
         const hasLandNeighbor =
           (gx > 0 && !isWater[gy * N + (gx - 1)]) ||
           (gx < N - 1 && !isWater[gy * N + (gx + 1)]) ||
@@ -6396,7 +6565,22 @@
         }
       }
     }
-    return { N, isWater, roughness, oceanPts };
+    return { N, isWater, isOcean, isHazard, biomeGrid, roughness, oceanPts };
+  }
+
+  const BF_BIOME_NAMES = ['Forest', 'Snow', 'Desert', 'Tundra', 'Jungle'];
+
+  function bfGetBiomeLabel(mask, mapSize, wx, wy) {
+    if (!mask || !mask.biomeGrid || !mapSize) return '';
+    const nx = wx / mapSize + 0.5;
+    const ny = 0.5 - wy / mapSize;
+    if (nx < 0 || nx >= 1 || ny < 0 || ny >= 1) return 'Ocean';
+    const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
+    const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
+    const idx = my * mask.N + mx;
+    if (mask.isOcean && mask.isOcean[idx]) return 'Ocean';
+    if (mask.isWater && mask.isWater[idx]) return 'Water';
+    return BF_BIOME_NAMES[mask.biomeGrid[idx]] || 'Forest';
   }
 
   function bfIsPointWater(mask, mapSize, wx, wy) {
@@ -6427,16 +6611,18 @@
       if (nx <= 0.01 || nx >= 0.99 || ny <= 0.01 || ny >= 0.99) return { buildable: false, flatnessScore: 0 };
       const mx = Math.min(mask.N - 1, Math.max(0, Math.floor(nx * mask.N)));
       const my = Math.min(mask.N - 1, Math.max(0, Math.floor(ny * mask.N)));
-      if (mask.isWater[my * mask.N + mx]) return { buildable: false, flatnessScore: 0 };
-      // Center must also not border water directly
+      const cellIdx = my * mask.N + mx;
+      if (mask.isWater[cellIdx] || (mask.isHazard && mask.isHazard[cellIdx])) return { buildable: false, flatnessScore: 0 };
+      // Center must also not border water or hazard basins directly
       if (pIdx === 0) {
         for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
           const nmx = Math.min(mask.N - 1, Math.max(0, mx + dx));
           const nmy = Math.min(mask.N - 1, Math.max(0, my + dy));
-          if (mask.isWater[nmy * mask.N + nmx]) return { buildable: false, flatnessScore: 0 };
+          const nIdx = nmy * mask.N + nmx;
+          if (mask.isWater[nIdx] || (mask.isHazard && mask.isHazard[nIdx])) return { buildable: false, flatnessScore: 0 };
         }
       }
-      roughSum += mask.roughness ? mask.roughness[my * mask.N + mx] : 0.25;
+      roughSum += mask.roughness ? mask.roughness[cellIdx] : 0.25;
     }
     const avgRough = roughSum / pts.length;
     const flatnessScore = Math.max(0, Math.min(100, Math.round((1 - Math.min(1, avgRough) / 0.85) * 100)));
@@ -6613,7 +6799,7 @@
     const trafficMons = bfCustomTargetMonument
       ? mons.filter((m) => bfIsHighTraffic(m.type) && Math.hypot(m.x - bfCustomTargetMonument.x, m.y - bfCustomTargetMonument.y) > 20)
       : mons.filter((m) => bfIsHighTraffic(m.type) && !bfMatchesTarget(m.type, targetKey));
-    const allTrafficMons = mons.filter((m) => bfIsHighTraffic(m.type));
+    const allZergHubs = mons.filter((m) => bfIsZergHub(m.type));
     const t2Mons = mons
       .map((m) => ({ ...m, progW: bfTier2ProgWeight(m.type) }))
       .filter((m) => m.progW > 0);
@@ -6629,13 +6815,50 @@
       return t.includes('small oil') || t.includes('oilrig_small') || (t.includes('oil rig') && !t.includes('large'));
     });
     const hempGrid = bfHeatmapGrids.Hemp || null;
-    const mask = bfLandMask || (bfLoadedImage ? bfBuildLandMask(bfLoadedImage, mapSize) : null);
+    const mask = bfLandMask || (bfLoadedImage ? bfBuildLandMask(bfLoadedImage, mapSize, mons) : null);
     if (!bfNoBuildColliders.spheres.length && !bfNoBuildColliders.boxes.length && !bfNoBuildColliders.fallback.length) {
       bfPrepareNoBuildData(bfMapData);
     }
+
+    const computeTrafficRisk = (wx, wy, nx, ny, trafficList) => {
+      let minDist = Infinity;
+      let nearest = null;
+      let penalty = 0;
+      for (const hm of trafficList) {
+        const d = Math.hypot(wx - hm.x, wy - hm.y);
+        if (d < minDist) {
+          minDist = d;
+          nearest = hm;
+        }
+        const tLower = String(hm.type || '').toLowerCase();
+        const isSevere =
+          (tLower.includes('outpost') && !tLower.includes('mining')) ||
+          tLower.includes('launch') ||
+          tLower.includes('silo') ||
+          tLower.includes('military tunnel') ||
+          tLower.includes('excavator');
+        const dangerR = isSevere ? 950 : 750;
+        const peak = isSevere ? 68 : 48;
+        if (d < dangerR) {
+          penalty += (1 - Math.pow(d / dangerR, 2.2)) * peak;
+        }
+      }
+      const centerDist = Math.hypot(wx, wy);
+      if (centerDist < half * 0.36) {
+        penalty += 22 * (1 - centerDist / (half * 0.36));
+      }
+      if (spawnGrid) {
+        penalty += bfSampleDensity(spawnGrid, nx, ny) * 18;
+      }
+      return {
+        safetyScore: Math.max(0, Math.min(100, 100 - penalty)),
+        minTrafficDist: minDist,
+        nearestTraffic: nearest
+      };
+    };
+
     const STEP_G = 96;
     const candidates = [];
-    let bestStealth = null;
 
     for (let gy = 2; gy < STEP_G - 2; gy++) {
       for (let gx = 2; gx < STEP_G - 2; gx++) {
@@ -6644,7 +6867,7 @@
         const wx = (nx - 0.5) * mapSize;
         const wy = (0.5 - ny) * mapSize;
 
-        // 1. Dry land footprint & coast distance check (~44m x 44m buildable land plot)
+        // 1. Dry land footprint & true ocean coastline distance check (~44m x 44m buildable land plot)
         let coastDist = Math.max(0, half * 0.85 - Math.hypot(wx, wy));
         const terrainCheck = bfCheckTerrainFootprint(mask, mapSize, wx, wy);
         if (!terrainCheck.buildable) continue;
@@ -6666,7 +6889,7 @@
         const plotCheck = bfIsBasePlotBuildable(wx, wy, 32);
         if (!plotCheck.ok) continue;
 
-        // 3. Target Monument Score (Power Plant sweet spot: 240m - 580m)
+        // 3. Target Monument Score (smooth land sweet spot vs offshore coastal launch spot)
         let targetDist = Infinity;
         let nearestTarget = null;
         for (const tm of targetMons) {
@@ -6676,13 +6899,26 @@
             nearestTarget = tm;
           }
         }
-        let targetScore = 0;
+        let targetScore = 50;
         if (nearestTarget) {
-          if (targetDist >= 220 && targetDist <= 480) targetScore = 100;
-          else if (targetDist < 220) targetScore = 60;
-          else targetScore = Math.max(0, 100 - ((targetDist - 480) / (mapSize * 0.35)) * 100);
-        } else {
-          targetScore = 50; // Map has no instance of selected monument
+          if (bfIsOffshoreTarget(nearestTarget.type)) {
+            const offshoreProx = targetDist <= 750 ? 100 : Math.max(0, 100 - ((targetDist - 750) / (mapSize * 0.45)) * 100);
+            const launchCoast =
+              coastDist <= 160
+                ? 100
+                : coastDist <= 380
+                  ? Math.max(25, 100 - ((coastDist - 160) / 220) * 75)
+                  : Math.max(0, 25 - ((coastDist - 380) / 400) * 25);
+            targetScore = offshoreProx * 0.65 + launchCoast * 0.35;
+          } else if (targetDist < 200) {
+            targetScore = Math.max(55, 80 + ((targetDist - 140) / 60) * 20);
+          } else if (targetDist <= 330) {
+            targetScore = 100;
+          } else if (targetDist <= 480) {
+            targetScore = 100 - ((targetDist - 330) / 150) * 14;
+          } else {
+            targetScore = Math.max(0, 86 - ((targetDist - 480) / (mapSize * 0.34)) * 86);
+          }
         }
 
         // 4. Deep Sea / Coast + Boat Access Score
@@ -6697,7 +6933,6 @@
         }
         let deepSeaScore = 50;
         if (wantDeepSea) {
-          // Best coast distance is 45m..260m (right near water to launch a boat/sub into Deep Sea)
           const coastPts =
             coastDist <= 220
               ? 100
@@ -6713,29 +6948,8 @@
         }
 
         // 5. Low Traffic / Anti-Day-1-Raid Score
-        let minTrafficDist = Infinity;
-        let nearestTraffic = null;
-        let trafficPenalty = 0;
-        for (const hm of trafficMons) {
-          const d = Math.hypot(wx - hm.x, wy - hm.y);
-          if (d < minTrafficDist) {
-            minTrafficDist = d;
-            nearestTraffic = hm;
-          }
-          const tLower = hm.type.toLowerCase();
-          const dangerR = tLower.includes('outpost') || tLower.includes('launch') || tLower.includes('silo') ? 1050 : 800;
-          if (d < dangerR) {
-            trafficPenalty += ((dangerR - d) / dangerR) * 42;
-          }
-        }
-        const centerDist = Math.hypot(wx, wy);
-        if (centerDist < half * 0.36) {
-          trafficPenalty += 22 * (1 - centerDist / (half * 0.36));
-        }
-        if (spawnGrid) {
-          trafficPenalty += bfSampleDensity(spawnGrid, nx, ny) * 18;
-        }
-        const lowTrafficScore = Math.max(0, Math.min(100, 100 - trafficPenalty));
+        const filterTraffic = computeTrafficRisk(wx, wy, nx, ny, trafficMons);
+        const lowTrafficScore = filterTraffic.safetyScore;
 
         // 5B. Real Ore Node Density Score (from RustMaps Nodes heatmap)
         const oreDensity = oreGrid ? bfSampleDensity(oreGrid, nx, ny) : 0.5;
@@ -6763,20 +6977,20 @@
         }
         const labBonus = wantUnderwaterLab && nearestLab && labDist <= 1400 ? (1 - labDist / 1400) * 12 : 0;
 
-        // 7. Preference-independent "Under the Radar + Tier 2 Fast Progress" overall pick
-        // Based on Rust progression guides: 1.5–3 grids (220m–450m) from a Tier 2 monument,
-        // ideally paired with a Tier 0/1 Green-Card/Metro support stop, far from Tier 3 / Outpost zerg hubs.
+        // 7. Preference-independent "Under the Radar + Tier 2 Fast Progress" score (against Zerg/Safe-Zone hubs)
         let bestProgScore = t2Mons.length > 0 ? 0 : 50;
         let bestProgMon = null;
         let bestProgDist = Infinity;
         for (const pm of t2Mons) {
           const d = Math.hypot(wx - pm.x, wy - pm.y);
           const distPts =
-            d >= 220 && d <= 450
+            d >= 200 && d <= 360
               ? 100
-              : d < 220
-                ? 52
-                : Math.max(0, 100 - ((d - 450) / (mapSize * 0.26)) * 100);
+              : d < 200
+                ? Math.max(55, 80 + ((d - 140) / 60) * 20)
+                : d <= 480
+                  ? 100 - ((d - 360) / 120) * 15
+                  : Math.max(0, 85 - ((d - 480) / (mapSize * 0.26)) * 85);
           const weighted = distPts * pm.progW;
           if (weighted > bestProgScore) {
             bestProgScore = weighted;
@@ -6795,23 +7009,8 @@
         }
         const supportBonus = nearestSupport && supportDist <= 600 ? (1 - supportDist / 600) * 8 : 0;
 
-        // Separate strict low-traffic check against ALL high-traffic zerg hubs
-        let stealthPenalty = 0;
-        let minAllTrafficDist = Infinity;
-        let nearestAllTraffic = null;
-        for (const hm of allTrafficMons) {
-          const d = Math.hypot(wx - hm.x, wy - hm.y);
-          if (d < minAllTrafficDist) {
-            minAllTrafficDist = d;
-            nearestAllTraffic = hm;
-          }
-          const tLower = hm.type.toLowerCase();
-          const dangerR = tLower.includes('outpost') || tLower.includes('launch') || tLower.includes('silo') ? 1050 : 800;
-          if (d < dangerR) stealthPenalty += ((dangerR - d) / dangerR) * 44;
-        }
-        if (centerDist < half * 0.38) stealthPenalty += 24 * (1 - centerDist / (half * 0.38));
-        if (spawnGrid) stealthPenalty += bfSampleDensity(spawnGrid, nx, ny) * 20;
-        const stealthSafety = Math.max(0, Math.min(100, 100 - stealthPenalty));
+        const zergTraffic = computeTrafficRisk(wx, wy, nx, ny, allZergHubs);
+        const stealthSafety = zergTraffic.safetyScore;
         const hempDensity = hempGrid ? bfSampleDensity(hempGrid, nx, ny) : 0.5;
         const resScore = (oreDensity * 0.65 + hempDensity * 0.35) * 100;
         const edgeStealthPts = coastDist <= 460 ? 100 : Math.max(25, 100 - ((coastDist - 460) / 800) * 75);
@@ -6828,34 +7027,6 @@
               stealthLabBonus
           )
         );
-        if (!bestStealth || stealthTotal > bestStealth.score) {
-          bestStealth = {
-            wx,
-            wy,
-            nx,
-            ny,
-            grid: bfWorldToGrid(wx, wy, mapSize),
-            score: stealthTotal,
-            lowTrafficScore: Math.round(stealthSafety),
-            oreScore,
-            flatnessScore: terrainCheck.flatnessScore,
-            noBuildClearance: plotCheck.minClearance,
-            targetDist: Math.round(bestProgDist),
-            targetName: bestProgMon?.type || 'No T2 on map',
-            supportDist: Math.round(supportDist),
-            supportName: nearestSupport && supportDist <= 650 ? nearestSupport.type : '',
-            coastDist: Math.round(coastDist),
-            boatDist: Math.round(boatDist),
-            boatName: nearestBoat?.type || 'Coast',
-            minTrafficDist: Math.round(minAllTrafficDist),
-            nearestTrafficName: nearestAllTraffic?.type || 'None',
-            labDist: Math.round(labDist),
-            labName: nearestLab?.type || '',
-            labRedCard: nearestLab ? nearestLab.hasRedKeycard : null,
-            largeOilDist: Math.round(largeOilDist),
-            smallOilDist: Math.round(smallOilDist)
-          };
-        }
 
         // Weighted final score
         const wTarget = nearestTarget ? 0.33 : 0;
@@ -6877,13 +7048,27 @@
           )
         );
 
+        const grid = bfWorldToGrid(wx, wy, mapSize);
+        const subGrid = bfWorldToSubGrid(wx, wy, mapSize);
+        const biome = mask ? bfGetBiomeLabel(mask, mapSize, wx, wy) : '';
+
         candidates.push({
           wx,
           wy,
           nx,
           ny,
-          grid: bfWorldToGrid(wx, wy, mapSize),
+          grid,
+          subGrid,
+          biome,
           score: total,
+          stealthScore: stealthTotal,
+          stealthSafety: Math.round(stealthSafety),
+          bestProgDist: Math.round(bestProgDist),
+          bestProgName: bestProgMon?.type || 'No T2 on map',
+          supportDist: Math.round(supportDist),
+          supportName: nearestSupport && supportDist <= 650 ? nearestSupport.type : '',
+          stealthTrafficDist: Math.round(zergTraffic.minTrafficDist),
+          stealthTrafficName: zergTraffic.nearestTraffic?.type || 'None',
           targetScore: Math.round(targetScore),
           deepSeaScore: Math.round(deepSeaScore),
           lowTrafficScore: Math.round(lowTrafficScore),
@@ -6895,8 +7080,8 @@
           coastDist: Math.round(coastDist),
           boatDist: Math.round(boatDist),
           boatName: nearestBoat?.type || 'Coast',
-          minTrafficDist: Math.round(minTrafficDist),
-          nearestTrafficName: nearestTraffic?.type || 'None',
+          minTrafficDist: Math.round(filterTraffic.minTrafficDist),
+          nearestTrafficName: filterTraffic.nearestTraffic?.type || 'None',
           labDist: Math.round(labDist),
           labName: nearestLab?.type || '',
           labRedCard: nearestLab ? nearestLab.hasRedKeycard : null,
@@ -6908,7 +7093,7 @@
 
     candidates.sort((a, b) => b.score - a.score);
 
-    // Pick Top 5 spatially distinct spots (at least 300m apart)
+    // Pick Top 5 spatially distinct spots (at least 260m apart)
     const picked = [];
     const minSep = Math.max(260, mapSize * 0.09);
     for (const c of candidates) {
@@ -6917,7 +7102,25 @@
         if (picked.length >= 5) break;
       }
     }
-    bfStealthBest = bestStealth;
+
+    // Pick Best Overall "Under the Radar" spot, ensuring it stays distinct from #1 when alternatives exist
+    const stealthSorted = [...candidates].sort((a, b) => b.stealthScore - a.stealthScore);
+    const stealthCand =
+      stealthSorted.find((c) => !picked[0] || Math.hypot(c.wx - picked[0].wx, c.wy - picked[0].wy) >= 220) ||
+      stealthSorted[0] ||
+      null;
+    bfStealthBest = stealthCand
+      ? {
+          ...stealthCand,
+          score: stealthCand.stealthScore,
+          lowTrafficScore: stealthCand.stealthSafety,
+          targetDist: stealthCand.bestProgDist,
+          targetName: stealthCand.bestProgName,
+          minTrafficDist: stealthCand.stealthTrafficDist,
+          nearestTrafficName: stealthCand.stealthTrafficName
+        }
+      : null;
+
     return picked;
   }
 
@@ -6936,13 +7139,16 @@
     { match: 'outpost', icon: '🛡️', label: 'Outpost', color: '#22c55e', r: 6, tier: 0, rec: 3, cards: 'None', safe: true, vend: 7 },
     { match: 'bandit', icon: '🏴‍☠️', label: 'Bandit Camp', color: '#22c55e', r: 6, tier: 0, rec: 2, cards: 'None', safe: true, vend: 4 },
     // Tier 2 Monuments
-    { match: 'water treatment', icon: '💧', label: 'Water Treat.', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue', safe: false, vend: 0 },
-    { match: 'powerplant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 3, cards: 'Green + Blue', safe: false, vend: 0 },
-    { match: 'power plant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 3, cards: 'Green + Blue', safe: false, vend: 0 },
-    { match: 'train yard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue', safe: false, vend: 0 },
-    { match: 'airfield', icon: '✈️', label: 'Airfield', color: '#fb923c', r: 5.5, tier: 2, rec: 2, cards: 'Green + Blue', safe: false, vend: 0 },
+    { match: 'water treatment', icon: '💧', label: 'Water Treat.', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'powerplant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 2, cards: 'Green + Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'power plant', icon: '⚡', label: 'Power Plant', color: '#fb923c', r: 5.5, tier: 2, rec: 2, cards: 'Green + Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'train yard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'trainyard', icon: '🚂', label: 'Train Yard', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'airfield', icon: '✈️', label: 'Airfield', color: '#fb923c', r: 5.5, tier: 2, rec: 2, cards: 'Green + Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'apartments', icon: '🏢', label: 'Apartments', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Green + Blue', safe: false, vend: 0 },
     { match: 'sphere tank', icon: '🔵', label: 'The Dome', color: '#fb923c', r: 5, tier: 2, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'arctic research', icon: '❄️', label: 'Arctic Base', color: '#fb923c', r: 5.5, tier: 2, rec: 1, cards: 'Blue (→ Red)', safe: false, vend: 0 },
+    { match: 'military base', icon: '🪖', label: 'Aband. Mil.', color: '#fb923c', r: 5, tier: 2, rec: 0, cards: 'None (MLRS)', safe: false, vend: 0 },
     { match: 'abandoned military', icon: '🪖', label: 'Aband. Mil.', color: '#fb923c', r: 5, tier: 2, rec: 0, cards: 'None (MLRS)', safe: false, vend: 0 },
     // Boat Hubs & Ocean
     { match: 'fishing village', icon: '⚓', label: 'Fishing', color: '#2dd4bf', r: 5, tier: 0, rec: 0, cards: 'None (Boat Vendor)', safe: true, vend: 1 },
@@ -6950,10 +7156,13 @@
     { match: 'ferry', icon: '⛴️', label: 'Ferry', color: '#2dd4bf', r: 5, tier: 1, rec: 1, cards: 'Spawns Free Green + (Green → Blue)', safe: false, vend: 0 },
     { match: 'underwater lab', icon: '🔬', label: 'Underwater Lab', color: '#38bdf8', r: 4.5, tier: 2, rec: 0, cards: 'Green + Blue (+ Red*)', safe: false, vend: 0 },
     // Tier 0/1 & Support Monuments
-    { match: 'sewer branch', icon: '🟢', label: 'Sewer Branch', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'sewer branch', icon: '🟢', label: 'Sewer Branch', color: '#a3e635', r: 5, tier: 1, rec: 2, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'satellite', icon: '📡', label: 'Satellite', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
     { match: 'radtown', icon: '☢️', label: 'Radtown', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'Green (→ Blue)', safe: false, vend: 0 },
+    { match: 'ziggurat', icon: '🛕', label: 'Ziggurat', color: '#a3e635', r: 5, tier: 1, rec: 1, cards: 'None (Jungle Crates)', safe: false, vend: 0 },
     { match: 'junkyard', icon: '♻️', label: 'Junkyard', color: '#a3e635', r: 4.5, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
+    { match: 'ranch', icon: '🐎', label: 'Ranch', color: '#22c55e', r: 4.5, tier: 0, rec: 0, cards: 'None (Horse Vendor)', safe: true, vend: 2 },
+    { match: 'large barn', icon: '🐎', label: 'Large Barn', color: '#22c55e', r: 4.5, tier: 0, rec: 0, cards: 'None (Horse Vendor)', safe: true, vend: 2 },
     { match: 'lighthouse', icon: '🗼', label: 'Lighthouse', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
     { match: 'supermarket', icon: '🛒', label: 'Market', color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
     { match: 'gas station', icon: '⛽', label: "Oxum's", color: '#94a3b8', r: 4, tier: 0, rec: 1, cards: 'Spawns Free Green', safe: false, vend: 0 },
@@ -7022,7 +7231,7 @@
     }
 
     // 1. Rust-accurate grid overlay
-    const count = Math.max(1, Math.ceil(mapSize / 150));
+    const count = bfGridCount(mapSize);
     const cellPx = imgSizePx / count;
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
@@ -7385,6 +7594,13 @@
     return parts.length ? `<div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap;">${parts.join(' • ')}</div>` : '';
   }
 
+  function bfRiskBadge(safetyScore) {
+    if (safetyScore >= 80) return { label: 'VERY LOW', color: '#4ade80' };
+    if (safetyScore >= 62) return { label: 'LOW', color: '#a3e635' };
+    if (safetyScore >= 42) return { label: 'MEDIUM', color: '#facc15' };
+    return { label: 'HIGH', color: '#f87171' };
+  }
+
   function renderBaseFinderResults() {
     const stealthSlot = document.getElementById('bfStealthBestSlot');
     const listEl = document.getElementById('bfResultsList');
@@ -7392,13 +7608,13 @@
       if (bfStealthBest) {
         const s = bfStealthBest;
         const isSel = bfSelectedIdx === -1;
-        const riskLabel = s.lowTrafficScore >= 82 ? 'VERY LOW' : s.lowTrafficScore >= 62 ? 'LOW' : 'MEDIUM';
-        const riskColor = s.lowTrafficScore >= 82 ? '#4ade80' : s.lowTrafficScore >= 62 ? '#facc15' : '#f87171';
+        const risk = bfRiskBadge(s.lowTrafficScore);
+        const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${s.biome})</span>` : '';
         stealthSlot.innerHTML = `
           <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-1" style="border-color: rgba(168, 85, 247, 0.55); background: linear-gradient(135deg, rgba(126, 34, 206, 0.16), rgba(15, 23, 42, 0.72));">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
               <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#e9d5ff;">
-                🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.grid}]</span>
+                🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.subGrid || s.grid}]</span>${biomeTag}
               </div>
               <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
             </div>
@@ -7411,7 +7627,7 @@
               <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
               <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
               <span style="color:#86efac;">🧱 No-Build Clear: ${s.noBuildClearance >= 900 ? 'Open Land' : `+${s.noBuildClearance}m`}</span>
-              <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
+              <span style="color:${risk.color};">🛡️ Raid Risk: ${risk.label}</span>
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">
               Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
@@ -7449,8 +7665,8 @@
       listEl.innerHTML = bfTopSpots
         .map((s, idx) => {
           const isSel = idx === bfSelectedIdx;
-          const riskLabel = s.lowTrafficScore >= 82 ? 'VERY LOW' : s.lowTrafficScore >= 62 ? 'LOW' : 'MEDIUM';
-          const riskColor = s.lowTrafficScore >= 82 ? '#4ade80' : s.lowTrafficScore >= 62 ? '#facc15' : '#f87171';
+          const risk = bfRiskBadge(s.lowTrafficScore);
+          const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${s.biome})</span>` : '';
           const rankBadge = idx === 0
             ? (bfCustomTargetMonument ? `🥇 #1 NEAR ${bfCustomTargetMonument.type.toUpperCase()}` : '🥇 #1 BEST FOR YOUR FILTERS')
             : `#${idx + 1} OPTION`;
@@ -7458,7 +7674,7 @@
             <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
-                  ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.grid}]</span>
+                  ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.subGrid || s.grid}]</span>${biomeTag}
                 </div>
                 <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
               </div>
@@ -7468,7 +7684,7 @@
                 <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
                 <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
                 <span style="color:#86efac;">🧱 No-Build Clear: ${s.noBuildClearance >= 900 ? 'Open Land' : `+${s.noBuildClearance}m`}</span>
-                <span style="color:${riskColor};">🛡️ Raid Risk: ${riskLabel}</span>
+                <span style="color:${risk.color};">🛡️ Raid Risk: ${risk.label}</span>
               </div>
               <div style="font-size:12px; color:var(--text-secondary);">
                 Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
@@ -7739,7 +7955,7 @@
 
   function rerunBaseFinderScoring() {
     if (!bfMapData) return;
-    bfLandMask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, bfMapData.size) : null;
+    bfLandMask = bfLoadedImage ? bfBuildLandMask(bfLoadedImage, bfMapData.size, bfMapData.monuments) : null;
     bfTopSpots = computeRecommendedBuildSpots();
     bfSelectedIdx = 0;
     bfSelectedFarmIdx = -1;
@@ -7748,6 +7964,61 @@
     renderBaseFinderFarming();
     renderBaseFinderRoute();
     renderBaseFinderMap();
+    renderMonumentAtlas();
+  }
+
+  async function bfLoadHeatmapCanvas(key, data) {
+    const loadImg = (url) =>
+      new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => resolve(null);
+        im.src = `/api/rustmaps/image?url=${encodeURIComponent(url)}`;
+      });
+
+    const baseUrl = data?.heatMapBaseUrls?.[key];
+    const mapSize = Number(data?.size) || 4000;
+    if (baseUrl) {
+      const half = mapSize / 2;
+      const z = -Math.ceil(Math.log2(Math.max(1, half / 256)));
+      const tileSpan = 256 * Math.pow(2, -z);
+      const quadCoords = [
+        { tx: -1, ty: -1, dx: 0, dy: 0 },
+        { tx: 0, ty: -1, dx: 256, dy: 0 },
+        { tx: -1, ty: 0, dx: 0, dy: 256 },
+        { tx: 0, ty: 0, dx: 256, dy: 256 }
+      ];
+      const loaded = await Promise.all(
+        quadCoords.map(async (q) => ({
+          q,
+          im: await loadImg(`${baseUrl}${z}/${q.tx}/${q.ty}.png`)
+        }))
+      );
+      if (loaded.some((item) => item.im !== null)) {
+        const stitched = document.createElement('canvas');
+        stitched.width = 512;
+        stitched.height = 512;
+        const sCtx = stitched.getContext('2d');
+        for (const { q, im } of loaded) {
+          if (im) sCtx.drawImage(im, q.dx, q.dy, 256, 256);
+        }
+        const fullWorld = 2 * tileSpan;
+        const cropXY = ((tileSpan - half) / fullWorld) * 512;
+        const cropWH = (mapSize / fullWorld) * 512;
+        const norm = document.createElement('canvas');
+        norm.width = 512;
+        norm.height = 512;
+        const nCtx = norm.getContext('2d');
+        nCtx.drawImage(stitched, cropXY, cropXY, cropWH, cropWH, 0, 0, 512, 512);
+        return norm;
+      }
+    }
+
+    const fallbackUrl = data?.heatMaps?.[key];
+    if (fallbackUrl) {
+      return loadImg(fallbackUrl);
+    }
+    return null;
   }
 
   function initBaseFinderModule() {
@@ -7847,21 +8118,13 @@
 
         // Preload RustMaps resource heatmaps (Nodes, Hemp, Berries, Horses, PlayerSpawns) in parallel
         const hmKeys = ['Nodes', 'Hemp', 'Berries', 'Horses', 'PlayerSpawns'];
-        const hmPromises = hmKeys.map((key) => {
-          const hmUrl = data.heatMaps?.[key];
-          if (!hmUrl) return Promise.resolve();
-          return new Promise((resolve) => {
-            const hImg = new Image();
-            hImg.onload = () => {
-              bfHeatmapImages[key] = hImg;
-              if (key === 'Nodes' || key === 'Hemp' || key === 'Berries' || key === 'PlayerSpawns') {
-                bfHeatmapGrids[key] = bfBuildDensityGrid(hImg);
-              }
-              resolve();
-            };
-            hImg.onerror = () => resolve();
-            hImg.src = `/api/rustmaps/image?url=${encodeURIComponent(hmUrl)}`;
-          });
+        const hmPromises = hmKeys.map(async (key) => {
+          const hmVisual = await bfLoadHeatmapCanvas(key, data);
+          if (!hmVisual) return;
+          bfHeatmapImages[key] = hmVisual;
+          if (key === 'Nodes' || key === 'Hemp' || key === 'Berries' || key === 'PlayerSpawns') {
+            bfHeatmapGrids[key] = bfBuildDensityGrid(hmVisual);
+          }
         });
 
         const baseImgPromise = data.imageUrl
@@ -8014,13 +8277,14 @@
         const cy = ((e.clientY - rect.top) * bfCanvas.height) / Math.max(1, rect.height);
         const wx = (cx - bfCanvas.width / 2) / scale + bfPanX;
         const wy = -(cy - bfCanvas.height / 2) / scale + bfPanY;
-        const grid = bfWorldToGrid(wx, wy, mapSize);
+        const subGrid = bfWorldToSubGrid(wx, wy, mapSize);
         const selSpot = getSelectedBuildSpot();
         const selDist = selSpot ? Math.round(Math.hypot(wx - selSpot.wx, wy - selSpot.wy)) : null;
 
         if (hudEl) {
           hudEl.style.display = 'block';
           const isWaterPx = bfIsPointWater(bfLandMask, mapSize, wx, wy);
+          const biomeLbl = bfLandMask ? bfGetBiomeLabel(bfLandMask, mapSize, wx, wy) : '';
           const nb = bfCheckNoBuildZone(wx, wy, 32, 14);
           const buildStatus = isWaterPx
             ? '<span style="color:#38bdf8;">🌊 WATER</span>'
@@ -8029,7 +8293,7 @@
               : nb.blocked
                 ? `<span style="color:#fb923c;">⚠️ Too Close (${Math.max(0, nb.minClearance)}m)</span>`
                 : `<span style="color:#4ade80;">🧱 Buildable (${nb.minClearance >= 900 ? 'Open' : `+${nb.minClearance}m`})</span>`;
-          hudEl.innerHTML = `Grid ${grid}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : '#' + (bfSelectedIdx + 1)} [${selSpot.grid}]` : ''} • ${buildStatus}`;
+          hudEl.innerHTML = `Grid ${subGrid}${biomeLbl && !isWaterPx ? ` (${biomeLbl})` : ''}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : '#' + (bfSelectedIdx + 1)} [${selSpot.grid}]` : ''} • ${buildStatus}`;
         }
 
         if (tooltipEl) {
