@@ -8663,8 +8663,10 @@
   // MODULE 8: IN-GAME PLAYER SHOPS, NPC VENDORS & BEST-TO-BUY EVALUATOR
   // =========================================================================
   let selectedShopMapPinId = '';
+  let lastShopMatchedMarkerIds = null;
   let shopMapVisible = false;
   let shopMapAutoOpened = false;
+  let shopMapExpanded = false;
   let shopMapZoom = 1;
   let shopMapPanX = 0;
   let shopMapPanY = 0;
@@ -8672,9 +8674,82 @@
   let cachedShopMapImg = null;
   let cachedShopMapImgUrl = '';
 
-  function drawRustPlusOverlayOnCanvas(ctx, { toPx, scale, mapSize, showVending = true, showTeam = true, showEvents = true, selectedShopPinId = '', pinOut = [] }) {
+  function findMyRustPlusTeamMember(tel) {
+    const members = Array.isArray(tel?.teamMembers) ? tel.teamMembers : [];
+    const myId = String(appState.rustPlusShopConfig?.playerId || appState.rustPlusShopConfig?.steamId || '');
+    if (myId) {
+      const exact = members.find((m) => String(m.steamId) === myId);
+      if (exact) return exact;
+    }
+    return members.find((m) => m.isLeader) || members[0] || null;
+  }
+
+  function formatPlayerDistanceBearing(targetWx, targetWy, myMember) {
+    if (!myMember || typeof myMember.wx !== 'number' || typeof myMember.wy !== 'number') return '';
+    const dx = targetWx - myMember.wx;
+    const dy = targetWy - myMember.wy;
+    const dist = Math.round(Math.hypot(dx, dy));
+    if (dist < 15) return '📏 Right next to you (<15m)';
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const angleDeg = (Math.atan2(dx, dy) * 180) / Math.PI;
+    const compass = dirs[Math.round(((angleDeg + 360) % 360) / 45) % 8];
+    return `📏 ${dist.toLocaleString()}m ${compass} from you`;
+  }
+
+  function formatRustPlusMonumentToken(rawToken) {
+    const s = String(rawToken || '').toLowerCase();
+    if (!s || /cave|train_tunnel|swamp|power_sub|bus_stop|bunker|mining_quarry_a/.test(s)) return null;
+    if (s.includes('launch')) return { label: 'Launch Site', icon: '🚀', color: '#f87171' };
+    if (s.includes('silo')) return { label: 'Missile Silo', icon: '☢️', color: '#f87171' };
+    if (s.includes('military_tunnel')) return { label: 'Mil Tunnels', icon: '🪖', color: '#f87171' };
+    if (s.includes('oil') && s.includes('large')) return { label: 'Large Oil', icon: '🛢️', color: '#ef4444' };
+    if (s.includes('oil') && s.includes('small')) return { label: 'Small Oil', icon: '🛢️', color: '#fb923c' };
+    if (s.includes('power')) return { label: 'Power Plant', icon: '⚡', color: '#38bdf8' };
+    if (s.includes('water_treatment')) return { label: 'Water Treat', icon: '💧', color: '#38bdf8' };
+    if (s.includes('trainyard')) return { label: 'Train Yard', icon: '🚂', color: '#38bdf8' };
+    if (s.includes('airfield')) return { label: 'Airfield', icon: '✈️', color: '#38bdf8' };
+    if (s.includes('arctic')) return { label: 'Arctic Base', icon: '❄️', color: '#7dd3fc' };
+    if (s.includes('excavator')) return { label: 'Excavator', icon: '⛏️', color: '#facc15' };
+    if (s.includes('outpost') && !s.includes('mining')) return { label: 'Outpost', icon: '🛡️', color: '#4ade80' };
+    if (s.includes('bandit')) return { label: 'Bandit Camp', icon: '🏴‍☠️', color: '#4ade80' };
+    if (s.includes('fishing')) return { label: 'Fishing', icon: '⚓', color: '#2dd4bf' };
+    if (s.includes('harbor')) return { label: 'Harbor', icon: '⚓', color: '#a3e635' };
+    if (s.includes('ferry')) return { label: 'Ferry', icon: '⛴️', color: '#a3e635' };
+    if (s.includes('dome') || s.includes('sphere')) return { label: 'The Dome', icon: '🔵', color: '#fbbf24' };
+    if (s.includes('sewer')) return { label: 'Sewer Branch', icon: '🟢', color: '#a3e635' };
+    if (s.includes('satellite')) return { label: 'Satellite', icon: '📡', color: '#a3e635' };
+    if (s.includes('waterwell')) return { label: 'Water Well', icon: '🚰', color: '#22d3ee' };
+    if (s.includes('supermarket')) return { label: 'Supermarket', icon: '🏪', color: '#a3e635' };
+    if (s.includes('gas_station') || s.includes('oxum')) return { label: 'Gas Station', icon: '⛽', color: '#a3e635' };
+    if (s.includes('mining_outpost')) return { label: 'Mining Outpost', icon: '⛏️', color: '#a3e635' };
+    if (s.includes('ranch') || s.includes('stables') || s.includes('barn')) return { label: 'Stables/Ranch', icon: '🐎', color: '#4ade80' };
+    if (s.includes('junkyard')) return { label: 'Junkyard', icon: '⚙️', color: '#a3e635' };
+    if (s.includes('lighthouse')) return { label: 'Lighthouse', icon: '🚨', color: '#a3e635' };
+    if (s.includes('radtown')) return { label: 'Radtown', icon: '☢️', color: '#fbbf24' };
+    if (s.includes('abandoned_military')) return { label: 'Desert Mil', icon: '🪖', color: '#fb923c' };
+    const clean = String(rawToken || '')
+      .replace(/_display_name|_monument_name|monument_/gi, '')
+      .replace(/_/g, ' ')
+      .trim();
+    return clean ? { label: clean.replace(/\b\w/g, (c) => c.toUpperCase()), icon: '🏛️', color: '#cbd5e1' } : null;
+  }
+
+  function drawRustPlusOverlayOnCanvas(ctx, {
+    toPx,
+    scale,
+    mapSize,
+    showVending = true,
+    showTeam = true,
+    showEvents = true,
+    stealsOnly = false,
+    inStockOnly = false,
+    highlightedIds = null,
+    selectedShopPinId = '',
+    pinOut = []
+  }) {
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
     if (!tel) return;
+    const myMember = findMyRustPlusTeamMember(tel);
 
     // A. In-Game Map Notes (Leader & Personal markers)
     if (showTeam && Array.isArray(tel.mapNotes)) {
@@ -8702,7 +8777,7 @@
       });
     }
 
-    // B. Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Vendor)
+    // B. Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Vendor) + Heading Arrows
     if (showEvents && Array.isArray(tel.liveEvents)) {
       tel.liveEvents.forEach((ev) => {
         const { px, py } = toPx(ev.wx, ev.wy);
@@ -8715,6 +8790,20 @@
         ctx.strokeStyle = ev.color || '#ef4444';
         ctx.stroke();
 
+        if ([4, 5, 8].includes(ev.type) && typeof ev.rotation === 'number') {
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate((-(ev.rotation || 0) * Math.PI) / 180);
+          ctx.beginPath();
+          ctx.moveTo(0, -23);
+          ctx.lineTo(-4.5, -15);
+          ctx.lineTo(4.5, -15);
+          ctx.closePath();
+          ctx.fillStyle = ev.color || '#38bdf8';
+          ctx.fill();
+          ctx.restore();
+        }
+
         ctx.font = '14px "Inter", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -8725,10 +8814,18 @@
         ctx.strokeStyle = 'rgba(0,0,0,0.94)';
         ctx.lineWidth = 3;
         const lbl = `${ev.label} [${ev.grid}]`;
-        ctx.strokeText(lbl, px, py + 23);
+        ctx.strokeText(lbl, px, py + 24);
         ctx.fillStyle = ev.color || '#fca5a5';
-        ctx.fillText(lbl, px, py + 23);
+        ctx.fillText(lbl, px, py + 24);
         ctx.restore();
+
+        const distLine = formatPlayerDistanceBearing(ev.wx, ev.wy, myMember);
+        const hintLine =
+          ev.type === 6 ? 'Locked Crate active — start 15:00 hack timer from event bar!' :
+          ev.type === 5 ? 'Cargo Ship circling map — timed locked crates onboard' :
+          ev.type === 8 ? 'Patrol Helicopter roaming — take cover or pull' :
+          ev.type === 2 ? '💥 Explosion / Raid Boom detected!' :
+          'Live server event marker';
 
         pinOut.push({
           px,
@@ -8738,13 +8835,7 @@
           wy: ev.wy,
           title: `${ev.icon} ${ev.label} [${ev.grid}]`,
           color: ev.color || '#f43f5e',
-          lines: [
-            ev.type === 6 ? 'Locked Crate active — start/track 15:00 hack timer in Timers!' :
-            ev.type === 5 ? 'Cargo Ship circling map — timed locked crates onboard!' :
-            ev.type === 8 ? 'Patrol Helicopter roaming — take cover or pull!' :
-            ev.type === 2 ? '💥 Explosion / Boom detected!' :
-            'Live server event marker'
-          ],
+          lines: [hintLine, distLine].filter(Boolean),
           selectAction: { type: 'event', event: ev }
         });
       });
@@ -8816,44 +8907,51 @@
       });
     }
 
-    // D. Live Squad Teammates GPS
+    // D. Live Squad Teammates GPS (highlighting "YOU" distinctively)
     if (showTeam && Array.isArray(tel.teamMembers)) {
       tel.teamMembers.forEach((tm) => {
+        const isMe = myMember && String(tm.steamId) === String(myMember.steamId);
         const { px, py } = toPx(tm.wx, tm.wy);
-        const dotColor = !tm.isOnline ? '#64748b' : !tm.isAlive ? '#ef4444' : '#38bdf8';
+        const dotColor = isMe ? '#22d3ee' : !tm.isOnline ? '#64748b' : !tm.isAlive ? '#ef4444' : '#38bdf8';
         ctx.save();
         ctx.beginPath();
-        ctx.arc(px, py, 10, 0, Math.PI * 2);
-        ctx.fillStyle = `${dotColor}30`;
+        ctx.arc(px, py, isMe ? 13 : 10, 0, Math.PI * 2);
+        ctx.fillStyle = `${dotColor}33`;
         ctx.fill();
+        if (isMe) {
+          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = '#67e8f9';
+          ctx.stroke();
+        }
 
         ctx.beginPath();
-        ctx.arc(px, py, 6.5, 0, Math.PI * 2);
+        ctx.arc(px, py, isMe ? 7.5 : 6.5, 0, Math.PI * 2);
         ctx.fillStyle = dotColor;
         ctx.fill();
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = '#090b0e';
         ctx.stroke();
 
-        ctx.font = '700 10px "Inter", sans-serif';
+        ctx.font = isMe ? '800 10.5px "Inter", sans-serif' : '700 10px "Inter", sans-serif';
         ctx.textAlign = 'center';
         ctx.strokeStyle = 'rgba(0,0,0,0.95)';
         ctx.lineWidth = 3;
-        const badge = `${tm.isLeader ? '👑 ' : ''}${!tm.isAlive ? '💀 ' : ''}${tm.name} [${tm.grid}]`;
-        ctx.strokeText(badge, px, py - 11);
-        ctx.fillStyle = !tm.isAlive ? '#fca5a5' : tm.isOnline ? '#bae6fd' : '#94a3b8';
-        ctx.fillText(badge, px, py - 11);
+        const badge = `${isMe ? '⌖ YOU • ' : tm.isLeader ? '👑 ' : ''}${!tm.isAlive ? '💀 ' : ''}${tm.name} [${tm.grid}]`;
+        ctx.strokeText(badge, px, py - 13);
+        ctx.fillStyle = !tm.isAlive ? '#fca5a5' : isMe ? '#67e8f9' : tm.isOnline ? '#bae6fd' : '#94a3b8';
+        ctx.fillText(badge, px, py - 13);
         ctx.restore();
 
+        const distLine = !isMe ? formatPlayerDistanceBearing(tm.wx, tm.wy, myMember) : '';
         pinOut.push({
           px,
           py,
-          r: 10,
+          r: 11,
           wx: tm.wx,
           wy: tm.wy,
-          title: `${tm.isLeader ? '👑 ' : ''}${tm.name} [${tm.grid}]`,
+          title: `${isMe ? '⌖ YOU — ' : tm.isLeader ? '👑 ' : ''}${tm.name} [${tm.grid}]`,
           color: dotColor,
-          lines: [`Status: ${tm.isOnline ? 'Online' : 'Offline'} • ${tm.isAlive ? 'Alive' : 'Dead / Sleeping'}`],
+          lines: [`Status: ${tm.isOnline ? 'Online' : 'Offline'} • ${tm.isAlive ? 'Alive' : 'Dead / Sleeping'}`, distLine].filter(Boolean),
           selectAction: { type: 'team', member: tm }
         });
       });
@@ -8889,12 +8987,13 @@
 
     if (metaEl) {
       if (!hasLiveData) {
-        metaEl.textContent = 'Connect via Steam Popup (or click Demo Shops) to load live Vending Machines, Squad GPS & World Events.';
+        metaEl.textContent = 'Connect Steam Popup or Sync Paired Server to load your live server map, shops, squad GPS & world events.';
       } else {
         const popStr = info.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}${info.queuedPlayers ? ` (+${info.queuedPlayers}Q)` : ''}` : '';
         const clkStr = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted} (${time.nextPhase} in ~${time.minutesUntilChange}m)` : '';
         const seedStr = info.seed ? `Seed ${info.mapSize}_${info.seed}` : `${mapSize}m`;
-        metaEl.textContent = [info.name || 'Live Server', popStr, clkStr, seedStr].filter(Boolean).join(' • ');
+        const shopCountStr = `🛒 ${(tel.vendingPins || []).length} shops`;
+        metaEl.textContent = [info.name || 'Live Server', popStr, clkStr, shopCountStr, seedStr].filter(Boolean).join(' • ');
       }
     }
 
@@ -8902,10 +9001,12 @@
       const evts = tel.liveEvents || [];
       eventsStrip.innerHTML = evts.length
         ? evts
-            .map(
-              (ev) =>
-                `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>`
-            )
+            .map((ev) => {
+              const crateBtn = ev.type === 6
+                ? `<button type="button" class="filter-pill shop-evt-crate-timer" data-grid="${escapeHtml(ev.grid)}" style="border-color:#f59e0b; color:#fde047;">⏱️ Track 15:00 Crate [${escapeHtml(ev.grid)}]</button>`
+                : '';
+              return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
+            })
             .join('')
         : `<span style="font-size:11px; color:var(--text-muted);">No active Cargo / Heli / Crate markers on map right now.</span>`;
       eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
@@ -8916,10 +9017,32 @@
           renderShopLiveMap();
         });
       });
+      eventsStrip.querySelectorAll('.shop-evt-crate-timer').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const grid = btn.getAttribute('data-grid') || '';
+          const now = Date.now();
+          appState.activeTimers = [
+            ...(Array.isArray(appState.activeTimers) ? appState.activeTimers : []),
+            {
+              id: 't-' + now + '-crate',
+              name: `Locked Crate [${grid}]`,
+              category: 'Locked Crate',
+              durationSec: 900,
+              endsAt: now + 900 * 1000,
+              startedAt: now,
+              paused: false
+            }
+          ];
+          syncStateToServer();
+          renderTimersTick();
+          btn.textContent = `✓ Timer Started [${grid}]`;
+        });
+      });
     }
 
     const canvas = document.getElementById('shopLiveMapCanvas');
     if (!canvas) return;
+    canvas.style.maxHeight = shopMapExpanded ? '780px' : '580px';
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
@@ -9010,27 +9133,30 @@
     }
     ctx.restore();
 
-    // Draw subtle Monument labels from Base Finder or Rust+ AppMap
-    const mons = (bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0)
-      ? bfMapData.monuments.map((m) => ({ name: m.type, wx: m.x, wy: m.y }))
-      : (tel.mapMeta?.monuments || []).map((m) => ({
-          name: String(m.token || '').replace(/_display_name|_monument_name|monument_/gi, '').replace(/_/g, ' ').trim(),
-          wx: m.wx,
-          wy: m.wy
-        }));
-    ctx.save();
-    ctx.font = '600 9.5px "Inter", sans-serif';
-    ctx.textAlign = 'center';
-    mons.forEach((m) => {
-      if (!m.name || /cave|train_tunnel|swamp|power_sub/i.test(m.name)) return;
-      const { px, py } = toPx(m.wx, m.wy);
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.lineWidth = 2.5;
-      ctx.strokeText(m.name, px, py);
-      ctx.fillStyle = 'rgba(226,232,240,0.72)';
-      ctx.fillText(m.name, px, py);
-    });
-    ctx.restore();
+    // Formatted Monuments Layer (Toggleable)
+    if (document.getElementById('shopMapShowMonumentsCb')?.checked !== false) {
+      const mons = (bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0)
+        ? bfMapData.monuments.map((m) => ({ fmt: formatRustPlusMonumentToken(m.type) || { label: m.type, icon: '🏛️', color: '#cbd5e1' }, wx: m.x, wy: m.y }))
+        : (tel.mapMeta?.monuments || []).map((m) => ({ fmt: formatRustPlusMonumentToken(m.token), wx: m.wx, wy: m.wy }));
+      ctx.save();
+      ctx.font = '700 9.5px "Inter", sans-serif';
+      ctx.textAlign = 'center';
+      mons.forEach((m) => {
+        if (!m.fmt) return;
+        const { px, py } = toPx(m.wx, m.wy);
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fillStyle = m.fmt.color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.lineWidth = 3;
+        const txt = `${m.fmt.icon} ${m.fmt.label}`;
+        ctx.strokeText(txt, px, py - 6);
+        ctx.fillStyle = m.fmt.color;
+        ctx.fillText(txt, px, py - 6);
+      });
+      ctx.restore();
+    }
 
     shopLiveMapRenderedPins = [];
     drawRustPlusOverlayOnCanvas(ctx, {
@@ -9040,6 +9166,9 @@
       showVending: document.getElementById('shopMapShowVendingCb')?.checked !== false,
       showTeam: document.getElementById('shopMapShowTeamCb')?.checked !== false,
       showEvents: document.getElementById('shopMapShowEventsCb')?.checked !== false,
+      stealsOnly: Boolean(document.getElementById('shopMapStealsOnlyCb')?.checked),
+      inStockOnly: Boolean(document.getElementById('shopMapInStockOnlyCb')?.checked),
+      highlightedIds: lastShopMatchedMarkerIds,
       selectedShopPinId: selectedShopMapPinId,
       pinOut: shopLiveMapRenderedPins
     });
@@ -9654,6 +9783,23 @@
       return tokens.every((tok) => hay.includes(tok));
     });
 
+    const hasSearchHighlight = Boolean(
+      tokens.length > 0 ||
+      selectedShopCategory !== 'all' ||
+      selectedShopCurrency !== 'all' ||
+      ['best', 'custom'].includes(selectedShopFilter)
+    );
+    if (hasSearchHighlight) {
+      const matchedIds = new Set();
+      filtered.forEach((t) => {
+        if (t.markerId) matchedIds.add(String(t.markerId));
+      });
+      lastShopMatchedMarkerIds = matchedIds;
+    } else {
+      lastShopMatchedMarkerIds = null;
+    }
+    if (shopMapVisible) renderShopLiveMap();
+
     const tierScore = (t) => (t.tierRank === 'S' ? 0 : t.tierRank === 'A' ? 1 : 2);
     const soldOutScore = (t) => (typeof t.inStock === 'number' && t.inStock <= 0 ? 1 : 0);
     filtered.sort((a, b) => {
@@ -9949,358 +10095,7 @@
       commitCustomShopEntry(entry);
     });
 
-    const addCustomShop = () => {
-      const sellEl = document.getElementById('customShopSellInput');
-      const costEl = document.getElementById('customShopCostInput');
-      const gridEl = document.getElementById('customShopGridInput');
-      const catEl = document.getElementById('customShopCategorySelect');
-      const rawSell = sellEl?.value.trim() || '';
-      const rawCost = costEl?.value.trim() || '';
-      const grid = gridEl?.value.trim().toUpperCase() || '';
-      if (!rawSell || !rawCost) return;
-
-      const sellMatch = rawSell.match(/^(\d+)\s+(.+)$/);
-      const costMatch = rawCost.match(/^(\d+)\s+(.+)$/);
-      const buyItem = sellMatch ? sellMatch[2].trim() : rawSell;
-      const bench = findMatchingShopBenchmark(buyItem);
-      const entry = {
-        id: 'cs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
-        buyQty: sellMatch ? parseInt(sellMatch[1], 10) : 1,
-        buyItem,
-        payQty: costMatch ? parseInt(costMatch[1], 10) : 1,
-        payItem: costMatch ? costMatch[2].trim() : rawCost,
-        category: catEl?.value || bench?.category || 'defense',
-        grid,
-        notes: 'Logged by squad on live server.'
-      };
-      if (sellEl) sellEl.value = '';
-      if (costEl) costEl.value = '';
-      if (gridEl) gridEl.value = '';
-      commitCustomShopEntry(entry);
-    };
-
-    document.getElementById('addCustomShopBtn')?.addEventListener('click', addCustomShop);
-    ['customShopSellInput', 'customShopCostInput', 'customShopGridInput'].forEach((id) => {
-      document.getElementById(id)?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          addCustomShop();
-        }
-      });
-    });
-
-    // =========================================================================
-    // REAL-TIME SHOP SCANNER (OCR SCREENSHOT / WINDOW CAPTURE + RUST+ POLLER)
-    // =========================================================================
-    const SHOP_NON_GRID_TOKENS = new Set(['C4', 'F1', 'T1', 'T2', 'T3', 'M2', 'M9', 'G1', 'L9', 'X1', 'X2', 'X3', 'X4', 'X5']);
-    const SHOP_CURRENCIES_RE = /\b(sulfur\s+ore|sulfur|scrap|crude\s+oil|low\s+grade\s+fuel|lgf|high\s+quality\s+metal|hqm|metal\s+fragments|metal|wood|stones?|fertilizer|diesel(?:\s+fuel)?)\b/i;
-
-    const canonicalCurrency = (raw) => {
-      const s = String(raw || '').trim().toLowerCase();
-      if (s === 'sulfur ore') return 'Sulfur Ore';
-      if (s === 'sulfur') return 'Sulfur';
-      if (s === 'scrap') return 'Scrap';
-      if (s === 'crude oil') return 'Crude Oil';
-      if (s === 'low grade fuel' || s === 'lgf') return 'Low Grade Fuel';
-      if (s === 'high quality metal' || s === 'hqm') return 'High Quality Metal';
-      if (s === 'metal fragments' || s === 'metal') return 'Metal Fragments';
-      if (s === 'wood') return 'Wood';
-      if (s === 'stone' || s === 'stones') return 'Stone';
-      if (s === 'fertilizer') return 'Fertilizer';
-      if (s.startsWith('diesel')) return 'Diesel Fuel Barrel';
-      return raw ? raw.trim() : 'Sulfur';
-    };
-
-    function extractShopGridToken(text) {
-      const explicit = text.match(/(?:\[|@|grid\s*[:\-]?\s*)([A-Z]{1,2}\d{1,2})\]?/i);
-      if (explicit) return explicit[1].toUpperCase();
-      const loose = text.match(/\b([A-Z]{1,2}\d{1,2})\b/g) || [];
-      for (const tok of loose) {
-        const up = tok.toUpperCase();
-        const num = parseInt(up.replace(/^[A-Z]+/, ''), 10);
-        if (!SHOP_NON_GRID_TOKENS.has(up) && num >= 0 && num <= 32) return up;
-      }
-      return '';
-    }
-
-    function parseShopQtyName(raw, fallbackQty = 1) {
-      let clean = String(raw || '').trim();
-      let qty = fallbackQty;
-      const prefix = clean.match(/^(\d+)\s*[x×]?\s+(.+)$/i);
-      const suffix = clean.match(/^(.+?)\s+[x×]?\s*(\d+)$/i);
-      if (prefix) {
-        qty = Math.max(1, parseInt(prefix[1], 10));
-        clean = prefix[2].trim();
-      } else if (suffix && !/\b(?:5\.56|level\s+[123]|mp5a4|spas-12|lr-300|m39|m92|l96|f1)\b/i.test(clean)) {
-        qty = Math.max(1, parseInt(suffix[2], 10));
-        clean = suffix[1].trim();
-      }
-      return { qty, name: clean };
-    }
-
-    function parseShopTradesFromOcrText(rawText) {
-      const lines = String(rawText || '')
-        .split(/\r?\n|;/)
-        .map((l) => l.replace(/\s+/g, ' ').trim())
-        .filter(Boolean);
-      const defaultGrid = extractShopGridToken(rawText);
-      const results = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
-        let inStock = undefined;
-        const stockMatch =
-          line.match(/\(\s*(\d+)\s*(?:in\s*stock|stock|left|avail(?:able)?)\s*\)/i) ||
-          line.match(/(?:in\s*stock|stock|left|avail(?:able)?)[\s:=]*(\d+)/i) ||
-          line.match(/\b(\d+)\s*(?:in\s*stock|stock|left)\b/i);
-        if (stockMatch) {
-          inStock = parseInt(stockMatch[1], 10);
-          line = line.replace(stockMatch[0], ' ').replace(/\s+/g, ' ').trim();
-        }
-
-        let lineGrid = extractShopGridToken(line) || defaultGrid;
-        if (lineGrid) {
-          line = line
-            .replace(new RegExp(`(?:\\[|@|grid\\s*[:\\-]?\\s*)?\\b${lineGrid}\\b\\]?`, 'ig'), ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        }
-
-        let leftPart = '';
-        let rightPart = '';
-        const sepMatch = line.match(/^(.+?)\s*(?:=|->|=>|⇄|\||\bfor\b)\s*(.+)$/i);
-        if (sepMatch) {
-          leftPart = sepMatch[1].trim();
-          rightPart = sepMatch[2].trim();
-        } else {
-          // Try trailing `<qty> <currency>` pattern (common on map vending OCR)
-          const tailCost = line.match(
-            new RegExp(`^(.+?)\\s+(\\d+)\\s*[x×]?\\s*(${SHOP_CURRENCIES_RE.source})$`, 'i')
-          );
-          if (tailCost) {
-            leftPart = tailCost[1].trim();
-            rightPart = `${tailCost[2]} ${tailCost[3]}`;
-          } else if (i + 1 < lines.length) {
-            // Sliding 2-line OCR window (Line i = Item, Line i+1 = Cost)
-            const nextLine = lines[i + 1];
-            const nextCost = nextLine.match(
-              new RegExp(`(\\d+)\\s*[x×]?\\s*(${SHOP_CURRENCIES_RE.source})`, 'i')
-            );
-            if (nextCost && !SHOP_CURRENCIES_RE.test(line)) {
-              leftPart = line;
-              rightPart = `${nextCost[1]} ${nextCost[2]}`;
-              i += 1;
-            }
-          }
-        }
-
-        if (!leftPart || !rightPart) continue;
-        const left = parseShopQtyName(leftPart, 1);
-        const right = parseShopQtyName(rightPart, 1);
-        if (!left.name || left.name.length < 2) continue;
-
-        const bench = findMatchingShopBenchmark(left.name);
-        const buyItem = bench?.buyItem || left.name;
-        const payItem = canonicalCurrency(right.name);
-
-        results.push({
-          id: 'ocr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-          liveSource: 'ocr',
-          shopName: lineGrid ? `Map Scan [${lineGrid}]` : 'Map / Drone Scan',
-          buyQty: left.qty,
-          buyItem,
-          payQty: right.qty,
-          payItem,
-          inStock,
-          category: bench?.category || 'defense',
-          grid: lineGrid,
-          updatedAt: Date.now(),
-          notes: `Imported via live scanner${typeof inStock === 'number' ? ` (${inStock} in stock)` : ''}.`
-        });
-      }
-      return results;
-    }
-
-    function upsertLiveScannerShops(parsedEntries, statusEl, sourceLabel = 'Scanner') {
-      if (!Array.isArray(parsedEntries) || parsedEntries.length === 0) {
-        if (statusEl) statusEl.textContent = `⚠️ ${sourceLabel}: No shop prices recognized (try e.g. "Pure Ore Tea = 280 Sulfur @ M14 (6 stock)").`;
-        return 0;
-      }
-      const current = Array.isArray(appState.customShops) ? [...appState.customShops] : [];
-      for (const entry of parsedEntries) {
-        const dupIdx = current.findIndex(
-          (c) =>
-            String(c.buyItem || '').toLowerCase() === entry.buyItem.toLowerCase() &&
-            String(c.payItem || '').toLowerCase() === entry.payItem.toLowerCase() &&
-            String(c.grid || '').toUpperCase() === String(entry.grid || '').toUpperCase()
-        );
-        if (dupIdx >= 0) {
-          current[dupIdx] = { ...current[dupIdx], ...entry, id: current[dupIdx].id };
-        } else {
-          current.unshift(entry);
-        }
-      }
-      appState.customShops = current;
-      selectedShopTradeId = parsedEntries[0].id;
-      if (!['all', 'player', 'custom'].includes(selectedShopFilter)) {
-        selectedShopFilter = 'player';
-        document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
-          b.classList.toggle('active', b.getAttribute('data-sfilter') === 'player');
-        });
-      }
-      syncStateToServer();
-      renderShopsModule();
-      if (statusEl) {
-        statusEl.textContent = `✅ ${sourceLabel}: Imported ${parsedEntries.length} shop ${parsedEntries.length === 1 ? 'deal' : 'deals'} and graded ROI!`;
-      }
-      return parsedEntries.length;
-    }
-
-    const scanStatusEl = document.getElementById('shopScannerStatus');
-    const quickBulkInputEl = document.getElementById('shopQuickBulkInput');
-    document.getElementById('shopQuickBulkBtn')?.addEventListener('click', () => {
-      const txt = quickBulkInputEl?.value.trim() || '';
-      if (!txt) return;
-      const parsed = parseShopTradesFromOcrText(txt);
-      const added = upsertLiveScannerShops(parsed, scanStatusEl, 'Quick Import');
-      if (added > 0 && quickBulkInputEl) quickBulkInputEl.value = '';
-    });
-    quickBulkInputEl?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        document.getElementById('shopQuickBulkBtn')?.click();
-      }
-    });
-
-    async function runShopImageOcr(imgSource, label = 'Screenshot OCR') {
-      if (!imgSource) return;
-      try {
-        if (scanStatusEl) scanStatusEl.textContent = `⏳ ${label}: Initializing Tesseract OCR...`;
-        const worker = await ensureRaidOcrWorker((msg) => {
-          if (scanStatusEl) scanStatusEl.textContent = msg;
-        });
-        const res = await worker.recognize(imgSource);
-        const text = res?.data?.text || '';
-        const parsed = parseShopTradesFromOcrText(text);
-        upsertLiveScannerShops(parsed, scanStatusEl, label);
-      } catch (err) {
-        if (scanStatusEl) scanStatusEl.textContent = `❌ ${label} failed: ${err.message}`;
-      }
-    }
-
-    document.getElementById('shopOcrFileInput')?.addEventListener('change', (e) => {
-      const file = e.target?.files?.[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = async () => {
-        await runShopImageOcr(img, 'Uploaded Image OCR');
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
-    });
-
-    document.getElementById('shopOcrPasteBtn')?.addEventListener('click', async () => {
-      try {
-        if (navigator.clipboard?.read) {
-          const items = await navigator.clipboard.read();
-          for (const item of items) {
-            const imgType = item.types.find((t) => t.startsWith('image/'));
-            if (imgType) {
-              const blob = await item.getType(imgType);
-              return await runShopImageOcr(blob, 'Clipboard OCR');
-            }
-          }
-          const txtType = item.types.find((t) => t === 'text/plain');
-          if (txtType) {
-            const blob = await item.getType(txtType);
-            const text = await blob.text();
-            return upsertLiveScannerShops(parseShopTradesFromOcrText(text), scanStatusEl, 'Clipboard Text');
-          }
-        }
-        if (scanStatusEl) scanStatusEl.textContent = '💡 Press Ctrl+V anywhere on the Shops tab after Win+Shift+S to paste a vending screenshot.';
-      } catch (_) {
-        if (scanStatusEl) scanStatusEl.textContent = '💡 Press Ctrl+V anywhere on the Shops tab after copying a screenshot (Win+Shift+S).';
-      }
-    });
-
-    document.addEventListener('paste', (e) => {
-      if (!document.getElementById('tab-shops')?.classList.contains('active')) return;
-      const items = Array.from(e.clipboardData?.items || []);
-      const imgItem = items.find((it) => it.type.startsWith('image/'));
-      if (!imgItem) return;
-      const blob = imgItem.getAsFile();
-      if (!blob) return;
-      e.preventDefault();
-      const drawer = document.getElementById('liveShopTrackerDrawer');
-      if (drawer) drawer.open = true;
-      runShopImageOcr(blob, 'Clipboard Paste OCR');
-    });
-
-    let shopLiveStream = null;
-    let shopLiveTimer = null;
-    const shopLiveBtn = document.getElementById('shopLiveCaptureBtn');
-    const stopShopLiveCapture = () => {
-      if (shopLiveTimer) {
-        clearInterval(shopLiveTimer);
-        shopLiveTimer = null;
-      }
-      if (shopLiveStream) {
-        try { shopLiveStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
-        shopLiveStream = null;
-      }
-      if (shopLiveBtn) shopLiveBtn.textContent = '🎥 Live Scan Rust Window';
-    };
-
-    shopLiveBtn?.addEventListener('click', async () => {
-      if (shopLiveStream) {
-        stopShopLiveCapture();
-        if (scanStatusEl) scanStatusEl.textContent = '⏹️ Live window shop scanner stopped.';
-        return;
-      }
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        if (scanStatusEl) scanStatusEl.textContent = '⚠️ Screen capture requires localhost/HTTPS or Chrome/Edge desktop.';
-        return;
-      }
-      try {
-        shopLiveStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 2 }, audio: false });
-        shopLiveBtn.textContent = '⏹️ Stop Live Scan';
-        const video = document.createElement('video');
-        video.srcObject = shopLiveStream;
-        video.muted = true;
-        await video.play();
-        const capCanvas = document.createElement('canvas');
-        const capCtx = capCanvas.getContext('2d');
-        let lastFrameSig = '';
-
-        shopLiveStream.getVideoTracks()[0]?.addEventListener('ended', stopShopLiveCapture);
-        if (scanStatusEl) scanStatusEl.textContent = '🟢 Live watching Rust window — open Map/Drone vending screen to auto-import every 2.5s.';
-
-        shopLiveTimer = setInterval(async () => {
-          if (!shopLiveStream || video.videoWidth < 100) return;
-          capCanvas.width = video.videoWidth;
-          capCanvas.height = video.videoHeight;
-          capCtx.drawImage(video, 0, 0);
-          const sample = capCtx.getImageData(
-            Math.floor(capCanvas.width * 0.3),
-            Math.floor(capCanvas.height * 0.25),
-            Math.max(16, Math.floor(capCanvas.width * 0.4)),
-            Math.max(16, Math.floor(capCanvas.height * 0.5))
-          ).data;
-          let sig = 0;
-          for (let i = 0; i < sample.length; i += 64) sig = (sig + sample[i]) % 10000000;
-          const sigStr = String(sig);
-          if (sigStr === lastFrameSig) return;
-          lastFrameSig = sigStr;
-          await runShopImageOcr(capCanvas, 'Live Window Scan');
-        }, 2500);
-      } catch (err) {
-        stopShopLiveCapture();
-        if (scanStatusEl) scanStatusEl.textContent = `❌ Capture cancelled: ${err.message}`;
-      }
-    });
-
-    // Rust+ Live Vending Machine Poller UI
+    // Rust+ Live Vending Machine Poller & Steam Popup Controls
     const jsonPasteEl = document.getElementById('rpShopJsonPasteInput');
     jsonPasteEl?.addEventListener('input', () => {
       const raw = jsonPasteEl.value.trim();
@@ -10312,7 +10107,7 @@
         if (parsed.playerId) document.getElementById('rpShopPlayerIdInput').value = String(parsed.playerId);
         if (parsed.playerToken) document.getElementById('rpShopTokenInput').value = String(parsed.playerToken);
         const stEl = document.getElementById('rpShopStatusText');
-        if (stEl) stEl.textContent = '✅ Loaded server IP, port & Rust+ token from JSON — click Connect & Poll Live!';
+        if (stEl) stEl.textContent = '✅ Loaded server IP, port & Rust+ token from JSON — click Sync Now!';
       } catch (_) {}
     });
 
@@ -10363,15 +10158,15 @@
       };
     };
 
-    const triggerRustPlusShopPoll = async (simulate = false) => {
+    const triggerRustPlusShopPoll = async (forceMap = false) => {
       const statusEl = document.getElementById('rpShopStatusText');
       const cfg = readRustPlusFormConfig();
-      if (!simulate && ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken)) {
-        if (statusEl) statusEl.textContent = '⚠️ Sign in with Steam Popup or enter Server IP/ID, SteamID64, and PlayerToken.';
+      if ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken) {
+        if (statusEl) statusEl.textContent = '⚠️ Sign in with Steam Popup or select a paired server first.';
         return;
       }
       const targetDesc = cfg.ip ? `${cfg.ip}:${cfg.port}` : `Relay ${cfg.serverId.slice(0, 8)}...`;
-      if (statusEl) statusEl.textContent = simulate ? '⏳ Generating Demo Live Server Snapshot...' : `⏳ Polling Rust+ map, shops, squad & events from ${targetDesc}...`;
+      if (statusEl) statusEl.textContent = `⏳ Syncing Rust+ map, shops, squad & events from ${targetDesc}...`;
       try {
         const resp = await fetch('/api/shops/rustplus/poll', {
           method: 'POST',
@@ -10379,7 +10174,7 @@
             'Content-Type': 'application/json',
             ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
           },
-          body: JSON.stringify({ ...cfg, simulate })
+          body: JSON.stringify({ ...cfg, forceMap: Boolean(forceMap) })
         });
         const data = await resp.json();
         if (!resp.ok || data.error) {
@@ -10399,7 +10194,9 @@
     const openSteamShopPopup = (launchWindow = true) => {
       const drawer = document.getElementById('liveShopTrackerDrawer');
       if (drawer) drawer.open = true;
-      document.getElementById('rpPopupConnectSection')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      const popupSec = document.getElementById('rpPopupConnectSection');
+      if (popupSec) popupSec.open = true;
+      popupSec?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
       awaitingSteamClipboardCode = true;
       const statusEl = document.getElementById('rpShopStatusText');
       if (statusEl) {
@@ -10419,27 +10216,25 @@
       } catch (_) {}
     };
 
-    const submitFacepunchShopAuth = async (rawInput, { simulate = false, isSilentAuto = false } = {}) => {
+    const submitFacepunchShopAuth = async (rawInput, { isSilentAuto = false } = {}) => {
       const tokenInput = String(rawInput || '').trim();
       const statusEl = document.getElementById('rpShopStatusText');
-      if (!simulate && !tokenInput) {
+      if (!tokenInput) {
         if (!isSilentAuto && statusEl) {
           statusEl.textContent = '⚠️ First click Step 1: Sign In with Steam (Popup), copy the URL ending with #code=..., then click Step 2.';
         }
         return false;
       }
-      if (!simulate && isSilentAuto && tokenInput === lastExchangedShopAuthInput) {
+      if (isSilentAuto && tokenInput === lastExchangedShopAuthInput) {
         return false;
       }
-      if (!simulate) lastExchangedShopAuthInput = tokenInput;
+      lastExchangedShopAuthInput = tokenInput;
       awaitingSteamClipboardCode = false;
 
       const codeInp = document.getElementById('rpAuthCodeInput');
       if (codeInp && tokenInput) codeInp.value = tokenInput;
       if (statusEl) {
-        statusEl.textContent = simulate
-          ? '⏳ Running Steam Popup OAuth Demo & syncing Facepunch Cloud servers...'
-          : '⏳ Exchanging Steam OAuth code with Facepunch Cloud & pulling paired servers...';
+        statusEl.textContent = '⏳ Exchanging Steam OAuth code with Facepunch Cloud & pulling paired servers...';
       }
 
       try {
@@ -10449,14 +10244,14 @@
             'Content-Type': 'application/json',
             ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
           },
-          body: JSON.stringify({ tokenInput, simulate })
+          body: JSON.stringify({ tokenInput })
         });
         const data = await resp.json();
         if (!resp.ok || data.error) {
           throw new Error(data.error || `HTTP ${resp.status}`);
         }
         hydrateRustPlusStateFromResponse(data);
-        if (codeInp && !simulate) {
+        if (codeInp) {
           codeInp.value = '';
           codeInp.placeholder = '✅ Connected to Facepunch Cloud (paste a new #code= only if re-logging in)';
         }
@@ -10527,7 +10322,6 @@
 
     document.getElementById('openRustPlusPopupModalBtn')?.addEventListener('click', () => openSteamShopPopup(true));
     document.getElementById('rpPopupSteamLoginBtn')?.addEventListener('click', () => openSteamShopPopup(true));
-    document.getElementById('rpDemoCloudAuthBtn')?.addEventListener('click', () => submitFacepunchShopAuth('', { simulate: true }));
 
     document.getElementById('rpPasteClipboardBtn')?.addEventListener('click', async () => {
       try {
@@ -10609,7 +10403,6 @@
     });
 
     document.getElementById('rpShopPollNowBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(false));
-    document.getElementById('rpShopSimulateBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(true));
 
     const saveRustPlusPollSettings = async () => {
       const cfg = readRustPlusFormConfig();
@@ -10660,16 +10453,28 @@
       renderShopLiveMap();
     });
 
-    // Live Shop Map Controls (Toggle, Layers, Zoom, Pan, Hover, Click-to-Filter)
+    // Live Shop Map Controls (Toggle, Layers, Expand, Sync, Zoom-to-Cursor, Pan, Hover, Click-to-Filter)
     document.getElementById('toggleShopMapBtn')?.addEventListener('click', () => {
       shopMapVisible = !shopMapVisible;
       renderShopLiveMap();
     });
-    ['shopMapShowVendingCb', 'shopMapShowTeamCb', 'shopMapShowEventsCb'].forEach((id) => {
+    ['shopMapShowVendingCb', 'shopMapStealsOnlyCb', 'shopMapInStockOnlyCb', 'shopMapShowTeamCb', 'shopMapShowEventsCb', 'shopMapShowMonumentsCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', renderShopLiveMap);
     });
-    const setShopZoomClamped = (z) => {
-      shopMapZoom = Math.max(0.65, Math.min(4.2, z));
+    const setShopZoomClamped = (z, anchorCx = null, anchorCy = null) => {
+      const nextZoom = Math.max(0.65, Math.min(5.0, z));
+      const c = document.getElementById('shopLiveMapCanvas');
+      if (c && anchorCx !== null && anchorCy !== null) {
+        const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
+        const fitSpan = Math.min(c.width, c.height) * 0.94;
+        const oldScale = (fitSpan / mapSize) * shopMapZoom;
+        const newScale = (fitSpan / mapSize) * nextZoom;
+        const wxBefore = (anchorCx - c.width / 2) / oldScale + shopMapPanX;
+        const wyBefore = -(anchorCy - c.height / 2) / oldScale + shopMapPanY;
+        shopMapPanX = wxBefore - (anchorCx - c.width / 2) / newScale;
+        shopMapPanY = wyBefore + (anchorCy - c.height / 2) / newScale;
+      }
+      shopMapZoom = nextZoom;
       renderShopLiveMap();
     };
     document.getElementById('shopMapZoomInBtn')?.addEventListener('click', () => setShopZoomClamped(shopMapZoom * 1.25));
@@ -10679,6 +10484,13 @@
       shopMapPanY = 0;
       setShopZoomClamped(1);
     });
+    document.getElementById('shopMapExpandBtn')?.addEventListener('click', () => {
+      shopMapExpanded = !shopMapExpanded;
+      const btn = document.getElementById('shopMapExpandBtn');
+      if (btn) btn.textContent = shopMapExpanded ? '⤡ Compact' : '⤢ Expand';
+      renderShopLiveMap();
+    });
+    document.getElementById('shopMapRefreshBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(true));
     document.getElementById('shopMapOpenBaseFinderBtn')?.addEventListener('click', () => {
       const info = appState.rustPlusTelemetry?.serverInfo;
       document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
@@ -10797,7 +10609,10 @@
       });
       shopCanvas.addEventListener('wheel', (e) => {
         e.preventDefault();
-        setShopZoomClamped(shopMapZoom * (e.deltaY < 0 ? 1.15 : 0.87));
+        const rect = shopCanvas.getBoundingClientRect();
+        const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
+        const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
+        setShopZoomClamped(shopMapZoom * (e.deltaY < 0 ? 1.15 : 0.87), cx, cy);
       }, { passive: false });
     }
 

@@ -1356,9 +1356,13 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
 
 let cachedRustPlusMap = null;
 
-function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
+function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
   const serverKey = `${cfg.serverId || cfg.ip || ''}:${cfg.port || '28082'}`;
-  const needMap = !cachedRustPlusMap || cachedRustPlusMap.serverKey !== serverKey || Date.now() - cachedRustPlusMap.updatedAt > 30 * 60 * 1000;
+  const needMap =
+    Boolean(forceMap) ||
+    !cachedRustPlusMap ||
+    cachedRustPlusMap.serverKey !== serverKey ||
+    Date.now() - cachedRustPlusMap.updatedAt > 30 * 60 * 1000;
 
   let infoResult = null;
   let timeResult = null;
@@ -1419,7 +1423,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
         if (markersResult !== null && !graceTimer) {
           graceTimer = setTimeout(() => {
             finish(null, buildSnapshot());
-          }, needMap ? 1200 : 350);
+          }, needMap ? 2000 : 400);
         }
       },
       onTimeout() {
@@ -1432,7 +1436,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
         return undefined;
       }
     },
-    needMap ? 9500 : 7500
+    needMap ? 10500 : 7500
   );
 }
 
@@ -1455,8 +1459,8 @@ async function runRustPlusModes(cfg, runner) {
   throw lastErr;
 }
 
-async function fetchRustPlusVendingSnapshot(cfg) {
-  return runRustPlusModes(cfg, (mode) => fetchRustPlusSnapshotAttempt(cfg, mode));
+async function fetchRustPlusVendingSnapshot(cfg, forceMap = false) {
+  return runRustPlusModes(cfg, (mode) => fetchRustPlusSnapshotAttempt(cfg, mode, forceMap));
 }
 
 async function sendRustPlusCommand(cfg, fieldNum, innerBytesOrObj = []) {
@@ -1527,86 +1531,10 @@ function formatRustPlusTimeSummary(timeObj) {
   };
 }
 
-function buildDemoVendingSnapshot(mapSize) {
-  const s = Math.max(1000, Number(mapSize) || 4250);
-  return {
-    info: {
-      name: '[Live Server Demo] Rust Tactical Monthly',
-      map: 'Procedural Map',
-      mapSize: s,
-      seed: 1337420,
-      players: 214,
-      maxPlayers: 300,
-      queuedPlayers: 6
-    },
-    time: {
-      dayLengthMinutes: 45,
-      sunrise: 7.2,
-      sunset: 19.6,
-      time: 14.35
-    },
-    teamInfo: {
-      leaderSteamId: '76561198025882443',
-      members: [
-        { steamId: '76561198025882443', name: 'Tang (You)', x: s * 0.52, y: s * 0.48, isOnline: true, isAlive: true },
-        { steamId: '76561198002164049', name: 'Farmer_Max', x: s * 0.58, y: s * 0.54, isOnline: true, isAlive: true },
-        { steamId: '76561197969146424', name: 'Roamer_Kev', x: s * 0.39, y: s * 0.61, isOnline: true, isAlive: false, deathTime: Math.floor(Date.now() / 1000) - 90 }
-      ],
-      mapNotes: [{ type: 1, x: s * 0.53, y: s * 0.47, icon: 2, colourIndex: 3, label: 'MAIN FLANK BASE' }],
-      leaderMapNotes: [{ type: 0, x: s * 0.56, y: s * 0.51, icon: 4, colourIndex: 1, label: 'CHEAP TEAS!' }]
-    },
-    teamChat: [
-      { steamId: '76561198002164049', name: 'Farmer_Max', message: 'Ore tea shop at M14 is stocked! Grabbing 3 before snow run.', color: '#4ade80', time: Math.floor(Date.now() / 1000) - 240 },
-      { steamId: '76561197969146424', name: 'Roamer_Kev', message: 'Cargo just entered near harbor, crate dropping soon.', color: '#38bdf8', time: Math.floor(Date.now() / 1000) - 65 }
-    ],
-    markers: [
-      {
-        id: 9101,
-        type: 3,
-        x: s * 0.56,
-        y: s * 0.51,
-        name: 'TEA SHOP // PURE ORE & SCRAP',
-        sellOrders: [
-          { itemId: 1729374708, quantity: 1, currencyId: -1581843485, costPerItem: 280, amountInStock: 9 },
-          { itemId: 2024467711, quantity: 1, currencyId: -1581843485, costPerItem: 260, amountInStock: 6 },
-          { itemId: -557539629, quantity: 1, currencyId: -1581843485, costPerItem: 180, amountInStock: 0 }
-        ]
-      },
-      {
-        id: 9102,
-        type: 3,
-        x: s * 0.44,
-        y: s * 0.62,
-        name: 'T2 PROGRESSION // DOORS & WB2',
-        sellOrders: [
-          { itemId: -148794216, quantity: 1, currencyId: -1581843485, costPerItem: 250, amountInStock: 7 },
-          { itemId: -41896755, quantity: 1, currencyId: -1581843485, costPerItem: 380, amountInStock: 2 },
-          { itemId: -904863145, quantity: 1, currencyId: -1581843485, costPerItem: 300, amountInStock: 4 }
-        ]
-      },
-      {
-        id: 9103,
-        type: 3,
-        x: s * 0.72,
-        y: s * 0.34,
-        name: 'EXCAVATOR DIESEL & BOOM',
-        sellOrders: [
-          { itemId: 1568388703, quantity: 1, currencyId: -1581843485, costPerItem: 250, amountInStock: 12 },
-          { itemId: 1545779598, quantity: 1, currencyId: -1581843485, costPerItem: 1200, amountInStock: 3 }
-        ]
-      },
-      { id: 9501, type: 5, x: s * 0.87, y: s * 0.22, name: 'Cargo Ship', rotation: 0.9 },
-      { id: 9502, type: 8, x: s * 0.33, y: s * 0.44, name: 'Patrol Helicopter', rotation: 2.1 },
-      { id: 9503, type: 6, x: s * 0.64, y: s * 0.67, name: 'Locked Crate' },
-      { id: 9504, type: 2, x: s * 0.26, y: s * 0.28, name: 'Explosion' }
-    ]
-  };
-}
-
-async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
+async function applyVendingSnapshotToState(snapshot, cfg) {
   const prevInfo = squadState.rustPlusTelemetry?.serverInfo || {};
   const mapSize = Number(snapshot?.info?.mapSize || cfg?.mapSize || prevInfo.mapSize || 4250);
-  const serverKey = `${cfg?.serverId || cfg?.ip || 'demo'}:${cfg?.port || '28082'}`;
+  const serverKey = `${cfg?.serverId || cfg?.ip || 'live'}:${cfg?.port || '28082'}`;
   const vmMarkers = (snapshot?.markers || []).filter(
     (m) => m.type === 3 && Array.isArray(m.sellOrders) && m.sellOrders.length > 0
   );
@@ -1657,7 +1585,6 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
         id,
         markerId: String(mk.id),
         liveSource: 'rustplus',
-        isDemo,
         shopName,
         buyQty,
         buyItem,
@@ -1672,7 +1599,7 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
         category: inferShopCategoryFromName(buyItem),
         grid,
         updatedAt: nowTs,
-        notes: `${isDemo ? 'Demo' : 'Live Rust+'} vending "${shopName}" at [${grid}] — ${inStock > 0 ? `${inStock} in stock` : 'SOLD OUT'}.`
+        notes: `Live Rust+ vending "${shopName}" at [${grid}] — ${inStock > 0 ? `${inStock} in stock` : 'SOLD OUT'}.`
       };
       liveShops.push(entry);
       pinOrders.push({ id, buyQty, buyItem, payQty, payItem, inStock, isSteal });
@@ -1690,7 +1617,6 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
       inStockCount,
       totalOrders: pinOrders.length,
       stealCount,
-      isDemo,
       orders: pinOrders
     });
   }
@@ -1719,12 +1645,11 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
       ny: Number(ny.toFixed(4)),
       grid,
       rotation: Number(mk.rotation || 0),
-      radius: Number(mk.radius || 0),
-      isDemo
+      radius: Number(mk.radius || 0)
     };
     liveEvents.push(evt);
     const evtAlertKey = `${serverKey}:${mk.type}:${mk.id}`;
-    if (!isDemo && [2, 5, 6, 8].includes(mk.type) && !sentWorldEventAlerts.has(evtAlertKey)) {
+    if ([2, 5, 6, 8].includes(mk.type) && !sentWorldEventAlerts.has(evtAlertKey)) {
       sentWorldEventAlerts.add(evtAlertKey);
       newEvents.push(evt);
     }
@@ -1811,21 +1736,13 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
     teamChat = snapshot.teamChat.slice(-30);
   }
 
-  let smartDevices = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : [];
-  if (isDemo && smartDevices.length === 0) {
-    smartDevices = [
-      { entityId: '88101', name: 'Base Turrets / Bunker Door', entityType: 'switch', active: true, isDemo: true },
-      { entityId: '88102', name: 'Auto-Smelter Furnaces', entityType: 'switch', active: false, isDemo: true },
-      { entityId: '88103', name: 'SAM Site Perimeter Alarm', entityType: 'alarm', active: false, isDemo: true }
-    ];
-  }
+  const smartDevices = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : [];
 
   const timeSummary = snapshot?.time ? formatRustPlusTimeSummary(snapshot.time) : squadState.rustPlusTelemetry?.time || null;
   const nextServerInfo = {
     ...prevInfo,
     ...(snapshot?.info || {}),
-    mapSize,
-    isDemo
+    mapSize
   };
 
   const manualShops = (Array.isArray(squadState.customShops) ? squadState.customShops : []).filter(
@@ -1850,7 +1767,7 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
     mapSize,
     ...(nextServerInfo.name ? { serverName: nextServerInfo.name } : {}),
     lastPolledAt: nowTs,
-    lastStatus: `${isDemo ? '🧪 Demo' : '🟢 Live Rust+'} • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • 🛒 ${vmMarkers.length} shops • ⚡ ${liveEvents.length} events`
+    lastStatus: `🟢 Live Rust+ • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • 🛒 ${vmMarkers.length} shops • ⚡ ${liveEvents.length} events`
   };
   saveState(squadState);
   broadcastState('state_update');
@@ -1860,7 +1777,7 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
     (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
       (settings.botToken && (settings.channelId || settings.dmUserId))
   );
-  if (hasTarget && !isDemo) {
+  if (hasTarget) {
     if (squadState.rustPlusShopConfig.discordAlertSteals && newSteals.length > 0) {
       const topList = newSteals
         .slice(0, 5)
@@ -2828,50 +2745,6 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/shops/rustplus/auth-exchange' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
-      if (body.simulate) {
-        const demoServers = [
-          {
-            id: '185.83.154.88:28082',
-            serverName: '[EU] Rust Tactical Monthly (Popup Demo)',
-            ip: '185.83.154.88',
-            port: '28082',
-            playerId: '76561198025882443',
-            playerToken: '-192837465',
-            pairedAt: Date.now()
-          },
-          {
-            id: '194.69.160.12:28082',
-            serverName: "[EU] Willjum's Casual Solo/Duo",
-            ip: '194.69.160.12',
-            port: '28082',
-            playerId: '76561198025882443',
-            playerToken: '847291042',
-            pairedAt: Date.now() - 3600000
-          }
-        ];
-        const nextCfg = {
-          ...DEFAULT_STATE.rustPlusShopConfig,
-          ...(squadState.rustPlusShopConfig || {}),
-          ip: demoServers[0].ip,
-          port: demoServers[0].port,
-          playerId: demoServers[0].playerId,
-          playerToken: demoServers[0].playerToken,
-          serverName: demoServers[0].serverName,
-          steamId: demoServers[0].playerId,
-          pairedServers: demoServers,
-          autoPoll: true
-        };
-        const snap = buildDemoVendingSnapshot(nextCfg.mapSize);
-        const result = await applyVendingSnapshotToState(snap, nextCfg, true);
-        return sendJson(res, 200, {
-          ok: true,
-          pairedServers: demoServers,
-          activeServer: demoServers[0],
-          ...result,
-          lastStatus: `🚀 Steam Popup Demo connected "${demoServers[0].serverName}" & synced ${result.ordersCount} live offers!`,
-          state: squadState
-        });
-      }
 
       try {
         const resolved = await resolveFacepunchAuthInput(body.tokenInput);
@@ -2995,11 +2868,11 @@ const server = http.createServer(async (req, res) => {
       if (!message) return sendJson(res, 400, { error: 'Enter a message to send to team chat.' });
 
       const cfg = squadState.rustPlusShopConfig || {};
-      const isDemo = Boolean(squadState.rustPlusTelemetry?.serverInfo?.isDemo);
+      if ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken) {
+        return sendJson(res, 400, { error: 'Connect to Rust+ first before sending team messages.' });
+      }
       try {
-        if (!isDemo && (cfg.ip || cfg.serverId) && cfg.playerId && cfg.playerToken) {
-          await sendRustPlusCommand(cfg, 13, encodeRustPlusSendMessage(message));
-        }
+        await sendRustPlusCommand(cfg, 13, encodeRustPlusSendMessage(message));
         const prevChat = Array.isArray(squadState.rustPlusTelemetry?.teamChat) ? [...squadState.rustPlusTelemetry.teamChat] : [];
         prevChat.push({
           steamId: cfg.steamId || cfg.playerId || '0',
@@ -3028,14 +2901,14 @@ const server = http.createServer(async (req, res) => {
       if (!entityId) return sendJson(res, 400, { error: 'Valid Smart Switch Entity ID required.' });
       const nextActive = Boolean(body.active);
       const cfg = squadState.rustPlusShopConfig || {};
+      if ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken) {
+        return sendJson(res, 400, { error: 'Connect to Rust+ first to toggle Smart Switches.' });
+      }
       const list = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? [...squadState.rustPlusTelemetry.smartDevices] : [];
       const dev = list.find((d) => String(d.entityId) === String(entityId));
-      const isDemo = Boolean(dev?.isDemo || squadState.rustPlusTelemetry?.serverInfo?.isDemo);
 
       try {
-        if (!isDemo && (cfg.ip || cfg.serverId) && cfg.playerId && cfg.playerToken) {
-          await sendRustPlusCommand(cfg, 15, { entityId, bytes: [0x08, nextActive ? 0x01 : 0x00] });
-        }
+        await sendRustPlusCommand(cfg, 15, { entityId, bytes: [0x08, nextActive ? 0x01 : 0x00] });
         if (dev) {
           dev.active = nextActive;
         } else {
@@ -3083,7 +2956,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/shops/rustplus/poll' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
-      const isDemo = Boolean(body.simulate);
+      const forceMap = Boolean(body.forceMap);
       const nextCfg = {
         ...DEFAULT_STATE.rustPlusShopConfig,
         ...(squadState.rustPlusShopConfig || {}),
@@ -3098,11 +2971,9 @@ const server = http.createServer(async (req, res) => {
         ...(body.discordAlertEvents !== undefined ? { discordAlertEvents: Boolean(body.discordAlertEvents) } : {})
       };
       try {
-        const snapshot = isDemo
-          ? buildDemoVendingSnapshot(nextCfg.mapSize)
-          : await fetchRustPlusVendingSnapshot(nextCfg);
-        const result = await applyVendingSnapshotToState(snapshot, nextCfg, isDemo);
-        if (!isDemo) configureRustPlusShopPoller();
+        const snapshot = await fetchRustPlusVendingSnapshot(nextCfg, forceMap);
+        const result = await applyVendingSnapshotToState(snapshot, nextCfg);
+        configureRustPlusShopPoller();
         return sendJson(res, 200, { ...result, state: squadState });
       } catch (err) {
         squadState.rustPlusShopConfig = {
