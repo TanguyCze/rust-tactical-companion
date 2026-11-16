@@ -17,6 +17,10 @@ const PORT = parseInt(process.env.SERVER_PORT || process.env.PORT || '3000', 10)
 const HOST = process.env.HOST || '0.0.0.0';
 const SQUAD_PIN = process.env.SQUAD_PIN || '';
 const BM_TOKEN = process.env.BATTLEMETRICS_TOKEN || '';
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';
+const DISCORD_DM_USER_ID = process.env.DISCORD_DM_USER_ID || '';
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
 
 const DATA_DIR = path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'squad-state.json');
@@ -79,6 +83,13 @@ const DEFAULT_STATE = {
     ]
   },
   discordWebhookUrl: '',
+  discordConfig: {
+    botToken: '',
+    channelId: '',
+    dmUserId: '',
+    notifyOnComplete: true,
+    notifyOn60s: false
+  },
   updatedAt: Date.now()
 };
 
@@ -88,7 +99,11 @@ function loadState() {
       const raw = fs.readFileSync(STATE_FILE, 'utf8');
       // Drop legacy Rust+ / live-map data (incl. any saved auth tokens) from older versions
       const { rustPlus, markers, mapConfig, ...parsed } = JSON.parse(raw);
-      const state = { ...DEFAULT_STATE, ...parsed };
+      const state = {
+        ...DEFAULT_STATE,
+        ...parsed,
+        discordConfig: { ...DEFAULT_STATE.discordConfig, ...(parsed.discordConfig || {}) }
+      };
       if (rustPlus || markers || mapConfig) saveState(state);
       return state;
     }
@@ -216,26 +231,76 @@ function checkPin(req, res) {
   return true;
 }
 
-function sendDiscordWebhook(webhookUrl, title, description, color = 0xcd412b) {
-  return new Promise((resolve, reject) => {
-    const targetUrl = webhookUrl || squadState.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
-    if (!targetUrl || !targetUrl.startsWith('https://discord')) {
-      return reject(new Error('No valid Discord Webhook URL configured'));
-    }
-    const parsed = new URL(targetUrl);
-    const payload = JSON.stringify({
-      username: `Rust Tactical Companion [${squadState.squadName || 'SQUAD'}]`,
-      embeds: [
-        {
-          title,
-          description,
-          color,
-          timestamp: new Date().toISOString(),
-          footer: { text: 'Rust Tactical Companion • Rust+ & Pterodactyl Live Sync' }
-        }
-      ]
-    });
+const dmChannelCache = new Map();
+const sentDiscordAlerts = new Set();
 
+function resolveDiscordSettings(overrides = {}) {
+  const cfg = squadState.discordConfig || {};
+  return {
+    webhookUrl: String(overrides.webhookUrl ?? squadState.discordWebhookUrl ?? DISCORD_WEBHOOK_URL ?? '').trim(),
+    botToken: String(overrides.botToken ?? cfg.botToken ?? DISCORD_BOT_TOKEN ?? '').trim(),
+    channelId: String(overrides.channelId ?? cfg.channelId ?? DISCORD_CHANNEL_ID ?? '').trim(),
+    dmUserId: String(overrides.dmUserId ?? cfg.dmUserId ?? DISCORD_DM_USER_ID ?? '').trim(),
+    notifyOnComplete: cfg.notifyOnComplete !== false,
+    notifyOn60s: Boolean(cfg.notifyOn60s)
+  };
+}
+
+function discordApiRequest(method, apiPath, botToken, bodyObj) {
+  return new Promise((resolve, reject) => {
+    const cleanToken = String(botToken || '').replace(/^Bot\s+/i, '').trim();
+    if (!cleanToken) return reject(new Error('Missing Discord Bot Token'));
+    const payload = bodyObj ? JSON.stringify(bodyObj) : '';
+    const headers = {
+      Authorization: `Bot ${cleanToken}`,
+      'User-Agent': 'RustTacticalCompanion (https://rustmaps.com, 2.1)',
+      Accept: 'application/json'
+    };
+    if (payload) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(payload);
+    }
+
+    const req = https.request(
+      {
+        hostname: 'discord.com',
+        path: `/api/v10${apiPath}`,
+        method,
+        headers,
+        timeout: 8000
+      },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => {
+          let parsed = null;
+          try {
+            parsed = raw ? JSON.parse(raw) : {};
+          } catch (_) {}
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed || {});
+          } else {
+            reject(new Error(parsed?.message || `Discord API HTTP ${res.statusCode}`));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('Discord API request timed out'));
+    });
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function postWebhookEmbed(webhookUrl, payloadObj) {
+  return new Promise((resolve, reject) => {
+    if (!webhookUrl || !webhookUrl.startsWith('https://discord')) {
+      return reject(new Error('Invalid Discord Webhook URL'));
+    }
+    const parsed = new URL(webhookUrl);
+    const payload = JSON.stringify(payloadObj);
     const req = https.request(
       {
         hostname: parsed.hostname,
@@ -251,14 +316,94 @@ function sendDiscordWebhook(webhookUrl, title, description, color = 0xcd412b) {
         res.on('data', () => {});
         res.on('end', () => {
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(true);
-          else reject(new Error(`Discord HTTP ${res.statusCode}`));
+          else reject(new Error(`Discord Webhook HTTP ${res.statusCode}`));
         });
       }
     );
     req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('Discord webhook request timed out'));
+    });
     req.write(payload);
     req.end();
   });
+}
+
+async function sendDiscordNotification(opts = {}) {
+  const settings = resolveDiscordSettings(opts);
+  const title = String(opts.title || 'Rust Tactical Companion Alert');
+  const description = String(opts.description || '');
+  const color = Number.isFinite(Number(opts.color)) ? Number(opts.color) : 0xcd412b;
+
+  const dmUserIds = settings.dmUserId
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter((id) => /^\d{15,22}$/.test(id));
+  const cleanChannelId = /^\d{15,22}$/.test(settings.channelId) ? settings.channelId : '';
+
+  const mentionPrefix = dmUserIds.length > 0 ? dmUserIds.map((id) => `<@${id}>`).join(' ') : '';
+  const embed = {
+    title,
+    description,
+    color,
+    timestamp: new Date().toISOString(),
+    footer: { text: 'Rust Tactical Companion • Live Timer & Raid Alert' }
+  };
+  const webhookPayload = {
+    username: `Rust Tactical Companion [${squadState.squadName || 'SQUAD'}]`,
+    ...(mentionPrefix ? { content: mentionPrefix } : {}),
+    embeds: [embed]
+  };
+  const channelPayload = {
+    ...(mentionPrefix ? { content: mentionPrefix } : {}),
+    embeds: [embed]
+  };
+
+  const sentVia = [];
+  let lastErr = null;
+
+  if (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) {
+    try {
+      await postWebhookEmbed(settings.webhookUrl, webhookPayload);
+      sentVia.push('Webhook');
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (settings.botToken && cleanChannelId) {
+    try {
+      await discordApiRequest('POST', `/channels/${cleanChannelId}/messages`, settings.botToken, channelPayload);
+      sentVia.push('Bot Channel');
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (settings.botToken && dmUserIds.length > 0) {
+    for (const uid of dmUserIds) {
+      try {
+        let dmChanId = dmChannelCache.get(uid);
+        if (!dmChanId) {
+          const dmChan = await discordApiRequest('POST', '/users/@me/channels', settings.botToken, { recipient_id: uid });
+          dmChanId = dmChan?.id;
+          if (dmChanId) dmChannelCache.set(uid, dmChanId);
+        }
+        if (dmChanId) {
+          await discordApiRequest('POST', `/channels/${dmChanId}/messages`, settings.botToken, { embeds: [embed] });
+          if (!sentVia.includes('Bot DM')) sentVia.push('Bot DM');
+        }
+      } catch (err) {
+        dmChannelCache.delete(uid);
+        lastErr = err;
+      }
+    }
+  }
+
+  if (sentVia.length === 0) {
+    throw lastErr || new Error('Configure a Discord Bot Token (+ Channel ID or DM User ID) or Discord Webhook URL in Settings');
+  }
+  return { ok: true, sentVia };
 }
 
 function fetchTextHttps(urlStr, redirectCount = 0) {
@@ -373,9 +518,28 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' || req.method === 'PUT') {
         if (!checkPin(req, res)) return;
         const body = await readJsonBody(req);
+        const prevTimersById = new Map((squadState.activeTimers || []).map((t) => [t.id, t]));
+        const incomingTimers = Array.isArray(body.activeTimers) ? body.activeTimers : squadState.activeTimers;
+        const mergedTimers = (incomingTimers || []).map((t) => {
+          const prev = prevTimersById.get(t?.id);
+          if (prev && prev.endsAt === t.endsAt) {
+            return {
+              ...t,
+              discordDoneSent: Boolean(t.discordDoneSent || prev.discordDoneSent),
+              discord60sSent: Boolean(t.discord60sSent || prev.discord60sSent)
+            };
+          }
+          return t;
+        });
         squadState = {
           ...squadState,
           ...body,
+          discordConfig: {
+            ...DEFAULT_STATE.discordConfig,
+            ...(squadState.discordConfig || {}),
+            ...(body.discordConfig || {})
+          },
+          activeTimers: mergedTimers,
           updatedAt: Date.now()
         };
         saveState(squadState);
@@ -566,13 +730,65 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 7. Discord Webhook Notification Endpoint
+    // 7. Discord Bot & Webhook Notification Endpoints
     if (pathname === '/api/discord' && req.method === 'POST') {
       if (!checkPin(req, res)) return;
       const body = await readJsonBody(req);
       try {
-        await sendDiscordWebhook(body.webhookUrl, body.title, body.description, body.color);
-        return sendJson(res, 200, { ok: true });
+        const result = await sendDiscordNotification(body);
+        return sendJson(res, 200, { ok: true, sentVia: result.sentVia });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+
+    if (pathname === '/api/discord/timer-alert' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      try {
+        const timerId = String(body.timerId || '');
+        const eventType = body.eventType === '60s' ? '60s' : 'complete';
+        const settings = resolveDiscordSettings();
+        const hasTarget = Boolean(
+          (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
+            (settings.botToken && (settings.channelId || settings.dmUserId))
+        );
+        if (!hasTarget) {
+          return sendJson(res, 200, { ok: false, skipped: 'unconfigured' });
+        }
+        if (eventType === 'complete' && !settings.notifyOnComplete) {
+          return sendJson(res, 200, { ok: false, skipped: 'disabled' });
+        }
+        if (eventType === '60s' && !settings.notifyOn60s) {
+          return sendJson(res, 200, { ok: false, skipped: 'disabled' });
+        }
+        const timer = (squadState.activeTimers || []).find((t) => t.id === timerId);
+        const timerName = timer?.name || String(body.timerName || 'Monument Timer');
+        const endsAtKey = timer?.endsAt || body.endsAt || 0;
+        const alertKey = `${timerId}:${endsAtKey}:${eventType}`;
+        const flagKey = eventType === '60s' ? 'discord60sSent' : 'discordDoneSent';
+        if (sentDiscordAlerts.has(alertKey) || timer?.[flagKey]) {
+          return sendJson(res, 200, { ok: true, deduplicated: true });
+        }
+        sentDiscordAlerts.add(alertKey);
+        if (timer) {
+          timer[flagKey] = true;
+          saveState(squadState);
+        }
+        const result = await sendDiscordNotification(
+          eventType === '60s'
+            ? {
+                title: `⏳ 60s Warning: ${timerName}`,
+                description: `**${timerName}** finishes in **under 60 seconds**!`,
+                color: 0xf59e0b
+              }
+            : {
+                title: `✅ Timer Ready: ${timerName}`,
+                description: `**${timerName}** has finished / respawned! Ready to run now.`,
+                color: 0x22c55e
+              }
+        );
+        return sendJson(res, 200, { ok: true, sentVia: result.sentVia });
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }
@@ -610,6 +826,56 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 500, { error: 'Internal Server Error', details: err.message });
   }
 });
+
+function checkActiveTimersForDiscord() {
+  const settings = resolveDiscordSettings();
+  const hasTarget = Boolean(
+    (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
+      (settings.botToken && (settings.channelId || settings.dmUserId))
+  );
+  if (!hasTarget) return;
+  const now = Date.now();
+  let dirty = false;
+  for (const t of squadState.activeTimers || []) {
+    if (!t || !t.id || t.paused) continue;
+    const remMs = (t.endsAt || 0) - now;
+    if (remMs < -300000) {
+      if (!t.discordDoneSent) {
+        t.discordDoneSent = true;
+        dirty = true;
+      }
+      continue;
+    }
+    if (remMs <= 0 && !t.discordDoneSent) {
+      const doneKey = `${t.id}:${t.endsAt || 0}:complete`;
+      t.discordDoneSent = true;
+      dirty = true;
+      if (!sentDiscordAlerts.has(doneKey) && settings.notifyOnComplete) {
+        sentDiscordAlerts.add(doneKey);
+        sendDiscordNotification({
+          title: `✅ Timer Ready: ${t.name}`,
+          description: `**${t.name}** has finished / respawned! Ready to run now.`,
+          color: 0x22c55e
+        }).catch(() => {});
+      }
+    } else if (remMs > 0 && remMs <= 60000 && !t.discord60sSent) {
+      const warnKey = `${t.id}:${t.endsAt || 0}:60s`;
+      t.discord60sSent = true;
+      dirty = true;
+      if (!sentDiscordAlerts.has(warnKey) && settings.notifyOn60s) {
+        sentDiscordAlerts.add(warnKey);
+        sendDiscordNotification({
+          title: `⏳ 60s Warning: ${t.name}`,
+          description: `**${t.name}** finishes in **under 60 seconds**!`,
+          color: 0xf59e0b
+        }).catch(() => {});
+      }
+    }
+  }
+  if (dirty) saveState(squadState);
+}
+
+setInterval(checkActiveTimersForDiscord, 1000);
 
 setInterval(() => {
   for (const res of sseClients) {

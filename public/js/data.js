@@ -1122,6 +1122,7 @@ window.RUST_DATA = {
       radRequired: '0 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 1, normal: 12, diesel: 0 },
+      powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Telephone', 'Motorbike & Bicycle Spawn', 'Powered Loot Fridge (1 Heavy Fuse)'],
       steps: [
         'No Electric Fuse or Keycard required (0 RAD, 0 Scientists).',
@@ -1143,6 +1144,7 @@ window.RUST_DATA = {
       radRequired: '0 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 1, normal: 15, diesel: 0 },
+      powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Motorbike Spawn', 'Car Lift Garage (Stage 1 Power Grid)'],
       steps: [
         'No Electric Fuse or Keycard required (0 RAD, 0 Scientists).',
@@ -1223,6 +1225,7 @@ window.RUST_DATA = {
       radRequired: '0 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 3, normal: 10, diesel: 2 },
+      powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Magnet Crane Shredder', 'Modular Car Lift', 'Stage 1 Power Grid Room (1 Heavy Fuse)'],
       steps: [
         'No keycard puzzle, 0 RAD, and 0 Scientists!',
@@ -1282,6 +1285,7 @@ window.RUST_DATA = {
       radRequired: '0 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 2, normal: 10, diesel: 0 },
+      powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Small Oil Refinery', 'Cargo Ship Docking', 'Stage 1 Power Grid Room (1 Heavy Fuse)'],
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse (0 RAD, 0 Scientists unless Cargo Ship is docked).',
@@ -1303,6 +1307,7 @@ window.RUST_DATA = {
       radRequired: '0 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 3, normal: 10, diesel: 0 },
+      powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Repair Bench', 'Research Table', 'Modular Car Lift', 'Tunnel Entrance', 'Stage 1 Power Grid Room'],
       steps: [
         'Bring 1x Green Keycard (1x Green Card also spawns on-site!) + 1x Electric Fuse (0 RAD, 0 Scientists).',
@@ -1324,6 +1329,7 @@ window.RUST_DATA = {
       radRequired: 'Median 0 / Peak 26 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 2, normal: 12, diesel: 2 },
+      powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['1x Green Recycler', '2x Diesel Fuel Spawns', 'Stage 2 Power Grid Room (4 Heavy Fuses)'],
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse (0 Scientists, peak 26 RAD in hotspots).',
@@ -1365,6 +1371,7 @@ window.RUST_DATA = {
       radRequired: '11 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 3, normal: 9, diesel: 0 },
+      powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['2x Green Recyclers', '1x Small Oil Refinery', 'Stage 2 Power Grid Room (4 Heavy Fuses)'],
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse (0 Scientists!).',
@@ -1427,6 +1434,7 @@ window.RUST_DATA = {
       radRequired: '11–25 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 6, normal: 14, diesel: 3 },
+      powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['1x Green Recycler', '2x Small Oil Refineries', '1x Pumpjack', '4x Motorbike Spawns'],
       steps: [
         'Bring 1x Blue Keycard + 1x Electric Fuse (0 Scientists!).',
@@ -1448,6 +1456,7 @@ window.RUST_DATA = {
       radRequired: '11–26 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 7, normal: 15, diesel: 0 },
+      powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['1x Green Recycler', 'Coaling Tower Unloader', '4x Scientists', 'Stage 2 Power Grid Room (4 Heavy Fuses)'],
       steps: [
         'Blue Puzzle: Bring 1x Electric Fuse + 1x Blue Keycard + flip 3 switches -> Rewards 1x Red Keycard + 2x Blueprint Pages (NEW) + 9x Crates (30m reset).',
@@ -1489,6 +1498,7 @@ window.RUST_DATA = {
       radRequired: 'Peak 52 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 1, military: 6, normal: 15, diesel: 3 },
+      powerGrid: { isHub: true, stage: 3, fuses: 10, maxFuses: 18, label: 'Power Grid Hub (1 / 4 / 10 / 18 Heavy Fuses)' },
       utilities: ['1x Green Recycler + 1x Red Recycler', 'Map-Wide Heavy Fuse Power Grid Hub'],
       steps: [
         'RUSTHELP VERIFIED: Bring 1x Green Keycard (1 also spawns on-site) + 1x Blue Keycard + 1x Electric Fuse (0 Scientists!).',
@@ -1529,6 +1539,7 @@ window.RUST_DATA = {
       radRequired: 'Median 26 / Peak 81 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 4, military: 10, normal: 10, diesel: 3 },
+      powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['No Recycler', '2x Blueprint Books (NEW)', 'Computer Station & Telephone', 'CCTV: SILOEXIT1/2, SILOMISSILE, SILOSHIPPING, SILOTOWER'],
       steps: [
         'RUSTHELP VERIFIED: Requires 1x RED Keycard ONLY and a button press — NO Electric Fuse required, and NO Recycler on site!',
@@ -1551,6 +1562,7 @@ window.RUST_DATA = {
       radRequired: 'Median 11 / Peak 52 RAD',
       respawnMin: 30,
       crates: { locked: 0, elite: 3, military: 15, normal: 30, diesel: 0 },
+      powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', 'Bradley APC (7 HV Rockets)', 'Stage 3 Powered Loot Room (8 Crates)'],
       steps: [
         'Main Puzzle: Bring 1x Green Keycard + 1x Red Keycard + 2x Electric Fuses + flip two switches.',
@@ -1718,6 +1730,10 @@ window.RUST_DATA = {
     { id: 'night_cycle', name: 'Nighttime Phase (Night → Dawn)', category: 'World (~15m)', group: 'world', durationSec: 15 * 60, color: '#6366f1', hint: 'Vanilla 60m cycle: ~15m Night' },
     { id: 'safezone_hostile', name: 'Safe Zone Hostile Timer', category: 'Aggro (30m)', group: 'world', essential: true, durationSec: 30 * 60, color: '#ef4444', hint: 'Outpost/Bandit aggro (resets to 30m if spotted)' },
     { id: 'electric_fuse', name: 'Electric Fuse Burnout', category: 'Fuse (3m20s)', group: 'world', durationSec: 200, color: '#60a5fa', hint: '200s per 100% durability Electric Fuse in fuse box' },
+    { id: 'heavy_fuse_burn', name: 'Power Plant — Heavy Fuse Burnout', category: 'Heavy Fuse (2h40m)', group: 'world', essential: true, durationSec: 9600, color: '#f59e0b', hint: '9,600s (2h 40m / 160m) per Heavy Fuse in Power Plant grid box' },
+    { id: 'power_grid_stage1', name: 'Power Plant — Stage 1 Grid (1× Heavy Fuse)', category: 'Grid Stage 1 (2h40m)', group: 'puzzles', durationSec: 9600, color: '#22c55e', hint: 'Boosts Green Recyclers 50%→60% + opens Stage 1 monument rooms' },
+    { id: 'power_grid_stage2', name: 'Power Plant — Stage 2 Grid (4× Heavy Fuses)', category: 'Grid Stage 2 (2h40m)', group: 'puzzles', durationSec: 9600, color: '#3b82f6', hint: 'Opens Sewer, Water Treatment, Train Yard & Radtown powered rooms' },
+    { id: 'power_grid_stage3', name: 'Power Plant — Max Grid & 75% Red Recycler', category: 'Max Grid (2h40m)', group: 'puzzles', durationSec: 9600, color: '#ef4444', hint: '10–18× Heavy Fuses: unlocks 75% Red Recycler + Stage 3 Elite rooms' },
     { id: 'excavator_5diesel', name: 'Giant Excavator — 5x Diesel Airdrop', category: 'Excavator (10m)', group: 'world', durationSec: 10 * 60, color: '#eab308', hint: '2m/diesel -> 5 barrels (10m) reaches 100% signal' }
   ],
 
@@ -1894,6 +1910,7 @@ window.RUST_DATA = {
     { id: 'computer', name: 'Targeting Computer', rad: { scrap: 36, hqm: 2, metal: 60, cloth: 0 }, safe: { scrap: 24, hqm: 1, metal: 40, cloth: 0 } },
     { id: 'cctv', name: 'CCTV Camera', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
     { id: 'fuse', name: 'Electric Fuse', rad: { scrap: 24, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
+    { id: 'heavy_fuse', name: 'Heavy Fuse', rad: { scrap: 20, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
     { id: 'gears', name: 'Gears', rad: { scrap: 12, hqm: 0, metal: 15, cloth: 0 }, safe: { scrap: 8, hqm: 0, metal: 10, cloth: 0 } },
     { id: 'spring', name: 'Metal Spring', rad: { scrap: 12, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 8, hqm: 1, metal: 0, cloth: 0 } },
     { id: 'pipe', name: 'Metal Pipe', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },

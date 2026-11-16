@@ -47,6 +47,14 @@
   const PIN_STORAGE_KEY = 'rust_tactical_companion_pin';
   const ACTIVE_TAB_KEY = 'rust_tactical_active_tab';
 
+  const DEFAULT_DISCORD_CONFIG = {
+    botToken: '',
+    channelId: '',
+    dmUserId: '',
+    notifyOnComplete: true,
+    notifyOn60s: false
+  };
+
   const DEFAULT_RAID_STASH = {
     sulfur: 0,
     sulfur_ore: 0,
@@ -73,6 +81,8 @@
       { targetId: 'stone_wall', qty: 1, mode: 'combo' }
     ],
     raidStash: { ...DEFAULT_RAID_STASH },
+    discordWebhookUrl: '',
+    discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     savedClones: [
       { id: 'c1', crop: 'Hemp', genes: 'YGYWGG' },
       { id: 'c2', crop: 'Hemp', genes: 'GGYYXW' },
@@ -117,7 +127,12 @@
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
       const parsedSaved = JSON.parse(saved);
-      appState = { ...appState, ...parsedSaved, raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) } };
+      appState = {
+        ...appState,
+        ...parsedSaved,
+        raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
+        discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) }
+      };
     }
   } catch (_) {}
 
@@ -175,7 +190,12 @@
               } catch (_) {}
             }
             const isEcho = !firstHydrate && localClean && localClean === JSON.stringify(remoteClean);
-            appState = { ...appState, ...msg.state, raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) } };
+            appState = {
+              ...appState,
+              ...msg.state,
+              raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) },
+              discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) }
+            };
             saveLocalFallback();
             if (firstHydrate) {
               seedTimerAlertSets(appState.activeTimers, { seedSub60: true, seedDone: true });
@@ -276,17 +296,24 @@
       if (audioEnabled) playAlertSound('urgent');
     });
 
-    // Settings Modal
+    // Settings & Discord Bot Alert Modal
     const modal = document.getElementById('settingsModal');
-    document.getElementById('openSettingsBtn').addEventListener('click', () => {
-      document.getElementById('settingSquadName').value = appState.squadName || '';
-      document.getElementById('settingSquadPin').value = getSquadPin();
-      const whEl = document.getElementById('settingDiscordWebhook');
-      if (whEl) whEl.value = appState.discordWebhookUrl || '';
-      modal.classList.add('open');
-    });
+    const readDiscordFormIntoState = () => {
+      appState.squadName = document.getElementById('settingSquadName')?.value.trim() || 'RUST SQUAD ALPHA';
+      appState.discordWebhookUrl = document.getElementById('settingDiscordWebhook')?.value.trim() || '';
+      appState.discordConfig = {
+        botToken: document.getElementById('settingDiscordBotToken')?.value.trim() || '',
+        channelId: document.getElementById('settingDiscordChannelId')?.value.trim() || '',
+        dmUserId: document.getElementById('settingDiscordDmUserId')?.value.trim() || '',
+        notifyOnComplete: Boolean(document.getElementById('settingDiscordOnComplete')?.checked ?? true),
+        notifyOn60s: Boolean(document.getElementById('settingDiscordOn60s')?.checked ?? false)
+      };
+    };
 
-    document.getElementById('closeSettingsModalBtn').addEventListener('click', () => {
+    document.getElementById('openSettingsBtn')?.addEventListener('click', openSquadSettingsModal);
+    document.getElementById('openDiscordBotModalBtn')?.addEventListener('click', openSquadSettingsModal);
+
+    document.getElementById('closeSettingsModalBtn')?.addEventListener('click', () => {
       modal.classList.remove('open');
     });
 
@@ -301,32 +328,106 @@
     });
 
     document.getElementById('testDiscordWebhookBtn')?.addEventListener('click', async () => {
-      const wh = document.getElementById('settingDiscordWebhook')?.value.trim();
-      if (!wh) {
-        alert('Paste your Discord Webhook URL first!');
+      const statusEl = document.getElementById('discordTestStatusMsg');
+      readDiscordFormIntoState();
+      if (!hasDiscordAlertTarget()) {
+        if (statusEl) {
+          statusEl.style.color = '#fca5a5';
+          statusEl.textContent = '⚠️ Enter a Discord Bot Token (+ Channel ID or DM User ID) or a Webhook URL first.';
+        }
         return;
       }
-      appState.discordWebhookUrl = wh;
-      const ok = await sendDiscordAlert(
+      if (statusEl) {
+        statusEl.style.color = '#93c5fd';
+        statusEl.textContent = '⏳ Sending test alert to Discord...';
+      }
+      await syncStateToServer();
+      syncDiscordAlertBadge();
+      const res = await sendDiscordAlert(
         '🔔 Rust Tactical Companion Connected!',
-        `Squad **${appState.squadName}** live alerts are now linked to this Discord channel.`,
+        `Squad **${appState.squadName}** monument, Heavy Fuse & crate timer alerts are now active.`,
         0x22c55e
       );
-      if (ok) alert('Discord test message sent!');
+      if (statusEl) {
+        if (res?.ok) {
+          statusEl.style.color = '#4ade80';
+          statusEl.textContent = `✅ Discord test sent via ${(res.sentVia || ['Discord']).join(' + ')}!`;
+        } else {
+          statusEl.style.color = '#fca5a5';
+          statusEl.textContent = `⚠️ ${res?.error || 'Could not reach Discord'}`;
+        }
+      }
     });
 
-    document.getElementById('saveSettingsBtn').addEventListener('click', () => {
-      appState.squadName = document.getElementById('settingSquadName').value.trim() || 'RUST SQUAD ALPHA';
-      appState.discordWebhookUrl = document.getElementById('settingDiscordWebhook')?.value.trim() || '';
-      localStorage.setItem(PIN_STORAGE_KEY, document.getElementById('settingSquadPin').value);
+    document.getElementById('saveSettingsBtn')?.addEventListener('click', () => {
+      readDiscordFormIntoState();
+      localStorage.setItem(PIN_STORAGE_KEY, document.getElementById('settingSquadPin')?.value || '');
       syncStateToServer();
+      syncDiscordAlertBadge();
       renderAll();
       modal.classList.remove('open');
     });
   }
 
-  async function sendDiscordAlert(title, description, color = 0xcd412b) {
-    const webhookUrl = appState.discordWebhookUrl || '';
+  function hasDiscordAlertTarget() {
+    const wh = String(appState.discordWebhookUrl || '').trim();
+    const cfg = appState.discordConfig || {};
+    const bot = String(cfg.botToken || '').trim();
+    const chan = String(cfg.channelId || '').trim();
+    const dm = String(cfg.dmUserId || '').trim();
+    return wh.startsWith('https://discord') || Boolean(bot && (chan || dm));
+  }
+
+  function syncDiscordAlertBadge() {
+    const btn = document.getElementById('openDiscordBotModalBtn');
+    if (!btn) return;
+    if (hasDiscordAlertTarget()) {
+      const cfg = appState.discordConfig || {};
+      const modes = [];
+      if (cfg.botToken && cfg.dmUserId) modes.push('DM');
+      if (cfg.botToken && cfg.channelId) modes.push('Channel');
+      if (appState.discordWebhookUrl && String(appState.discordWebhookUrl).startsWith('https://discord')) modes.push('Webhook');
+      btn.textContent = `🤖 Discord: ON (${modes.join('+') || 'Linked'})`;
+      btn.style.borderColor = '#22c55e';
+      btn.style.color = '#86efac';
+    } else {
+      btn.textContent = '🤖 Discord Alerts';
+      btn.style.borderColor = '#5865F2';
+      btn.style.color = '#a5b4fc';
+    }
+  }
+
+  function openSquadSettingsModal() {
+    const modal = document.getElementById('settingsModal');
+    if (!modal) return;
+    const cfg = { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}) };
+    const nameEl = document.getElementById('settingSquadName');
+    if (nameEl) nameEl.value = appState.squadName || '';
+    const pinEl = document.getElementById('settingSquadPin');
+    if (pinEl) pinEl.value = getSquadPin();
+    const whEl = document.getElementById('settingDiscordWebhook');
+    if (whEl) whEl.value = appState.discordWebhookUrl || '';
+    const botEl = document.getElementById('settingDiscordBotToken');
+    if (botEl) botEl.value = cfg.botToken || '';
+    const chanEl = document.getElementById('settingDiscordChannelId');
+    if (chanEl) chanEl.value = cfg.channelId || '';
+    const dmEl = document.getElementById('settingDiscordDmUserId');
+    if (dmEl) dmEl.value = cfg.dmUserId || '';
+    const onDoneEl = document.getElementById('settingDiscordOnComplete');
+    if (onDoneEl) onDoneEl.checked = cfg.notifyOnComplete !== false;
+    const on60El = document.getElementById('settingDiscordOn60s');
+    if (on60El) on60El.checked = Boolean(cfg.notifyOn60s);
+    const statusEl = document.getElementById('discordTestStatusMsg');
+    if (statusEl) statusEl.textContent = '';
+    modal.classList.add('open');
+  }
+
+  async function sendDiscordAlert(title, description, color = 0xcd412b, extraOpts = {}) {
+    const cfg = { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}) };
+    const webhookUrl = extraOpts.webhookUrl ?? appState.discordWebhookUrl ?? '';
+    const botToken = extraOpts.botToken ?? cfg.botToken ?? '';
+    const channelId = extraOpts.channelId ?? cfg.channelId ?? '';
+    const dmUserId = extraOpts.dmUserId ?? cfg.dmUserId ?? '';
     try {
       if (isServerConnected) {
         const res = await fetch('/api/discord', {
@@ -335,9 +436,15 @@
             'Content-Type': 'application/json',
             'X-Squad-Pin': getSquadPin()
           },
-          body: JSON.stringify({ webhookUrl, title, description, color })
+          body: JSON.stringify({ webhookUrl, botToken, channelId, dmUserId, title, description, color })
         });
-        if (res.ok) return true;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          return { ok: true, sentVia: data.sentVia || ['Discord'] };
+        }
+        if (data.error) {
+          return { ok: false, error: data.error };
+        }
       }
       if (webhookUrl && webhookUrl.startsWith('https://discord')) {
         const direct = await fetch(webhookUrl, {
@@ -348,11 +455,21 @@
             embeds: [{ title, description, color, timestamp: new Date().toISOString() }]
           })
         });
-        return direct.ok;
+        return { ok: direct.ok, sentVia: direct.ok ? ['Webhook'] : [], error: direct.ok ? '' : `Webhook HTTP ${direct.status}` };
       }
-    } catch (_) {}
-    alert('Configure your Discord Webhook URL in ⚙️ SQUAD / PIN settings first!');
-    return false;
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+    if (!extraOpts.silent) {
+      const msg = 'Configure a Discord Bot Token (+ Channel ID / DM User ID) or Webhook URL in Settings first.';
+      const statusEl = document.getElementById('discordTestStatusMsg');
+      if (statusEl) {
+        statusEl.style.color = '#fca5a5';
+        statusEl.textContent = `⚠️ ${msg}`;
+      }
+      return { ok: false, error: msg };
+    }
+    return { ok: false, error: 'Discord unconfigured' };
   }
 
   // =========================================================================
@@ -3193,6 +3310,26 @@
             : '[N/A on Map]'
           : `[${m.defaultPos.grid}]`;
 
+      const powerGridHtml = m.powerGrid
+        ? `<div style="margin-bottom:10px; padding:10px 12px; border-radius:6px; background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.45);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+              <strong style="font-size:12px; color:#fbbf24;">⚡ HEAVY FUSE POWER GRID — ${escapeHtml(m.powerGrid.label)}</strong>
+              <span style="font-family:var(--font-mono); font-size:10.5px; color:#fde68a;">9,600s (2h 40m) per Heavy Fuse • Locked once placed</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-secondary); margin-bottom:8px;">
+              ${m.powerGrid.isHub
+                ? 'Powers Green Recyclers (50% → 60% yield, 4.5s tick at Max Stage) + unlocks map-wide Stage 1/2/3 rooms and the 75% Red Recycler here.'
+                : `Connecting Heavy Fuses at Power Plant (${m.powerGrid.fuses}× Heavy Fuses for Stage ${m.powerGrid.stage}) powers this monument's locked bonus loot room.`}
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm mon-heavy-fuse-btn" data-hf-name="Power Plant [${activeGrid}] — Heavy Fuse (2h 40m)" data-hf-sec="9600" data-hf-color="#f59e0b" style="border-color:#f59e0b; color:#fde047;">⏱️ Heavy Fuse (2h40m)</button>
+              <button type="button" class="btn btn-sm mon-heavy-fuse-btn" data-hf-name="Power Grid Stage 1 (1× Heavy Fuse)" data-hf-sec="9600" data-hf-color="#22c55e">Stage 1 (1×)</button>
+              <button type="button" class="btn btn-sm mon-heavy-fuse-btn" data-hf-name="Power Grid Stage 2 (4× Heavy Fuses)" data-hf-sec="9600" data-hf-color="#3b82f6">Stage 2 (4×)</button>
+              <button type="button" class="btn btn-sm mon-heavy-fuse-btn" data-hf-name="Power Grid Max Stage + 75% Red Recycler" data-hf-sec="9600" data-hf-color="#ef4444">Max / 75% Red Recycler</button>
+            </div>
+          </div>`
+        : '';
+
       detailEl.innerHTML = `
         <div style="background:linear-gradient(155deg, rgba(205,65,43,0.14), var(--bg-card)); border:1px solid var(--rust-orange); border-radius:8px; padding:14px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
@@ -3217,6 +3354,7 @@
           </div>
 
           ${utilitiesHtml}
+          ${powerGridHtml}
 
           <div style="display:flex; gap:12px; flex-wrap:wrap; font-family:var(--font-mono); font-size:11px; background:rgba(0,0,0,0.3); padding:8px 10px; border-radius:5px;">
             ${m.crates.locked ? `<span style="color:#ef4444;">🔒 ${m.crates.locked} Locked Crate</span>` : ''}
@@ -3238,6 +3376,15 @@
         startSquadTimer(`${m.name} [${activeGrid}] — ${suffix}`, m.respawnMin * 60, color);
         flashButtonFeedback(e.currentTarget);
       });
+      detailEl.querySelectorAll('.mon-heavy-fuse-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const name = btn.getAttribute('data-hf-name') || 'Power Plant — Heavy Fuse';
+          const sec = parseInt(btn.getAttribute('data-hf-sec'), 10) || 9600;
+          const color = btn.getAttribute('data-hf-color') || '#f59e0b';
+          startSquadTimer(name, sec, color);
+          flashButtonFeedback(btn);
+        });
+      });
     }
 
     const filtered = DATA.monuments.filter((item) => {
@@ -3245,6 +3392,7 @@
       if (selectedMonumentFilter === 'get_blue') return item.cardsFound.includes('Blue');
       if (selectedMonumentFilter === 'get_red') return item.cardsFound.includes('Red');
       if (selectedMonumentFilter === 'tier3') return item.tier === 3;
+      if (selectedMonumentFilter === 'heavy_fuse') return Boolean(item.powerGrid);
       return true;
     });
 
@@ -3419,6 +3567,47 @@
     renderTimersTick();
   }
 
+  async function triggerTimerDiscordAlert(timer, eventType = 'complete') {
+    if (!timer || !timer.id) return;
+    const cfg = { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}) };
+    if (!hasDiscordAlertTarget()) return;
+    if (eventType === 'complete' && cfg.notifyOnComplete === false) return;
+    if (eventType === '60s' && !cfg.notifyOn60s) return;
+
+    const flagKey = eventType === '60s' ? 'discord60sSent' : 'discordDoneSent';
+    if (timer[flagKey]) return;
+    timer[flagKey] = true;
+
+    if (isServerConnected) {
+      try {
+        const res = await fetch('/api/discord/timer-alert', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Squad-Pin': getSquadPin()
+          },
+          body: JSON.stringify({
+            timerId: timer.id,
+            timerName: timer.name,
+            endsAt: timer.endsAt,
+            eventType
+          })
+        });
+        if (res.ok) return;
+      } catch (_) {}
+    }
+
+    const is60s = eventType === '60s';
+    await sendDiscordAlert(
+      is60s ? `⏳ 60s Warning: ${timer.name}` : `✅ Timer Ready: ${timer.name}`,
+      is60s
+        ? `**${timer.name}** finishes in **under 60 seconds**!`
+        : `**${timer.name}** has finished / respawned! Ready to run now.`,
+      is60s ? 0xf59e0b : 0x22c55e,
+      { silent: true }
+    );
+  }
+
   function adjustSquadTimer(id, deltaSec) {
     const t = (appState.activeTimers || []).find((item) => item.id === id);
     if (!t) return;
@@ -3437,9 +3626,12 @@
     if (nextRemSec > 60) {
       alerted60sIds.delete(t.id);
       alertedDoneIds.delete(t.id);
+      t.discord60sSent = false;
+      t.discordDoneSent = false;
     } else if (nextRemSec > 0) {
       alerted60sIds.add(t.id);
       alertedDoneIds.delete(t.id);
+      t.discordDoneSent = false;
     }
     syncStateToServer();
     renderTimersTick();
@@ -3473,6 +3665,8 @@
     t.pausedRemMs = null;
     t.startedAt = now;
     t.endsAt = now + dur * 1000;
+    t.discordDoneSent = false;
+    t.discord60sSent = false;
     alertedDoneIds.delete(t.id);
     if (dur <= 60) {
       alerted60sIds.add(t.id);
@@ -3549,11 +3743,13 @@
           alerted60sIds.add(t.id);
           playAlertSound('urgent');
           fireTimerNotification('⏳ 60s Warning', `${t.name} has ${formatDuration(remSec)} left`);
+          triggerTimerDiscordAlert(t, '60s');
         }
         if (isCompleted && !alertedDoneIds.has(t.id)) {
           alertedDoneIds.add(t.id);
           playAlertSound('complete');
           fireTimerNotification('✅ Timer Ready', `${t.name} completed / respawned!`);
+          triggerTimerDiscordAlert(t, 'complete');
         }
       }
 
@@ -5804,12 +6000,18 @@
     const summary = document.getElementById('recyclerTotalsComparison');
     if (!grid || !summary) return;
 
+    let redScrap = 0, redHqm = 0, redMetal = 0, redCloth = 0;
     let radScrap = 0, radHqm = 0, radMetal = 0, radCloth = 0;
     let safeScrap = 0, safeHqm = 0, safeMetal = 0, safeCloth = 0;
 
     grid.innerHTML = (DATA.recyclerComponents || [])
       .map((c) => {
         const qty = recyclerCounts[c.id] || 0;
+        redScrap += qty * Math.round(c.rad.scrap * 1.25);
+        redHqm += qty * Math.round(c.rad.hqm * 1.25);
+        redMetal += qty * Math.round(c.rad.metal * 1.25);
+        redCloth += qty * Math.round(c.rad.cloth * 1.25);
+
         radScrap += qty * c.rad.scrap;
         radHqm += qty * c.rad.hqm;
         radMetal += qty * c.rad.metal;
@@ -5848,14 +6050,31 @@
       });
     });
 
+    const redBonusScrap = redScrap - radScrap;
+    const redBonusHqm = redHqm - radHqm;
     const bonusScrap = radScrap - safeScrap;
     const bonusHqm = radHqm - safeHqm;
 
     summary.innerHTML = `
-      <div class="grid-2" style="gap:12px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+        <div style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.5); border-radius:6px; padding:12px;">
+          <div style="font-family:var(--font-display); font-weight:700; color:#f87171; margin-bottom:6px;">
+            🔴 POWER PLANT RED RECYCLER (75% Yield • Max Heavy Fuse)
+          </div>
+          <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; color:#fff; flex-wrap:wrap; gap:8px;">
+            <span>⚙️ <strong>${redScrap.toLocaleString()}</strong> Scrap</span>
+            <span>💎 <strong>${redHqm.toLocaleString()}</strong> HQM</span>
+            <span>🔩 <strong>${redMetal.toLocaleString()}</strong> Metal</span>
+            <span>🌿 <strong>${redCloth.toLocaleString()}</strong> Cloth</span>
+          </div>
+          <div style="margin-top:6px; font-size:11px; color:#fca5a5; font-family:var(--font-mono);">
+            ⚡ Max Power Grid Bonus: +${redBonusScrap.toLocaleString()} Scrap &amp; +${redBonusHqm} HQM vs Green Radtown!
+          </div>
+        </div>
+
         <div style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.45); border-radius:6px; padding:12px;">
           <div style="font-family:var(--font-display); font-weight:700; color:#4ade80; margin-bottom:6px;">
-            ☢️ MONUMENT RECYCLER (60% Yield • 120% Speed)
+            ☢️ MONUMENT GREEN (60% Powered • 50% Unpowered)
           </div>
           <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; color:#fff; flex-wrap:wrap; gap:8px;">
             <span>⚙️ <strong>${radScrap.toLocaleString()}</strong> Scrap</span>
@@ -5864,13 +6083,13 @@
             <span>🌿 <strong>${radCloth.toLocaleString()}</strong> Cloth</span>
           </div>
           <div style="margin-top:6px; font-size:11px; color:#4ade80; font-family:var(--font-mono);">
-            ⚡ Radtown Bonus: +${bonusScrap.toLocaleString()} Extra Scrap & +${bonusHqm} HQM vs Outpost!
+            ⚡ +${bonusScrap.toLocaleString()} Scrap &amp; +${bonusHqm} HQM vs Safe Zone (insert 1+ Heavy Fuse for full 60%).
           </div>
         </div>
 
         <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.35); border-radius:6px; padding:12px;">
           <div style="font-family:var(--font-display); font-weight:700; color:var(--sulfur-yellow); margin-bottom:6px;">
-            🛡️ SAFE ZONE RECYCLER (40% Yield • Outpost/Bandit)
+            🛡️ SAFE ZONE YELLOW (40% Yield • Outpost/Bandit)
           </div>
           <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:13px; color:#fff; flex-wrap:wrap; gap:8px;">
             <span>⚙️ <strong>${safeScrap.toLocaleString()}</strong> Scrap</span>
@@ -5879,7 +6098,7 @@
             <span>🌿 <strong>${safeCloth.toLocaleString()}</strong> Cloth</span>
           </div>
           <div style="margin-top:6px; font-size:11px; color:var(--text-secondary);">
-            100% Safe from PvP, but loses ${bonusScrap.toLocaleString()} Scrap on this haul.
+            Safe from PvP (unaffected by Heavy Fuses), loses ${bonusScrap.toLocaleString()} Scrap vs Green.
           </div>
         </div>
       </div>
@@ -5968,11 +6187,12 @@
       const shelTag = isInside ? ' [Sheltered]' : '';
       startSquadTimer(`🏚️ Decaying ${rate.name} [${grid}]${shelTag}`, secondsRemaining, '#eab308');
       flashButtonFeedback(e.currentTarget);
-      if (appState.discordWebhookUrl) {
+      if (hasDiscordAlertTarget()) {
         sendDiscordAlert(
           `🏚️ Decaying Base Tracked at [${grid}]`,
           `**${rate.name}** (${clampedHp}/${rate.maxHp} HP, ${exposureLabel}) will crumble in **${formatDuration(secondsRemaining)}**!`,
-          0xeab308
+          0xeab308,
+          { silent: true }
         );
       }
     });
@@ -8368,6 +8588,7 @@
   function renderAll() {
     const badge = document.getElementById('squadNameBadge');
     if (badge) badge.textContent = appState.squadName || 'RUST SQUAD ALPHA';
+    syncDiscordAlertBadge();
 
     renderRaidTargets();
     renderSelectedTargetInspector();

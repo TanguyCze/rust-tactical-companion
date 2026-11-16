@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116c" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116d" />
 </head>
 <body>
 
@@ -342,6 +342,7 @@
           <button class="filter-pill" data-mfilter="get_blue">Gives Blue Card</button>
           <button class="filter-pill" data-mfilter="get_red">Gives Red Card</button>
           <button class="filter-pill" data-mfilter="tier3">Tier 3 / Elite</button>
+          <button class="filter-pill" data-mfilter="heavy_fuse">⚡ Heavy Fuse Grid</button>
         </div>
         <div class="grid-2" style="align-items: start;">
           <div id="monumentAtlasList" class="monument-list" style="max-height: 75vh; overflow-y: auto;"></div>
@@ -361,6 +362,7 @@
             <div class="panel-subtitle">Synced live across all connected squadmates — plays an audio alert at 60s remaining and upon completion</div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="openDiscordBotModalBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;" title="Configure Discord Bot DM, Channel ID & Webhook alerts when timers finish">🤖 Discord Alerts</button>
             <button id="desktopNotifyBtn" class="btn btn-sm" title="Enable Desktop Notifications when timers hit 60s or finish">🔔 Desktop Notify: OFF</button>
             <button id="testAudioAlarmBtn" class="btn btn-sm">🔊 Test Alarm Sound</button>
             <button id="clearDoneTimersBtn" class="btn btn-sm" style="display:none;" title="Remove finished READY timers without stopping active countdowns">🧹 Clear Done</button>
@@ -381,8 +383,8 @@
             </div>
           </div>
           <div id="timerPresetFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-            <button class="filter-pill active" data-tfilter="essential">⚡ Essential (8)</button>
-            <button class="filter-pill" data-tfilter="all">All (32)</button>
+            <button class="filter-pill active" data-tfilter="essential">⚡ Essential (9)</button>
+            <button class="filter-pill" data-tfilter="all">All (36)</button>
             <button class="filter-pill" data-tfilter="hacks">Crates &amp; Cargo</button>
             <button class="filter-pill" data-tfilter="events">Bradley, Heli &amp; Rig</button>
             <button class="filter-pill" data-tfilter="puzzles">Card Puzzles</button>
@@ -426,6 +428,7 @@
               <button type="button" class="btn btn-sm timer-quick-dur" data-sec="1800">30m</button>
               <button type="button" class="btn btn-sm timer-quick-dur" data-sec="2700">45m</button>
               <button type="button" class="btn btn-sm timer-quick-dur" data-sec="3600">1h</button>
+              <button type="button" class="btn btn-sm timer-quick-dur" data-sec="9600" title="Heavy Fuse Burnout (2h 40m)">⚡ 2h40m (Heavy Fuse)</button>
             </div>
             <button id="startCustomTimerBtn" class="btn btn-primary" style="width: 100%; padding: 11px;">
               ⏱️ Start Shared Squad Timer
@@ -963,7 +966,33 @@
         </div>
         <div>
           <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DISCORD WEBHOOK URL (For Squad Raid & Timer Alerts)</label>
-          <input id="settingDiscordWebhook" type="text" class="input" style="width: 100%;" placeholder="https://discord.com/api/webhooks/..." />
+          <input id="settingDiscordWebhook" type="text" class="input" style="width: 100%;" placeholder="https://discord.com/api/webhooks/... (Optional channel webhook)" />
+        </div>
+        <div style="background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 9px;">
+          <div style="font-size: 11px; font-weight: 700; color: #a5b4fc; font-family: var(--font-mono);">🤖 DISCORD BOT AUTO-ALERTS (DM &amp; SPECIFIC CHANNEL)</div>
+          <div>
+            <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DISCORD BOT TOKEN (Optional — for DMs &amp; Channel Bot messages)</label>
+            <input id="settingDiscordBotToken" type="password" class="input" style="width: 100%;" placeholder="Discord Bot Token (from Discord Developer Portal)" />
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 180px;">
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">SPECIFIC TEXT CHANNEL ID</label>
+              <input id="settingDiscordChannelId" type="text" class="input" style="width: 100%;" placeholder="e.g. 123456789012345678" />
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+              <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DM USER ID(S) (Comma-separated for DMs / @pings)</label>
+              <input id="settingDiscordDmUserId" type="text" class="input" style="width: 100%;" placeholder="e.g. 987654321098765432" />
+            </div>
+          </div>
+          <label style="display:flex; align-items:center; gap:7px; font-size:12px; cursor:pointer;">
+            <input id="settingDiscordOnComplete" type="checkbox" checked />
+            <span>✅ Send Discord DM / Channel text when any Monument or Crate timer finishes</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:7px; font-size:12px; cursor:pointer;">
+            <input id="settingDiscordOn60s" type="checkbox" />
+            <span>⏳ Also send 60-second early warning before timer ends</span>
+          </label>
+          <div id="discordTestStatusMsg" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); min-height: 14px;"></div>
         </div>
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
           <button id="testDiscordWebhookBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Test Discord Ping</button>
@@ -973,7 +1002,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116c"></script>
-  <script src="js/app.js?v=20261116c"></script>
+  <script src="js/data.js?v=20261116d"></script>
+  <script src="js/app.js?v=20261116d"></script>
 </body>
 </html>
