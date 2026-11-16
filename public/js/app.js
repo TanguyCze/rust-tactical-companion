@@ -9726,23 +9726,30 @@
       } catch (_) {}
     });
 
-    const readRustPlusFormConfig = () => ({
-      ip: document.getElementById('rpShopIpInput')?.value.trim() || '',
-      port: document.getElementById('rpShopPortInput')?.value.trim() || '28082',
-      playerId: document.getElementById('rpShopPlayerIdInput')?.value.trim() || '',
-      playerToken: document.getElementById('rpShopTokenInput')?.value.trim() || '',
-      autoPoll: Boolean(document.getElementById('rpShopAutoPollCb')?.checked),
-      discordAlertSteals: document.getElementById('rpShopDiscordStealCb')?.checked !== false
-    });
+    const readRustPlusFormConfig = () => {
+      const ipOrId = document.getElementById('rpShopIpInput')?.value.trim() || '';
+      const storedSid = appState.rustPlusShopConfig?.serverId || '';
+      const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(ipOrId);
+      return {
+        ip: looksLikeUuid ? '' : ipOrId,
+        serverId: looksLikeUuid ? ipOrId : storedSid,
+        port: document.getElementById('rpShopPortInput')?.value.trim() || '28082',
+        playerId: document.getElementById('rpShopPlayerIdInput')?.value.trim() || '',
+        playerToken: document.getElementById('rpShopTokenInput')?.value.trim() || '',
+        autoPoll: Boolean(document.getElementById('rpShopAutoPollCb')?.checked),
+        discordAlertSteals: document.getElementById('rpShopDiscordStealCb')?.checked !== false
+      };
+    };
 
     const triggerRustPlusShopPoll = async (simulate = false) => {
       const statusEl = document.getElementById('rpShopStatusText');
       const cfg = readRustPlusFormConfig();
-      if (!simulate && (!cfg.ip || !cfg.playerId || !cfg.playerToken)) {
-        if (statusEl) statusEl.textContent = '⚠️ Enter Server IP, SteamID64 (playerId), and Rust+ PlayerToken (or try Demo Live Server Feed).';
+      if (!simulate && ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken)) {
+        if (statusEl) statusEl.textContent = '⚠️ Sign in with Steam Popup or enter Server IP/ID, SteamID64, and PlayerToken.';
         return;
       }
-      if (statusEl) statusEl.textContent = simulate ? '⏳ Generating Demo Live Server Vending Snapshot...' : `⏳ Polling Rust+ map markers from ${cfg.ip}:${cfg.port}...`;
+      const targetDesc = cfg.ip ? `${cfg.ip}:${cfg.port}` : `Relay ${cfg.serverId.slice(0, 8)}...`;
+      if (statusEl) statusEl.textContent = simulate ? '⏳ Generating Demo Live Server Vending Snapshot...' : `⏳ Polling Rust+ map markers from ${targetDesc}...`;
       try {
         const resp = await fetch('/api/shops/rustplus/poll', {
           method: 'POST',
@@ -9862,6 +9869,10 @@
           };
           saveLocalFallback();
         }
+        if (codeInp && !simulate) {
+          codeInp.value = '';
+          codeInp.placeholder = '✅ Connected to Facepunch Cloud (paste a new #code= only if re-logging in)';
+        }
         syncRustPlusShopUiFromState();
         renderShopsModule();
         if (statusEl) {
@@ -9969,6 +9980,10 @@
 
     document.getElementById('rpAuthExchangeBtn')?.addEventListener('click', () => {
       const val = document.getElementById('rpAuthCodeInput')?.value.trim() || '';
+      if (!val && appState.rustPlusShopConfig?.authToken) {
+        syncCloudPairingsNow(false);
+        return;
+      }
       submitFacepunchShopAuth(val, { isSilentAuto: false });
     });
 
@@ -9999,17 +10014,21 @@
 
     document.getElementById('rpSyncCloudBtn')?.addEventListener('click', () => syncCloudPairingsNow(false));
 
+    const getPairedServerKey = (s) =>
+      String(s?.key || s?.serverId || s?.id || (s?.ip ? `${s.ip}:${s.port || '28082'}` : ''));
+
     document.getElementById('rpPairedServerSelect')?.addEventListener('change', (e) => {
       const key = e.target.value;
       if (!key) return;
       const servers = appState.rustPlusShopConfig?.pairedServers || [];
-      const srv = servers.find((s) => `${s.ip}:${s.port}` === key);
+      const srv = servers.find((s) => getPairedServerKey(s) === key);
       if (!srv) return;
       appState.rustPlusShopConfig = {
         ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
         ...(appState.rustPlusShopConfig || {}),
-        ip: srv.ip,
-        port: srv.port,
+        ip: srv.ip || '',
+        port: srv.port || '28082',
+        serverId: srv.serverId || srv.id || '',
         playerId: srv.playerId,
         playerToken: srv.playerToken,
         serverName: srv.serverName
@@ -10070,22 +10089,23 @@
       const el = document.getElementById(id);
       if (el && document.activeElement !== el && val !== undefined) el.value = String(val || '');
     };
-    setIfIdle('rpShopIpInput', cfg.ip || '');
+    setIfIdle('rpShopIpInput', cfg.ip || cfg.serverId || '');
     setIfIdle('rpShopPortInput', cfg.port || '28082');
     setIfIdle('rpShopPlayerIdInput', cfg.playerId || '');
     setIfIdle('rpShopTokenInput', cfg.playerToken || '');
     const srvSel = document.getElementById('rpPairedServerSelect');
     if (srvSel) {
       const paired = Array.isArray(cfg.pairedServers) ? cfg.pairedServers : [];
-      const currentVal = cfg.ip ? `${cfg.ip}:${cfg.port || '28082'}` : '';
+      const currentVal = cfg.serverId || (cfg.ip ? `${cfg.ip}:${cfg.port || '28082'}` : '');
       if (paired.length === 0) {
         srvSel.innerHTML = `<option value="">🌐 Paired Servers (Sign in above to auto-load)...</option>`;
       } else {
         srvSel.innerHTML = paired
           .map((s) => {
-            const val = `${s.ip}:${s.port || '28082'}`;
-            const selAttr = val === currentVal ? ' selected' : '';
-            return `<option value="${escapeHtml(val)}"${selAttr}>🛰️ ${escapeHtml(s.serverName || val)} (${escapeHtml(val)})</option>`;
+            const val = String(s.key || s.serverId || s.id || (s.ip ? `${s.ip}:${s.port || '28082'}` : ''));
+            const selAttr = val && val === currentVal ? ' selected' : '';
+            const addr = s.ip ? `${s.ip}:${s.port || '28082'}` : 'Cloud Relay';
+            return `<option value="${escapeHtml(val)}"${selAttr}>🛰️ ${escapeHtml(s.serverName || val)} (${escapeHtml(addr)})</option>`;
           })
           .join('');
       }
