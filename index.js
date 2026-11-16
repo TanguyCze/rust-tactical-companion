@@ -1183,7 +1183,8 @@ function decodeRustPlusResponseMessage(buf) {
           rpos = rlen.offset;
           const sub = respBuf.slice(rpos, rpos + Number(rlen.value));
           rpos += Number(rlen.value);
-          if (rfn === 4) resp.error = decodeRustPlusAppError(sub);
+          if (rfn === 4) resp.success = true;
+          else if (rfn === 5) resp.error = decodeRustPlusAppError(sub);
           else if (rfn === 6) resp.info = decodeRustPlusAppInfo(sub);
           else if (rfn === 7) resp.time = decodeRustPlusAppTime(sub);
           else if (rfn === 8) resp.map = decodeRustPlusAppMap(sub);
