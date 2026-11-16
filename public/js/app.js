@@ -3370,6 +3370,24 @@
           </div>`
         : '';
 
+      const npcCheeseHtml = m.npcCheese
+        ? `<div style="margin-top:12px; padding:11px 12px; border-radius:6px; background:rgba(168, 85, 247, 0.1); border:1px solid rgba(168, 85, 247, 0.45);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+              <strong style="font-size:12.5px; color:#e9d5ff;">🥷 NPC CHEESE &amp; SAFE CLEAR PLAYBOOK</strong>
+              <span style="font-family:var(--font-mono); font-size:10.5px; color:#c084fc;">AI Pathing &amp; Angle Control</span>
+            </div>
+            <div style="font-size:11.5px; color:#cbd5e1; margin-bottom:4px;">
+              <strong style="color:#fca5a5;">Threat:</strong> ${escapeHtml(m.npcCheese.aiThreat)}
+            </div>
+            <div style="font-size:11.5px; color:#cbd5e1; margin-bottom:8px;">
+              <strong style="color:#86efac;">Budget Kit:</strong> ${escapeHtml(m.npcCheese.recommendedKit)}
+            </div>
+            <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:5px; font-size:12px; color:#e2e8f0; line-height:1.45;">
+              ${(m.npcCheese.tips || []).map((tip) => `<li>${escapeHtml(tip)}</li>`).join('')}
+            </ul>
+          </div>`
+        : '';
+
       detailEl.innerHTML = `
         <div style="background:linear-gradient(155deg, rgba(205,65,43,0.14), var(--bg-card)); border:1px solid var(--rust-orange); border-radius:8px; padding:14px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
@@ -3407,6 +3425,7 @@
           <ul class="step-list">
             ${m.steps.map((s, idx) => `<li><strong style="color:var(--sulfur-yellow);">#${idx + 1}</strong> <span>${s}</span></li>`).join('')}
           </ul>
+          ${npcCheeseHtml}
         </div>
       `;
 
@@ -3433,6 +3452,7 @@
       if (selectedMonumentFilter === 'get_red') return item.cardsFound.includes('Red');
       if (selectedMonumentFilter === 'tier3') return item.tier === 3;
       if (selectedMonumentFilter === 'heavy_fuse') return Boolean(item.powerGrid);
+      if (selectedMonumentFilter === 'npc_cheese') return Boolean(item.npcCheese);
       return true;
     });
 
@@ -3478,6 +3498,29 @@
         renderMonumentAtlas();
       });
     });
+
+    const bossPanel = document.getElementById('bossNpcCheesePanel');
+    if (bossPanel && Array.isArray(DATA.bossNpcCheese)) {
+      bossPanel.innerHTML = `
+        <div style="font-family:var(--font-display); font-size:14px; font-weight:700; color:#e9d5ff; margin-bottom:8px;">
+          🥷 ROAMING BOSS &amp; EVENT NPC CHEESE (PATROL HELI &amp; CARGO SHIP)
+        </div>
+        <div class="grid-2" style="gap:12px;">
+          ${DATA.bossNpcCheese
+            .map(
+              (b) => `
+                <div style="padding:12px; border-radius:7px; background:rgba(168, 85, 247, 0.08); border:1px solid rgba(168, 85, 247, 0.35);">
+                  <div style="font-weight:700; font-size:13.5px; color:#fff; margin-bottom:4px;">${escapeHtml(b.name)}</div>
+                  <div style="font-size:11px; color:#fca5a5; margin-bottom:3px;"><strong>Threat:</strong> ${escapeHtml(b.threat)}</div>
+                  <div style="font-size:11px; color:#86efac; margin-bottom:7px;"><strong>Kit:</strong> ${escapeHtml(b.kit)}</div>
+                  <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:#cbd5e1; line-height:1.45;">
+                    ${(b.tips || []).map((t) => `<li>${escapeHtml(t)}</li>`).join('')}
+                  </ul>
+                </div>`
+            )
+            .join('')}
+        </div>`;
+    }
   }
 
   function initMonumentsModule() {

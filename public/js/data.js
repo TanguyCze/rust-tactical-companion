@@ -1267,6 +1267,15 @@ window.RUST_DATA = {
       respawnMin: 25,
       crates: { locked: 0, elite: 0, military: 3, normal: 4, diesel: 0 },
       utilities: ['Computer Station', 'MLRS Aiming Terminal (Variant)', 'CCTV: COMPOUND****', 'No Recycler'],
+      npcCheese: {
+        aiThreat: '~7× Desert Military Scientists (LR-300 / M92, Roaming)',
+        recommendedKit: 'Compound Bow / SAR + Bandages + Leather/Roadsign',
+        tips: [
+          'Perimeter Fence Peeks: Stand behind the outer desert rock ridges or chain-link sandbags outside the compound — snipe roaming perimeter Scientists before crossing the gate so only 2–3 remain inside.',
+          'Jersey Barrier Head-Glitch: Crouch tight behind concrete barriers between the ammo tents; Scientists lock onto the top concrete lip while your chest stays covered.',
+          'Tent Door Right-Hand Peek: Crack tent flaps from the right side — Scientist AI struggles to track fast strafe peeks around tent poles.'
+        ]
+      },
       steps: [
         'No keycard puzzle, 0 RAD, and No Recycler.',
         'Clear ~7 Abandoned Military Base Scientists to loot ~6 Military/Normal Crates and use the Computer Station.'
@@ -1287,6 +1296,14 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 2, normal: 10, diesel: 0 },
       powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Small Oil Refinery', 'Cargo Ship Docking', 'Stage 1 Power Grid Room (1 Heavy Fuse)'],
+      npcCheese: {
+        aiThreat: '0 Normally (Cargo Ship Scientists ~16x ONLY when Cargo docks for 10m)',
+        recommendedKit: 'Crossbow / DB / SAR — hold shipping container roofs',
+        tips: [
+          'Docked Cargo Crane Trap: While Cargo Ship is docked at Harbor, climb the tall dock shipping containers overlooking the deck instead of boarding first — pick off upper-deck Scientists with zero aggro range.',
+          'Gangplank Funnel: Aggro a forward deck Scientist then back onto the Harbor concrete pier; they hesitate at the ship gangplank lip.'
+        ]
+      },
       steps: [
         'Bring 1x Green Keycard + 1x Electric Fuse (0 RAD, 0 Scientists unless Cargo Ship is docked).',
         'Insert 1x Electric Fuse and flip the switch, then swipe your Green Keycard at the puzzle room.',
@@ -1414,6 +1431,15 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 5, normal: 18, diesel: 0 },
       utilities: ['1x Green Recycler', 'Snowmobile Puzzle Spawn', '10x Arctic Scientists'],
+      npcCheese: {
+        aiThreat: '10× Cold-Weather Arctic Scientists (Roam courtyard & garages)',
+        recommendedKit: 'Compound Bow or Silenced SAR + Jacket/Hazmat + Heat Packs',
+        tips: [
+          'Perimeter Rock Ridge Snipe: Climb the snow boulders just outside the chain-link fence before entering — 4 to 5 courtyard Scientists patrol right along the open snow lane in full view of the rocks.',
+          'Blue Card Garage Hold: Bait Scientists toward the concrete Snowmobile Garage entrance; hold the steel frame on a right-hand peek so AI paths around the parked hull single-file.',
+          'Trailer Alley LOS Reset: duck between the raised research hab trailers whenever medding — Arctic Scientists rarely flank tight alleys.'
+        ]
+      },
       steps: [
         'RUSTHELP VERIFIED: Requires 1x Blue Keycard ONLY (0 Electric Fuses required!).',
         'Clear the 10x Arctic Scientists across the 23 crate spawns.',
@@ -1458,6 +1484,14 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 7, normal: 15, diesel: 0 },
       powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['1x Green Recycler', 'Coaling Tower Unloader', '4x Scientists', 'Stage 2 Power Grid Room (4 Heavy Fuses)'],
+      npcCheese: {
+        aiThreat: '4× Yard Tunnel Scientists (spawn near Coaling Tower / Fuse area)',
+        recommendedKit: 'Crossbow + Nailgun or Revolver / SAR',
+        tips: [
+          'Freight Car & Concrete Pipe Peeks: Keep a boxcar wheel or concrete pipe between you and the Coaling Tower stairs — Train Yard Scientists lock onto chest height, letting you crown-tap from above/beside wheels.',
+          'Switch House Doorway: Duck inside the small concrete switch shack if 2+ aggro simultaneously so they lose line-of-sight and stop spraying.'
+        ]
+      },
       steps: [
         'Blue Puzzle: Bring 1x Electric Fuse + 1x Blue Keycard + flip 3 switches -> Rewards 1x Red Keycard + 2x Blueprint Pages (NEW) + 9x Crates (30m reset).',
         'Green Puzzle: Bring 1x Fuse + 1x Green Keycard -> Rewards 1x Blueprint Page (NEW) + 1x Crate + 3x Barrels.',
@@ -1478,6 +1512,14 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 5, normal: 18, diesel: 3 },
       utilities: ['2x Green Recyclers', 'Tunnel Entrance', 'Chinook Drop Zone', '3x Motorbike Spawns'],
+      npcCheese: {
+        aiThreat: '3× Underground Blue-Room Scientists (spawn on Blue Door swipe)',
+        recommendedKit: 'DB / Pump Shotgun or SMG / SAR + Torch/NVG',
+        tips: [
+          'Tunnel Staircase Hatch Bait: Do NOT rush into the Blue loot room right after swiping — stay back at the dark tunnel concrete pillar/stairway outside the door. All 3 Scientists funnel through the narrow doorway one at a time.',
+          'Surface Clear First: Above ground has 0 Scientists (unless Chinook/Tunnels aggro), so loot hangars & tower quietly before heading underground.'
+        ]
+      },
       steps: [
         'Bring 1x Green Keycard + 1x Blue Keycard + 2x Electric Fuses (11 RAD).',
         'Insert 1st Fuse in the office building & use the electric timer, then drop into the underground tunnels.',
@@ -1520,6 +1562,15 @@ window.RUST_DATA = {
       respawnMin: 20,
       crates: { locked: 0, elite: 0, military: 4, normal: 14, diesel: 0 },
       utilities: ['1x Green Recycler', 'Diesel Mining Arm (120s/Barrel)', 'Supply Drop Signal Computer', 'Tunnel Entrance'],
+      npcCheese: {
+        aiThreat: '18× Excavator Pit Scientists (Heavy pit roamers + upper walkway guards)',
+        recommendedKit: 'Compound Bow / Bolt / SAR (8x/Holo helpful) + Meds',
+        tips: [
+          'Dirt Rim Range Cheese: Excavator Scientists will NOT chase you up onto the outer earthen crater rim — pick off 8–10 roaming AI cleanly from the high dirt slopes before walking down into the machinery pit.',
+          'Catwalk / Hopper Steel Frame: Inside the pit, climb onto the middle catwalk railing corners; AI under the gantry struggles to angle shots up through the perforated floor.',
+          'Diesel Defense Angle: Once Diesel starts, hold the Recycler shed roof/metal stairs — you watch the engine room and every rim slide at once.'
+        ]
+      },
       steps: [
         'No Keycard or Fuse needed — clear 18x Excavator Scientists and loot 18 crate spawns.',
         'Each 1x Diesel Fuel runs the Excavator for 120 seconds (2m) and yields your choice of: 2,000 Sulfur Ore, 100 HQM Ore, 5,000 Metal Fragments, or 10,000 Stones!',
@@ -1541,6 +1592,15 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 4, military: 10, normal: 10, diesel: 3 },
       powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['No Recycler', '2x Blueprint Books (NEW)', 'Computer Station & Telephone', 'CCTV: SILOEXIT1/2, SILOMISSILE, SILOSHIPPING, SILOTOWER'],
+      npcCheese: {
+        aiThreat: '4× Outside Scientists + 23× Underground Silo Scientists (tight CQB + grenades)',
+        recommendedKit: 'MP5/SAR/Thommy + Shotgun/Flashlight + Hazmat + 6+ Syringes',
+        tips: [
+          'Stairwell Grate Head-Glitch (Biggest Cheese): Inside the deep missile shaft stairwells, stand ONE half-flight ABOVE the Scientists and shoot down through the metal stair grates — they hit the underside metal while you see full helmets.',
+          'Open-Door Step-Back Trigger: Next Silo waves spawn/aggro as you open each bulkhead door. Open every door, sprint 1 corner back immediately, and pre-aim the doorway as they push in single-file.',
+          'Night/Silencer Surface Clear: Drop the 4 surface guards from behind the outer shipping containers with a Compound Bow before swiping Red Card so nobody hears you enter.'
+        ]
+      },
       steps: [
         'RUSTHELP VERIFIED: Requires 1x RED Keycard ONLY and a button press — NO Electric Fuse required, and NO Recycler on site!',
         'Clear 4x Outside Scientists (Note: Day-1 Monument Blocker Lockers/Terminals block access early in wipe).',
@@ -1564,6 +1624,15 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 3, military: 15, normal: 30, diesel: 0 },
       powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', 'Bradley APC (7 HV Rockets)', 'Stage 3 Powered Loot Room (8 Crates)'],
+      npcCheese: {
+        aiThreat: 'Bradley APC (7 HV Rockets) + 8× Rocket Factory Scientists',
+        recommendedKit: 'Rocket Launcher + 7× HV Rockets + SAR/MP5 + Hazmat + Jug of Water',
+        tips: [
+          'Bradley Cobalt Garage / Ticket Booth Cheese: Bait Bradley near the brick Cobalt building or Recycle shed doorway. Fire 2 HV Rockets into its treads/rear, duck completely behind the concrete wall during its MG + rocket salvo (stay away from windows — splash kills through glass!), then peek cleanly every 4s. Takes 7 HV Rockets (1,400 Sulfur total).',
+          'Factory Roof Staircase Hold: Inside the Red Card Rocket Factory, scientists spawn on middle catwalks; hold the upper elevator/stair landings on a right-hand head peek so only 1 helmet peeks up at a time.',
+          'Water Extinguishing / Fire Watch: Wait out the ~4m crate fire on Bradley from the Rocket Factory stairs or Recycle roof rather than hugging burning crates exposed.'
+        ]
+      },
       steps: [
         'Main Puzzle: Bring 1x Green Keycard + 1x Red Keycard + 2x Electric Fuses + flip two switches.',
         'Spawns 8x Launch Site Scientists inside, 3x Elite Crates, 20x Normal/Military Crates, and 2x Blueprint Books (NEW) — resets every 30 minutes!',
@@ -1585,6 +1654,15 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 0, elite: 6, military: 8, normal: 14, diesel: 3 },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', '33x Scientist Spawns'],
+      npcCheese: {
+        aiThreat: '33× Tunnel Scientists (Heavy F1 Grenade spam + fast lane pushes)',
+        recommendedKit: 'SAR/MP5/Thommy (Flashlight/NVG) + 6–8 Syringes + 30+ Bandages',
+        tips: [
+          'Overturned Train Car Right-Peek: Scientists CANNOT push cleanly over the derailed tanker/boxcars inside the main tunnel. Stick to the concrete edge or right side of a boxcar and head-tap across the tracks.',
+          'Concrete Fuse Room Bunker: Pull aggro then retreat inside the small concrete fuse/card rooms; hold the narrow steel doorway behind the concrete desk. When a Scientist yells "Frag/Grenade!", step deep behind the internal corner for 3s.',
+          'Silent Bow Opening: Drop the entrance sandbox/outer-tunnel guards with a Compound Bow before firing unsuppressed inside so nearby bases don’t hear you start.'
+        ]
+      },
       steps: [
         'Bring 1x Electric Fuse + 1x Green + 1x Blue + 1x Red Keycard, then work two timers and a switch.',
         'Puzzle spawns 11x Scientists (33 total in monument), 3x Elite Crates (6 total in monument), 5x Normal Crates, 2x Blueprint Books (NEW), and 3x Diesel Fuel (resets every 30m).',
@@ -1605,6 +1683,14 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 0, elite: 2, military: 6, normal: 12, diesel: 0 },
       utilities: ['No Recycler', 'Blueprint Books & Pages (NEW)', 'CCTV: LAB****'],
+      npcCheese: {
+        aiThreat: '~4–8× Underwater Lab Dwellers (Modular hallway ambushers)',
+        recommendedKit: 'Pump/DB Shotgun or MP5 + Compound Bow + Diving Tank/Flippers',
+        tips: [
+          'Bulkhead Door Crack Funnel: Lab Scientists are locked inside corridor modules until you open bulkhead doors. Crack a door open, fire 1–2 shots/arrows, and immediately sidestep behind the frame — they walk straight into close-range shotgun pre-aim.',
+          'Moonpool Ladder Reset: Whenever outnumbered or bleeding, drop cleanly down through any moonpool hatch into the ocean (NPCs will never shoot into underwater vertical shafts) to med safely and re-peek.'
+        ]
+      },
       steps: [
         'Randomized offshore monument with ~4 Scientists and No Recycler.',
         'Bring 1x Red Keycard + 1x Blue Keycard + 1x Green Keycard + 2x Electric Fuses.',
@@ -1626,6 +1712,15 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 1, elite: 1, military: 5, normal: 10, diesel: 0 },
       utilities: ['No Recycler', '15m Hackable Locked Crate', '15x Scientists + 6x Heavy Scientists', 'CCTV: OILRIG1DOCK/HELI/L1-L4'],
+      npcCheese: {
+        aiThreat: '15× Oil Rig Scientists (L1–L4) + 6× Heavy Scientists (after Locked Crate trigger)',
+        recommendedKit: 'Budget Solo: Compound Bow + Nailgun/Revolver + 2× F1 Grenades ( bandies/cloth ) OR SAR + 40 5.56',
+        tips: [
+          'Crane Ladder / Vent Roof Heavy Cheese: Start the Locked Crate on L4 helipad and IMMEDIATELY climb onto the orange Crane ladder or the Red-Room vent roof. The 6 Heavy Scientists funnel slowly along the helipad stairs & doorway without flanking behind you.',
+          'Dock Grate & Boat Pillar Clear: Before climbing up, float in a RHIB/kayak by the bottom dock pillars or crouch behind L1 stair containers — lower scientists expose their heads through catwalk grates while struggling to hit crouched boat players.',
+          'Silent Compound Bow Clear: Clear L1–L4 with a Compound Bow (no gunshot audio across shore) until you actually pull Heavies; toss 1–2 F1 Grenades (8 Scrap each) at clumped Heavies on the stairs.'
+        ]
+      },
       steps: [
         'Clear 15x Oil Rig Scientists across levels L1–L4 (No Recycler on site).',
         'Green Card room gives 3x Normal Crates; Blue Card + 1x Fuse room gives 2x Military Crates.',
@@ -1646,6 +1741,15 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 1, elite: 2, military: 8, normal: 10, diesel: 4 },
       utilities: ['No Recycler', 'Research Table', '15m Hackable Locked Crate', '27x Scientists + 12x Heavy Scientists', 'CCTV: OILRIG2DOCK/EXHAUST/HELI/L1-L6'],
+      npcCheese: {
+        aiThreat: '27× Oil Rig Scientists (L1–L6) + 12× Heavy Scientists (M249/Minigun/SPAS)',
+        recommendedKit: 'Compound Bow + SAR/AK + 3× F1 Grenades + Hazmat + 6+ Syringes + Cloth',
+        tips: [
+          'Red Crane Cab / Catwalk Bend Funnel (Classic Solo Cheese): Hack the Locked Crate on Top Deck and sprint straight up the tall Red Crane stairs into the crane cab or behind the crane counterweights. The 12 Heavy Scientists clump single-file on the lower ramp landing where you can head-tap or drop F1 Grenades.',
+          'Vent Duct / Stairwell Head-Peeks (Green → Blue → Red): Clear L3–L5 slowly from bottom stairwells looking UP through railing gaps — Scientists below chest-lock while only their helmets poke above the grating.',
+          'Boat Dock Underside Safe Spot: If counter-pushed or low on meds, dive off L1 into the water under the dock pylons — Scientists never shoot vertically through solid lower steel decking.'
+        ]
+      },
       steps: [
         'Clear 27x Oil Rig Scientists and collect 4x Diesel Fuel barrels (Research Table on site, No Recycler).',
         'Green, Blue, and 1x Fuse puzzles unlock extra Military/Normal Crates and 1x Green Keycard.',
@@ -1667,6 +1771,14 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['3x Yellow Recyclers (40% Safe)', '2x Tier 1 Workbenches', 'Research Table & Repair Bench', '7x NPC Vending Shops (Blue Card = 100 Scrap)', 'Missions: CZ-721 & Vagabond'],
+      npcCheese: {
+        aiThreat: 'Safe Zone Peacekeeper Sentries (Instant laser kill + 30m hostility cooldown)',
+        recommendedKit: 'Holster everything >5s away from fence — zero barrels/pigs hit in sight',
+        tips: [
+          'Avoid Accidental 30m Aggro: Firing a bow, throwing flares/rocks, or breaking barrels even outside the wall while visible to Outpost triggers a 30-minute Safe Zone timer.',
+          'Zero-Scientist Oil Rig Prep: Pick up CZ-721 Oil Rig mission + buy Blue Keycard (100 Scrap), Jackhammer (150 Scrap), and F1 Grenades (8 Scrap each to cheese Rig Heavies!).'
+        ]
+      },
       steps: [
         'Safe Zone with 3x Yellow Recyclers, 2x T1 Workbenches, Research Table, and Repair Bench.',
         'Buy a Blue Keycard for 100 Scrap, Jackhammer for 150 Scrap, or trade Stone/Wood/Scrap at the 7 Vending Shops.',
@@ -1688,9 +1800,39 @@ window.RUST_DATA = {
       respawnMin: 30,
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['2x Yellow Recyclers (40% Safe)', 'Tier 1 Workbench & Clan Table', 'Research Table & Repair Bench', 'Airwolf Heli Vendor & Casino', 'CCTV: AIRWOLF, CASINO, TOWNWEAPONS'],
+      npcCheese: {
+        aiThreat: 'Bandit Guards (AI with LRs — hostile 30m if weapon drawn)',
+        recommendedKit: 'Keep hotbar clean; bring Scrap / Horse Fertilizer',
+        tips: [
+          'F1 Grenade Stack Shop for Rig Cheese: Bandit Camp Weapon Shop sells F1 Grenades super cheap (8 Scrap each) — stack 3–4 before every Oil Rig run to wipe grouped Heavy Scientists.'
+        ]
+      },
       steps: [
         'Safe Zone with 2x Yellow Recyclers, T1 Workbench, Research Table, Repair Bench, and Clan Table.',
         'Trade Fertilizer for Scrap, buy Minicopters/Scrap Helis at Airwolf, or gamble Scrap on the Big Wheel & Slot Machines (Hostile Safe Zone aggro = 30m).'
+      ]
+    }
+  ],
+
+  bossNpcCheese: [
+    {
+      name: '🚁 Patrol Helicopter (Attack Heli)',
+      threat: '10,000 HP (Main Rotor 900 HP / Tail Rotor 500 HP — 2× damage weakspots)',
+      kit: 'Dedicated Stone/Metal Shooting Floor (TC-Authed!) + Window Embrasures + SAR / M249 / HMLMG',
+      tips: [
+        'TC-Auth Rocket Prevention (Vanilla Rule): Heli fires barrage rockets at bases if zero defenders in radius hold Building Privilege on the TC. Keep TC-auth on your Heli Tower (never clear TC to bait), OR shoot from concrete monuments (Launch Cobalt Garage / Power Plant brick roofs) so zero base walls take splash!',
+        'Rotor Focus Shortcut: Shoot exclusively at the Main Top Rotor or Rear Tail Rotor with M249/HMLMG/AK/SAR — destroying BOTH rotors drops Heli immediately even before body HP hits 0.',
+        'Break Aggro Reset: Duck completely under a solid concrete roof for ~6–8s between bursts whenever Heli strafes directly overhead so its MG laser loses lock.'
+      ]
+    },
+    {
+      name: '🚢 Cargo Ship (Offshore Sea Boss)',
+      threat: '~16× Deck & Cabin Scientists + up to 3–4× Locked Crates (10m horn intervals)',
+      kit: 'Crossbow/Compound + SAR/SMG + Boat/Sub/Mini + 2× F1 Grenades',
+      tips: [
+        'Stern / Container Ledge Board: Climb the rear ladder on the stern opposite where deck Scientists patrol, or crouch tight behind the yellow bow shipping containers — clear forward deck first before pushing the captain bridge.',
+        'Captain Bridge Stairwell Funnel: Hold the outer steel stairs or lower door frame below the bridge; Scientists inside the captain quarters walk onto the top landing one at a time.',
+        'Submarine Egress: Bring a Solo Sub alongside Cargo so if a 5-man counters you, dive off the side straight into the Sub underwater safely.'
       ]
     }
   ],
