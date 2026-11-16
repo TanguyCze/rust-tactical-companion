@@ -849,6 +849,14 @@
                 <input id="bfShowRustPlusCb" type="checkbox" checked />
                 <span>📡 Live Rust+</span>
               </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+                <input id="bfShowPinsCb" type="checkbox" checked />
+                <span>📌 Team Pins</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+                <input id="bfShowDeathsCb" type="checkbox" checked />
+                <span>💀 Deaths</span>
+              </label>
               <button id="bfExpandMapBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11.5px;">⤢ Full Width</button>
             </div>
           </div>
@@ -867,15 +875,44 @@
               <button id="bfZoomFitBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
               <button id="bfZoomResetBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
               <button id="shopMapCenterMeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
+              <button id="bfDropPinModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#f59e0b; color:#fde68a;" title="Click empty map spots (or Shift+Click anytime) to drop a Shared Squad Pin / Stash">📌 + Pin</button>
             </div>
           </div>
           <div id="shopLiveAlertBanner" style="display:none; margin-bottom:8px;"></div>
           <div id="shopLiveTeamStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
-          <div id="shopLiveEventsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+          <div id="shopLiveEventsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
+          <div id="bfSharedPinsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;"></div>
           <div style="position: relative; background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
             <canvas id="bfMapCanvas" width="900" height="900" style="width: 100%; height: auto; display: block; cursor: grab;"></canvas>
             <div id="bfMapTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 20; background: rgba(9, 14, 22, 0.94); border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 6px; padding: 8px 10px; text-align: left; font-size: 11.5px; color: #e2e8f0; box-shadow: 0 8px 24px rgba(0,0,0,0.55); max-width: 260px;"></div>
             <div id="bfMapHudReadout" style="display: none; position: absolute; bottom: 8px; left: 8px; pointer-events: none; z-index: 15; background: rgba(9, 14, 22, 0.85); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; color: #cbd5e1;"></div>
+            <div id="bfPinEditorPopover" style="display: none; position: absolute; top: 12px; right: 12px; z-index: 30; width: 295px; max-width: calc(100% - 24px); background: rgba(11, 17, 28, 0.97); border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 12px; text-align: left; box-shadow: 0 12px 32px rgba(0,0,0,0.75);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;">
+                <strong id="bfPinEditorTitle" style="font-size:12px; color:#fde047; font-family:var(--font-mono);">📌 DROP SHARED SQUAD PIN</strong>
+                <button id="bfPinCancelBtn" type="button" class="btn btn-sm" style="padding:1px 6px;">✕</button>
+              </div>
+              <div id="bfPinCatBar" style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:7px;">
+                <button type="button" class="filter-pill active" data-pcat="pin" style="padding:2px 6px; font-size:10.5px;">📍 Pin</button>
+                <button type="button" class="filter-pill" data-pcat="stash" style="padding:2px 6px; font-size:10.5px;">🕳️ Stash</button>
+                <button type="button" class="filter-pill" data-pcat="sulfur" style="padding:2px 6px; font-size:10.5px;">🟡 Sulfur</button>
+                <button type="button" class="filter-pill" data-pcat="loot" style="padding:2px 6px; font-size:10.5px;">📦 Loot</button>
+                <button type="button" class="filter-pill" data-pcat="raid" style="padding:2px 6px; font-size:10.5px;">💥 Raid</button>
+                <button type="button" class="filter-pill" data-pcat="base" style="padding:2px 6px; font-size:10.5px;">🏠 TC/Base</button>
+                <button type="button" class="filter-pill" data-pcat="danger" style="padding:2px 6px; font-size:10.5px;">⚠️ Danger</button>
+                <button type="button" class="filter-pill" data-pcat="farm" style="padding:2px 6px; font-size:10.5px;">⛏️ Farm</button>
+              </div>
+              <div style="display:flex; gap:6px; margin-bottom:7px; align-items:center;">
+                <input id="bfPinLabelInput" type="text" class="input" style="flex:1; font-size:11.5px;" placeholder="Label (e.g. Stash 24 C4, 2x2 Sulf)" />
+                <input id="bfPinColorInput" type="color" value="#38bdf8" title="Custom pin color" style="width:30px; height:28px; padding:1px; border:1px solid var(--border-subtle); border-radius:4px; background:transparent; cursor:pointer;" />
+              </div>
+              <div id="bfPinCoordsLabel" style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:7px;"></div>
+              <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                <button id="bfPinSaveBtn" type="button" class="btn btn-sm btn-primary" style="flex:1;">💾 Save Pin</button>
+                <button id="bfPinMoveBtn" type="button" class="btn btn-sm" style="display:none; border-color:#38bdf8; color:#bae6fd;" title="Click new location on map to move this pin">🎯 Move</button>
+                <button id="bfPinFlyBtn" type="button" class="btn btn-sm" style="display:none;" title="Fly map camera to this pin">⌖</button>
+                <button id="bfPinDeleteBtn" type="button" class="btn btn-sm" style="display:none; border-color:#ef4444; color:#fca5a5;">🗑️</button>
+              </div>
+            </div>
           </div>
           <details class="bf-legend-details">
             <summary class="bf-legend-summary">

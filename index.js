@@ -76,6 +76,7 @@ const DEFAULT_STATE = {
   },
   customShops: [],
   shopWatchlist: [],
+  squadPins: [],
   rustPlusShopConfig: {
     ip: process.env.RUSTPLUS_IP || '',
     port: process.env.RUSTPLUS_PORT || '28082',
@@ -102,6 +103,7 @@ const DEFAULT_STATE = {
     liveEvents: [],
     vendingPins: [],
     teamMembers: [],
+    recentDeaths: [],
     mapNotes: [],
     teamChat: [],
     smartDevices: []
@@ -1639,7 +1641,8 @@ const RUST_EVENT_MARKER_META = {
   5: { label: 'Cargo Ship', icon: '🚢', color: '#06b6d4' },
   6: { label: 'Locked Crate', icon: '📦', color: '#f59e0b' },
   8: { label: 'Patrol Helicopter', icon: '🚁', color: '#f43f5e' },
-  9: { label: 'Travelling Vendor', icon: '🚐', color: '#a3e635' }
+  9: { label: 'Travelling Vendor', icon: '🚐', color: '#a3e635' },
+  10: { label: 'Deep Sea', icon: '🌊', color: '#06b6d4' }
 };
 
 function formatRustPlusTimeSummary(timeObj) {
@@ -1834,8 +1837,8 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   const liveEvents = [];
   const newEvents = [];
   for (const mk of rawMarkers) {
-    const meta = RUST_EVENT_MARKER_META[mk.type] || (mk.type === 7 && String(mk.name || '').trim()
-      ? { label: String(mk.name).trim(), icon: '📡', color: '#a855f7' }
+    const meta = RUST_EVENT_MARKER_META[mk.type] || ((mk.type === 7 || mk.type >= 9) && String(mk.name || '').trim()
+      ? { label: String(mk.name).trim(), icon: /deep|sea/i.test(String(mk.name || '')) ? '🌊' : '📡', color: '#a855f7' }
       : null);
     if (!meta) continue;
     const nx = Math.min(1, Math.max(0, mk.x / mapSize));
@@ -1901,15 +1904,19 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     };
   }
 
-  // Team Members & Notes
+  // Team Members, Persistent 15m Death Markers & Notes
   let teamMembers = Array.isArray(squadState.rustPlusTelemetry?.teamMembers) ? squadState.rustPlusTelemetry.teamMembers : [];
+  const prevBySid = new Map(teamMembers.map((m) => [String(m.steamId), m]));
+  const nowSec = Math.floor(nowTs / 1000);
+  let recentDeaths = (Array.isArray(squadState.rustPlusTelemetry?.recentDeaths) ? squadState.rustPlusTelemetry.recentDeaths : [])
+    .filter((d) => d && (nowSec - Number(d.deathTime || 0)) <= 900);
   let mapNotes = Array.isArray(squadState.rustPlusTelemetry?.mapNotes) ? squadState.rustPlusTelemetry.mapNotes : [];
   if (snapshot?.teamInfo && Array.isArray(snapshot.teamInfo.members)) {
     const leaderId = String(snapshot.teamInfo.leaderSteamId || '0');
     teamMembers = snapshot.teamInfo.members.map((m) => {
       const nx = Math.min(1, Math.max(0, m.x / mapSize));
       const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
-      return {
+      const tmObj = {
         steamId: String(m.steamId),
         name: m.name || 'Teammate',
         wx: Number((m.x - mapSize / 2).toFixed(1)),
@@ -1923,7 +1930,26 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         deathTime: Number(m.deathTime || 0),
         isLeader: String(m.steamId) === leaderId
       };
+      const prevM = prevBySid.get(tmObj.steamId);
+      const justDied = prevM && prevM.isAlive && !tmObj.isAlive;
+      const recordedDeathSec = tmObj.deathTime > 0 ? tmObj.deathTime : justDied ? nowSec : 0;
+      if (!tmObj.isAlive && recordedDeathSec > 0 && (nowSec - recordedDeathSec) <= 900) {
+        const deathId = `${tmObj.steamId}:${recordedDeathSec}`;
+        if (!recentDeaths.some((d) => d.id === deathId)) {
+          recentDeaths.unshift({
+            id: deathId,
+            steamId: tmObj.steamId,
+            name: tmObj.name,
+            wx: tmObj.wx,
+            wy: tmObj.wy,
+            grid: tmObj.grid,
+            deathTime: recordedDeathSec
+          });
+        }
+      }
+      return tmObj;
     });
+    recentDeaths = recentDeaths.slice(0, 12);
     const formatNote = (n, isLeader) => {
       const nx = Math.min(1, Math.max(0, n.x / mapSize));
       const ny = Math.min(1, Math.max(0, 1 - n.y / mapSize));
@@ -2021,6 +2047,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     liveEvents,
     vendingPins,
     teamMembers,
+    recentDeaths,
     mapNotes,
     teamChat,
     smartDevices,

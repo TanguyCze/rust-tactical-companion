@@ -82,6 +82,7 @@
     liveEvents: [],
     vendingPins: [],
     teamMembers: [],
+    recentDeaths: [],
     mapNotes: [],
     teamChat: [],
     smartDevices: []
@@ -117,6 +118,7 @@
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     customShops: [],
     shopWatchlist: [],
+    squadPins: [],
     rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
     rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY },
     savedClones: [
@@ -234,7 +236,8 @@
               rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(appState.rustPlusShopConfig || {}), ...(msg.state.rustPlusShopConfig || {}) },
               rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), ...(msg.state.rustPlusTelemetry || {}) },
               customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || []),
-              shopWatchlist: Array.isArray(msg.state.shopWatchlist) ? msg.state.shopWatchlist : (appState.shopWatchlist || [])
+              shopWatchlist: Array.isArray(msg.state.shopWatchlist) ? msg.state.shopWatchlist : (appState.shopWatchlist || []),
+              squadPins: Array.isArray(msg.state.squadPins) ? msg.state.squadPins : (appState.squadPins || [])
             };
             saveLocalFallback();
             if (firstHydrate) {
@@ -7548,6 +7551,7 @@
       (tel.vendingPins && tel.vendingPins.length > 0) ||
       (tel.liveEvents && tel.liveEvents.length > 0) ||
       (tel.teamMembers && tel.teamMembers.length > 0) ||
+      (Array.isArray(appState.squadPins) && appState.squadPins.length > 0) ||
       tel.serverInfo ||
       cachedShopMapImg
     );
@@ -7602,14 +7606,19 @@
       }
       ctx.restore();
       bfRenderedPins = [];
-      if (document.getElementById('bfShowRustPlusCb')?.checked !== false) {
+      const rpOn = document.getElementById('bfShowRustPlusCb')?.checked !== false;
+      const pinsOn = document.getElementById('bfShowPinsCb')?.checked !== false;
+      const deathsOn = document.getElementById('bfShowDeathsCb')?.checked !== false;
+      if (rpOn || pinsOn || deathsOn) {
         drawRustPlusOverlayOnCanvas(ctx, {
           toPx,
           scale,
           mapSize,
-          showVending: true,
-          showTeam: true,
-          showEvents: true,
+          showVending: rpOn,
+          showTeam: rpOn,
+          showEvents: rpOn,
+          showDeaths: deathsOn,
+          showPins: pinsOn,
           inStockOnly: shopInStockOnly,
           highlightedIds: lastShopMatchedMarkerIds,
           selectedShopPinId: selectedShopMapPinId,
@@ -7977,15 +7986,20 @@
       });
     });
 
-    // 6. Live Rust+ Overlay (Vending Pins, Squad GPS, Map Notes, World Events)
-    if (document.getElementById('bfShowRustPlusCb')?.checked !== false) {
+    // 6. Live Rust+ & Shared Squad Pins Overlay (Vending Pins, Squad GPS, Deaths, Team Stashes/Pins, World Events)
+    const rpOn2 = document.getElementById('bfShowRustPlusCb')?.checked !== false;
+    const pinsOn2 = document.getElementById('bfShowPinsCb')?.checked !== false;
+    const deathsOn2 = document.getElementById('bfShowDeathsCb')?.checked !== false;
+    if (rpOn2 || pinsOn2 || deathsOn2) {
       drawRustPlusOverlayOnCanvas(ctx, {
         toPx,
         scale,
         mapSize,
-        showVending: true,
-        showTeam: true,
-        showEvents: true,
+        showVending: rpOn2,
+        showTeam: rpOn2,
+        showEvents: rpOn2,
+        showDeaths: deathsOn2,
+        showPins: pinsOn2,
         inStockOnly: shopInStockOnly,
         highlightedIds: lastShopMatchedMarkerIds,
         selectedShopPinId: selectedShopMapPinId,
@@ -8660,6 +8674,163 @@
     document.getElementById('bfShowNoBuildCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowRouteCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowRustPlusCb')?.addEventListener('change', renderBaseFinderMap);
+    document.getElementById('bfShowPinsCb')?.addEventListener('change', renderBaseFinderMap);
+    document.getElementById('bfShowDeathsCb')?.addEventListener('change', renderBaseFinderMap);
+
+    // Shared Squad Map Pins & Stashes (SSE Real-Time across Squad)
+    const BF_PIN_CATEGORY_META = {
+      pin: { label: 'Pin', icon: '📍', color: '#38bdf8' },
+      stash: { label: 'Stash', icon: '🕳️', color: '#f59e0b' },
+      sulfur: { label: 'Sulfur', icon: '🟡', color: '#eab308' },
+      loot: { label: 'Loot', icon: '📦', color: '#22c55e' },
+      raid: { label: 'Raid', icon: '💥', color: '#ef4444' },
+      base: { label: 'TC / Base', icon: '🏠', color: '#a855f7' },
+      danger: { label: 'Danger', icon: '⚠️', color: '#f97316' },
+      farm: { label: 'Farm', icon: '⛏️', color: '#84cc16' }
+    };
+    let bfDropPinMode = false;
+    let bfEditingPinId = '';
+    let bfMovingPinId = '';
+    let bfDraftPinCoords = { wx: 0, wy: 0, grid: '' };
+    let bfDraftPinCat = 'pin';
+
+    const pinPopover = document.getElementById('bfPinEditorPopover');
+    const pinDropModeBtn = document.getElementById('bfDropPinModeBtn');
+    const pinTitleEl = document.getElementById('bfPinEditorTitle');
+    const pinLabelEl = document.getElementById('bfPinLabelInput');
+    const pinColorEl = document.getElementById('bfPinColorInput');
+    const pinCoordsEl = document.getElementById('bfPinCoordsLabel');
+    const pinSaveBtn = document.getElementById('bfPinSaveBtn');
+    const pinMoveBtn = document.getElementById('bfPinMoveBtn');
+    const pinFlyBtn = document.getElementById('bfPinFlyBtn');
+    const pinDeleteBtn = document.getElementById('bfPinDeleteBtn');
+    const pinCancelBtn = document.getElementById('bfPinCancelBtn');
+
+    const syncDropModeBtnUi = () => {
+      if (pinDropModeBtn) {
+        pinDropModeBtn.textContent = bfMovingPinId ? '🎯 Click New Spot' : bfDropPinMode ? '📌 Dropping (ON)' : '📌 + Pin';
+        pinDropModeBtn.style.background = bfDropPinMode || bfMovingPinId ? 'rgba(245, 158, 11, 0.25)' : '';
+        pinDropModeBtn.style.borderColor = bfMovingPinId ? '#38bdf8' : '#f59e0b';
+      }
+      const cvsEl = document.getElementById('bfMapCanvas');
+      if (cvsEl) cvsEl.style.cursor = bfDropPinMode || bfMovingPinId ? 'crosshair' : 'grab';
+    };
+
+    const setPinCategoryUi = (cat, customColor = '') => {
+      bfDraftPinCat = BF_PIN_CATEGORY_META[cat] ? cat : 'pin';
+      document.querySelectorAll('#bfPinCatBar .filter-pill').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-pcat') === bfDraftPinCat);
+      });
+      if (pinColorEl) pinColorEl.value = customColor || BF_PIN_CATEGORY_META[bfDraftPinCat].color;
+    };
+
+    const closePinPopover = () => {
+      if (pinPopover) pinPopover.style.display = 'none';
+      bfEditingPinId = '';
+    };
+
+    const openPinPopover = ({ wx, wy, existingPin = null }) => {
+      const mapSize = Number(bfMapData?.size || appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4000);
+      const grid = existingPin?.grid || bfWorldToGrid(wx, wy, mapSize);
+      bfEditingPinId = existingPin ? String(existingPin.id) : '';
+      bfDraftPinCoords = { wx: Number(wx) || 0, wy: Number(wy) || 0, grid };
+      if (pinTitleEl) pinTitleEl.textContent = existingPin ? '✏️ EDIT SHARED SQUAD PIN' : '📌 DROP SHARED SQUAD PIN';
+      setPinCategoryUi(existingPin?.category || 'pin', existingPin?.color || '');
+      if (pinLabelEl) pinLabelEl.value = existingPin?.label || '';
+      if (pinCoordsEl) {
+        pinCoordsEl.textContent = `Grid [${grid}] • (${Math.round(bfDraftPinCoords.wx)}, ${Math.round(bfDraftPinCoords.wy)})${existingPin?.placedBy ? ` • by ${existingPin.placedBy}` : ''}`;
+      }
+      if (pinMoveBtn) pinMoveBtn.style.display = existingPin ? 'inline-flex' : 'none';
+      if (pinFlyBtn) pinFlyBtn.style.display = existingPin ? 'inline-flex' : 'none';
+      if (pinDeleteBtn) pinDeleteBtn.style.display = existingPin ? 'inline-flex' : 'none';
+      if (pinPopover) pinPopover.style.display = 'block';
+      pinLabelEl?.focus();
+    };
+
+    document.querySelectorAll('#bfPinCatBar .filter-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setPinCategoryUi(btn.getAttribute('data-pcat') || 'pin');
+      });
+    });
+
+    pinDropModeBtn?.addEventListener('click', () => {
+      bfMovingPinId = '';
+      bfDropPinMode = !bfDropPinMode;
+      syncDropModeBtnUi();
+    });
+
+    pinCancelBtn?.addEventListener('click', () => {
+      bfMovingPinId = '';
+      syncDropModeBtnUi();
+      closePinPopover();
+    });
+
+    pinMoveBtn?.addEventListener('click', () => {
+      if (!bfEditingPinId) return;
+      bfMovingPinId = bfEditingPinId;
+      bfDropPinMode = false;
+      syncDropModeBtnUi();
+      if (pinPopover) pinPopover.style.display = 'none';
+    });
+
+    pinFlyBtn?.addEventListener('click', () => {
+      setBfMapView(bfDraftPinCoords.wx, bfDraftPinCoords.wy, 2.0);
+    });
+
+    pinSaveBtn?.addEventListener('click', () => {
+      const catMeta = BF_PIN_CATEGORY_META[bfDraftPinCat] || BF_PIN_CATEGORY_META.pin;
+      const rawLabel = String(pinLabelEl?.value || '').trim();
+      const label = rawLabel || catMeta.label;
+      const color = String(pinColorEl?.value || catMeta.color);
+      const list = Array.isArray(appState.squadPins) ? [...appState.squadPins] : [];
+      const myMember = findMyRustPlusTeamMember(appState.rustPlusTelemetry);
+      const author = myMember?.name || appState.squadName || 'Squad';
+      if (bfEditingPinId) {
+        const idx = list.findIndex((p) => String(p.id) === String(bfEditingPinId));
+        if (idx >= 0) {
+          list[idx] = {
+            ...list[idx],
+            category: bfDraftPinCat,
+            icon: catMeta.icon,
+            color,
+            label,
+            updatedAt: Date.now()
+          };
+        }
+      } else {
+        list.unshift({
+          id: 'spin-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          category: bfDraftPinCat,
+          icon: catMeta.icon,
+          color,
+          label,
+          wx: Number(bfDraftPinCoords.wx.toFixed(1)),
+          wy: Number(bfDraftPinCoords.wy.toFixed(1)),
+          grid: bfDraftPinCoords.grid,
+          placedBy: author,
+          updatedAt: Date.now()
+        });
+      }
+      appState.squadPins = list.slice(0, 60);
+      bfDropPinMode = false;
+      bfMovingPinId = '';
+      syncDropModeBtnUi();
+      closePinPopover();
+      syncStateToServer();
+      renderSharedPinsStrip();
+      renderBaseFinderMap();
+    });
+
+    pinDeleteBtn?.addEventListener('click', () => {
+      if (!bfEditingPinId) return;
+      appState.squadPins = (Array.isArray(appState.squadPins) ? appState.squadPins : []).filter(
+        (p) => String(p.id) !== String(bfEditingPinId)
+      );
+      closePinPopover();
+      syncStateToServer();
+      renderSharedPinsStrip();
+      renderBaseFinderMap();
+    });
     document.getElementById('bfSyncServerBtn')?.addEventListener('click', () => {
       const info = appState.rustPlusTelemetry?.serverInfo;
       if (!info || !info.mapSize || !info.seed) {
@@ -8729,10 +8900,34 @@
       });
       bfCanvas.addEventListener('click', (e) => {
         const mapSize = getActiveBfMapSize();
-        if (dragMoved >= 6 || !mapSize || !bfRenderedPins.length) return;
+        if (dragMoved >= 6 || !mapSize) return;
         const rect = bfCanvas.getBoundingClientRect();
         const cx = ((e.clientX - rect.left) * bfCanvas.width) / Math.max(1, rect.width);
         const cy = ((e.clientY - rect.top) * bfCanvas.height) / Math.max(1, rect.height);
+        const scale = (bfCanvas.width / mapSize) * bfZoom;
+        const clickWx = (cx - bfCanvas.width / 2) / scale + bfPanX;
+        const clickWy = -(cy - bfCanvas.height / 2) / scale + bfPanY;
+
+        if (bfMovingPinId) {
+          const list = Array.isArray(appState.squadPins) ? [...appState.squadPins] : [];
+          const idx = list.findIndex((p) => String(p.id) === String(bfMovingPinId));
+          if (idx >= 0) {
+            list[idx] = {
+              ...list[idx],
+              wx: Number(clickWx.toFixed(1)),
+              wy: Number(clickWy.toFixed(1)),
+              grid: bfWorldToGrid(clickWx, clickWy, mapSize),
+              updatedAt: Date.now()
+            };
+            appState.squadPins = list;
+            syncStateToServer();
+            renderSharedPinsStrip();
+            renderBaseFinderMap();
+          }
+          bfMovingPinId = '';
+          syncDropModeBtnUi();
+          return;
+        }
 
         let nearestActionPin = null;
         let minDist = Infinity;
@@ -8744,9 +8939,20 @@
             nearestActionPin = pin;
           }
         }
+
+        if (bfDropPinMode || (e.shiftKey && !nearestActionPin)) {
+          if (nearestActionPin?.selectAction?.type === 'squadPin') {
+            openPinPopover({ wx: nearestActionPin.wx, wy: nearestActionPin.wy, existingPin: nearestActionPin.selectAction.pin });
+          } else {
+            openPinPopover({ wx: clickWx, wy: clickWy, existingPin: null });
+          }
+          return;
+        }
         if (!nearestActionPin) return;
 
-        if (nearestActionPin.selectAction.type === 'spot') {
+        if (nearestActionPin.selectAction.type === 'squadPin') {
+          openPinPopover({ wx: nearestActionPin.wx, wy: nearestActionPin.wy, existingPin: nearestActionPin.selectAction.pin });
+        } else if (nearestActionPin.selectAction.type === 'spot') {
           bfSelectBuildSpot(nearestActionPin.selectAction.idx);
         } else if (nearestActionPin.selectAction.type === 'farm') {
           bfSelectedFarmIdx = nearestActionPin.selectAction.idx;
@@ -8766,7 +8972,7 @@
           bfSwitchSubtab('trades');
           renderShopsModule();
           renderBaseFinderMap();
-        } else if (nearestActionPin.selectAction.type === 'event' || nearestActionPin.selectAction.type === 'team') {
+        } else if (['event', 'team', 'death'].includes(nearestActionPin.selectAction.type)) {
           setBfMapView(nearestActionPin.wx, nearestActionPin.wy, 1.9);
         }
       });
@@ -9009,6 +9215,8 @@
     showVending = true,
     showTeam = true,
     showEvents = true,
+    showDeaths = true,
+    showPins = true,
     stealsOnly = false,
     inStockOnly = false,
     highlightedIds = null,
@@ -9020,11 +9228,13 @@
     const myMember = findMyRustPlusTeamMember(tel);
 
     // A. In-Game Map Notes (Death markers = type 0, Leader/Team pins = type 1)
-    if (showTeam && Array.isArray(tel.mapNotes)) {
+    if ((showTeam || showDeaths) && Array.isArray(tel.mapNotes)) {
       tel.mapNotes.forEach((n) => {
         if (!Number.isFinite(n.wx) || !Number.isFinite(n.wy)) return;
-        const { px, py } = toPx(n.wx, n.wy);
         const isDeath = Number(n.type) === 0;
+        if (isDeath && !showDeaths) return;
+        if (!isDeath && !showTeam) return;
+        const { px, py } = toPx(n.wx, n.wy);
         const cIdx = Number(n.colourIndex ?? n.color ?? 0) || 0;
         const color = isDeath ? '#ef4444' : (RUSTPLUS_NOTE_COLORS[cIdx] || '#eab308');
         const noteIcon = isDeath ? '✕' : (RUSTPLUS_NOTE_ICONS[Number(n.icon) || 0] || '');
@@ -9066,9 +9276,60 @@
           title: `${isDeath ? '💀 Death Marker' : n.isLeader ? '👑 Leader Map Note' : '📌 Map Note'}${n.label ? `: ${n.label}` : ''} [${grid}]`,
           color,
           lines: [
-            isDeath ? 'Last death location' : n.isLeader ? 'Team leader map marker' : 'Personal / team map marker',
+            isDeath ? 'Click skull → Fly to spot' : n.isLeader ? 'Team leader map marker' : 'Personal / team map marker',
             ...(distLine ? [distLine] : [])
-          ]
+          ],
+          ...(isDeath ? { selectAction: { type: 'death', wx: n.wx, wy: n.wy } } : {})
+        });
+      });
+    }
+
+    // A2. Persistent 15-Min Teammate Death Markers (even after respawn!)
+    if (showDeaths && Array.isArray(tel.recentDeaths)) {
+      const deadCurrently = new Set(
+        (Array.isArray(tel.teamMembers) ? tel.teamMembers : [])
+          .filter((tm) => !tm.isAlive)
+          .map((tm) => `${tm.steamId}:${Math.round(tm.wx)}:${Math.round(tm.wy)}`)
+      );
+      tel.recentDeaths.forEach((d) => {
+        if (!d || !Number.isFinite(d.wx) || !Number.isFinite(d.wy)) return;
+        const dupKey = `${d.steamId}:${Math.round(d.wx)}:${Math.round(d.wy)}`;
+        if (deadCurrently.has(dupKey)) return;
+        const { px, py } = toPx(d.wx, d.wy);
+        const ago = formatTeamDeathAgo({ isAlive: false, deathTime: d.deathTime });
+        const grid = d.grid || bfWorldToGrid(d.wx, d.wy, mapSize);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.32)';
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#f87171';
+        ctx.stroke();
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💀', px, py + 0.5);
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = '700 9px "JetBrains Mono", monospace';
+        ctx.strokeStyle = 'rgba(0,0,0,0.94)';
+        ctx.lineWidth = 3;
+        const tag = `💀 ${d.name} [${grid}]${ago && ago !== 'Dead' ? ` • ${ago}` : ''}`;
+        ctx.strokeText(tag, px, py - 12);
+        ctx.fillStyle = '#fca5a5';
+        ctx.fillText(tag, px, py - 12);
+        ctx.restore();
+        const distLine = formatPlayerDistanceBearing(d.wx, d.wy, myMember);
+        pinOut.push({
+          px,
+          py,
+          r: 10,
+          wx: d.wx,
+          wy: d.wy,
+          title: `💀 ${d.name} Death [${grid}]`,
+          color: '#f87171',
+          lines: [`Died ${ago || 'recently'}`, distLine, 'Click skull → Fly to spot'].filter(Boolean),
+          selectAction: { type: 'death', wx: d.wx, wy: d.wy }
         });
       });
     }
@@ -9297,9 +9558,95 @@
         });
       });
     }
+
+    // E. Shared Real-Time Squad Map Pins & Stashes (SSE-Synced)
+    if (showPins && Array.isArray(appState.squadPins)) {
+      appState.squadPins.forEach((sp) => {
+        if (!sp || !Number.isFinite(Number(sp.wx)) || !Number.isFinite(Number(sp.wy))) return;
+        const wx = Number(sp.wx);
+        const wy = Number(sp.wy);
+        const { px, py } = toPx(wx, wy);
+        const col = sp.color || '#38bdf8';
+        const grid = sp.grid || bfWorldToGrid(wx, wy, mapSize);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 13, 0, Math.PI * 2);
+        ctx.fillStyle = `${col}33`;
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = col;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(px, py, 8.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = col;
+        ctx.stroke();
+
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(sp.icon || '📍', px, py + 0.5);
+
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = '700 9.5px "Inter", sans-serif';
+        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+        ctx.lineWidth = 3;
+        const lbl = `[${grid}] ${String(sp.label || 'Pin').slice(0, 20)}`;
+        ctx.strokeText(lbl, px, py - 14);
+        ctx.fillStyle = col;
+        ctx.fillText(lbl, px, py - 14);
+        ctx.restore();
+
+        const distLine = formatPlayerDistanceBearing(wx, wy, myMember);
+        pinOut.push({
+          px,
+          py,
+          r: 12,
+          wx,
+          wy,
+          title: `${sp.icon || '📍'} ${sp.label || 'Pin'} [${grid}]`,
+          color: col,
+          lines: [
+            `Category: ${sp.category || 'pin'}${sp.placedBy ? ` • Placed by ${sp.placedBy}` : ''}`,
+            ...(distLine ? [distLine] : []),
+            'Click pin → Rename, Move, Fly To or Delete'
+          ],
+          selectAction: { type: 'squadPin', pin: sp }
+        });
+      });
+    }
+  }
+
+  function renderSharedPinsStrip() {
+    const stripEl = document.getElementById('bfSharedPinsStrip');
+    if (!stripEl) return;
+    const pins = Array.isArray(appState.squadPins) ? appState.squadPins : [];
+    if (!pins.length) {
+      stripEl.style.display = 'none';
+      return;
+    }
+    stripEl.style.display = 'flex';
+    stripEl.innerHTML =
+      `<span style="font-size:10.5px; font-family:var(--font-mono); color:#fde68a; font-weight:700;">📌 SQUAD PINS (${pins.length}):</span>` +
+      pins
+        .slice(0, 10)
+        .map(
+          (p) =>
+            `<button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${p.wx}" data-wy="${p.wy}" style="border-color:${escapeHtml(p.color || '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>`
+        )
+        .join('');
+    stripEl.querySelectorAll('.bf-shared-pin-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setBfMapView(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, 2.0);
+      });
+    });
   }
 
   function renderShopLiveMap() {
+    renderSharedPinsStrip();
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
     const info = tel.serverInfo || {};
     const eventsStrip = document.getElementById('shopLiveEventsStrip');
