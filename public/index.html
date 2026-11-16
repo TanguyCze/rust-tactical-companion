@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116f" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116g" />
 </head>
 <body>
 
@@ -783,6 +783,10 @@
             <option value="cost_desc">📈 Sort: Highest Cost First</option>
             <option value="name_asc">🔤 Sort: Item Name (A–Z)</option>
           </select>
+          <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer; padding:4px 8px; border-radius:4px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
+            <input id="shopInStockOnlyCb" type="checkbox" />
+            <span>📦 In Stock Only</span>
+          </label>
           <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕ Reset</button>
         </div>
 
@@ -890,6 +894,73 @@
             <div style="font-size: 11px; color: var(--text-muted);">
               Tip: 1 Sulfur node = 300 Sulfur Ore (smelted). Player shops priced in Scrap roughly follow 1 Scrap ≈ 3–4 Sulfur.
             </div>
+          </div>
+
+          <!-- Real-Time Shop Tracking Drawer (Rust+ Live Poller + Screenshot/Window OCR) -->
+          <div class="panel">
+            <details id="liveShopTrackerDrawer" class="bf-legend-details">
+              <summary style="cursor:pointer; font-family:var(--font-display); font-weight:700; font-size:14px; color:#e9d5ff; display:flex; justify-content:space-between; align-items:center;">
+                <span>📡 Real-Time Shop Tracker (Rust+ Live Feed &amp; Screenshot OCR)</span>
+                <span style="font-size:11px; font-family:var(--font-mono); color:#7dd3fc;">AUTO-SYNC</span>
+              </summary>
+              <div style="margin-top:12px; display:flex; flex-direction:column; gap:12px;">
+                <!-- Method 1: Instant Screenshot / Live Rust Window Scanner -->
+                <div style="padding:10px; border-radius:6px; background:rgba(15,23,42,0.55); border:1px solid var(--border-subtle);">
+                  <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:#7dd3fc; margin-bottom:6px;">
+                    📸 ZERO-SETUP MAP / DRONE SCREENSHOT &amp; WINDOW SCANNER
+                  </div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                    <button id="shopLiveCaptureBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;">🎥 Live Scan Rust Window</button>
+                    <button id="shopOcrPasteBtn" type="button" class="btn btn-sm">📋 Paste Screenshot (Ctrl+V)</button>
+                    <label class="btn btn-sm" style="cursor:pointer; margin:0;">
+                      🖼️ Upload Crop
+                      <input id="shopOcrFileInput" type="file" accept="image/*" style="display:none;" />
+                    </label>
+                  </div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+                    <input id="shopQuickBulkInput" type="text" class="input" style="flex:1; min-width:190px; font-size:12px;" placeholder="Quick import: Pure Ore Tea = 280 Sulfur @ M14 (6 stock)" />
+                    <button id="shopQuickBulkBtn" type="button" class="btn btn-sm btn-primary">+ Import</button>
+                  </div>
+                  <div id="shopScannerStatus" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+                    Hover a map vending dot or Drone screen → Win+Shift+S → Ctrl+V anywhere in this tab to auto-import &amp; rate deals.
+                  </div>
+                </div>
+
+                <!-- Method 2: Direct Rust+ WebSocket Vending Machine Poller -->
+                <div style="padding:10px; border-radius:6px; background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.35);">
+                  <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:#d8b4fe; margin-bottom:6px;">
+                    🔌 REAL-TIME RUST+ SERVER VENDING POLLER (ALL MAP SHOPS + LIVE STOCK)
+                  </div>
+                  <input id="rpShopJsonPasteInput" type="text" class="input" style="width:100%; font-size:11.5px; margin-bottom:6px;" placeholder='Optional: Paste rustplus.config.json snippet ({"ip":"...","port":28082,"playerId":"...","playerToken":...})' />
+                  <div style="display:grid; grid-template-columns:2fr 1fr; gap:6px; margin-bottom:6px;">
+                    <input id="rpShopIpInput" type="text" class="input" placeholder="Server IP (e.g. 185.x.x.x)" />
+                    <input id="rpShopPortInput" type="text" class="input" value="28082" placeholder="App Port (28082)" />
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+                    <input id="rpShopPlayerIdInput" type="text" class="input" placeholder="SteamID64 (playerId)" />
+                    <input id="rpShopTokenInput" type="password" class="input" placeholder="Rust+ PlayerToken" />
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px;">
+                    <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                      <input id="rpShopAutoPollCb" type="checkbox" />
+                      <span>🔄 Auto-poll live shops every 20s &amp; update stock counts</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                      <input id="rpShopDiscordStealCb" type="checkbox" checked />
+                      <span>📣 Alert Discord Bot / Webhook when an S-Tier Steal is in stock</span>
+                    </label>
+                  </div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+                    <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔌 Connect &amp; Poll Live</button>
+                    <button id="rpShopSimulateBtn" type="button" class="btn btn-sm" style="border-color:#a855f7; color:#e9d5ff;">🧪 Demo Live Server Feed</button>
+                    <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm">🗑️ Clear Live</button>
+                  </div>
+                  <div id="rpShopStatusText" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+                    Not connected yet — test with Demo Live Server Feed or paste Rust+ server credentials above.
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
@@ -1144,7 +1215,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116f"></script>
-  <script src="js/app.js?v=20261116f"></script>
+  <script src="js/data.js?v=20261116g"></script>
+  <script src="js/app.js?v=20261116g"></script>
 </body>
 </html>

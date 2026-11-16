@@ -55,6 +55,19 @@
     notifyOn60s: false
   };
 
+  const DEFAULT_RUSTPLUS_SHOP_CONFIG = {
+    ip: '',
+    port: '28082',
+    playerId: '',
+    playerToken: '',
+    useProxy: false,
+    autoPoll: false,
+    discordAlertSteals: true,
+    lastPolledAt: 0,
+    lastStatus: '',
+    mapSize: 4250
+  };
+
   const DEFAULT_RAID_STASH = {
     sulfur: 0,
     sulfur_ore: 0,
@@ -84,6 +97,7 @@
     discordWebhookUrl: '',
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     customShops: [],
+    rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
     savedClones: [
       { id: 'c1', crop: 'Hemp', genes: 'YGYWGG' },
       { id: 'c2', crop: 'Hemp', genes: 'GGYYXW' },
@@ -126,6 +140,7 @@
   let selectedShopCategory = 'all';
   let selectedShopCurrency = 'all';
   let selectedShopSort = 'best';
+  let shopInStockOnly = false;
   let shopSearchQuery = '';
   let selectedShopTradeId = 'player_pure_ore_tea';
 
@@ -139,6 +154,7 @@
         ...parsedSaved,
         raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
         discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
+        rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(parsedSaved.rustPlusShopConfig || {}) },
         customShops: Array.isArray(parsedSaved.customShops) ? parsedSaved.customShops : appState.customShops
       };
     }
@@ -203,6 +219,7 @@
               ...msg.state,
               raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) },
               discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
+              rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(appState.rustPlusShopConfig || {}), ...(msg.state.rustPlusShopConfig || {}) },
               customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || [])
             };
             saveLocalFallback();
@@ -8772,13 +8789,19 @@
     }));
     const custom = (Array.isArray(appState.customShops) ? appState.customShops : []).map((cs) => {
       const bench = findMatchingShopBenchmark(cs.buyItem || cs.sellItem);
+      const isLive = Boolean(cs.liveSource);
+      const shopLabel = String(cs.shopName || '').trim();
       const entry = {
         id: cs.id,
         isCustom: true,
+        liveSource: cs.liveSource || '',
+        shopName: shopLabel,
+        inStock: typeof cs.inStock === 'number' ? cs.inStock : undefined,
+        isBlueprint: Boolean(cs.isBlueprint),
         shopType: 'player',
-        monument: 'My Server Shop',
+        monument: isLive ? 'Live Server Shop' : 'My Server Shop',
         monumentId: 'custom',
-        vendor: cs.grid ? `Player Vending [${cs.grid}]` : 'Player Vending',
+        vendor: shopLabel ? shopLabel : cs.grid ? `Player Vending [${cs.grid}]` : 'Player Vending',
         grid: cs.grid || '',
         category: cs.category || bench?.category || 'defense',
         meta: true,
@@ -8802,6 +8825,9 @@
         entry.bestToBuy = true;
       } else if (verdict && verdict.tier === 'ripoff') {
         entry.tierRank = 'B';
+        entry.bestToBuy = false;
+      }
+      if (entry.inStock === 0) {
         entry.bestToBuy = false;
       }
       return entry;
@@ -8963,17 +8989,26 @@
     }
 
     const locBadge = resolveShopGridBadge(sel);
-    const sourceBadge = sel.isCustom
-      ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.2); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 MY SERVER</span>`
-      : sel.shopType === 'player'
-        ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.15); color:#d8b4fe; border:1px solid rgba(168,85,247,0.35);">👤 PLAYER SHOP META</span>`
-        : `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(34,197,94,0.15); color:#86efac; border:1px solid rgba(34,197,94,0.35);">🏛️ NPC VENDOR</span>`;
+    const stockBadge =
+      typeof sel.inStock === 'number'
+        ? sel.inStock > 0
+          ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(34,197,94,0.45); font-weight:700;">📦 ${sel.inStock} in stock</span>`
+          : `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.45); font-weight:700;">❌ SOLD OUT</span>`
+        : '';
+    const sourceBadge = sel.liveSource
+      ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45);">📡 ${sel.liveSource === 'ocr' ? 'LIVE OCR' : 'LIVE RUST+'}</span>`
+      : sel.isCustom
+        ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.2); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 MY SERVER</span>`
+        : sel.shopType === 'player'
+          ? `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(168,85,247,0.15); color:#d8b4fe; border:1px solid rgba(168,85,247,0.35);">👤 PLAYER SHOP META</span>`
+          : `<span style="font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(34,197,94,0.15); color:#86efac; border:1px solid rgba(34,197,94,0.35);">🏛️ NPC VENDOR</span>`;
 
     outEl.innerHTML = `
       <div style="background:var(--bg-card); border:1px solid var(--rust-orange); border-radius:8px; padding:12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             ${sourceBadge}
+            ${stockBadge}
             <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">
               ${escapeHtml(sel.monument)} — ${escapeHtml(sel.vendor)}
             </span>
@@ -9030,10 +9065,12 @@
 
       if (selectedShopCurrency !== 'all') {
         const payLower = String(t.payItem || '').toLowerCase();
-        if (selectedShopCurrency === 'Sulfur' && payLower !== 'sulfur') return false;
+        if (selectedShopCurrency === 'Sulfur' && payLower !== 'sulfur' && payLower !== 'sulfur ore') return false;
         if (selectedShopCurrency === 'Scrap' && payLower !== 'scrap') return false;
-        if (selectedShopCurrency === 'other' && (payLower === 'sulfur' || payLower === 'scrap')) return false;
+        if (selectedShopCurrency === 'other' && (payLower === 'sulfur' || payLower === 'sulfur ore' || payLower === 'scrap')) return false;
       }
+
+      if (shopInStockOnly && typeof t.inStock === 'number' && t.inStock <= 0) return false;
 
       if (tokens.length === 0) return true;
       const hay = [
@@ -9041,6 +9078,9 @@
         t.payItem,
         t.monument,
         t.vendor,
+        t.shopName || '',
+        t.liveSource ? 'live real-time rustplus' : '',
+        typeof t.inStock === 'number' ? (t.inStock > 0 ? `${t.inStock} in stock` : 'sold out') : '',
         t.category,
         SHOP_CATEGORY_LABELS[t.category] || '',
         t.shopType === 'player' ? 'player vending shop' : 'npc safe zone',
@@ -9058,6 +9098,7 @@
     });
 
     const tierScore = (t) => (t.tierRank === 'S' ? 0 : t.tierRank === 'A' ? 1 : 2);
+    const soldOutScore = (t) => (typeof t.inStock === 'number' && t.inStock <= 0 ? 1 : 0);
     filtered.sort((a, b) => {
       if (selectedShopSort === 'cost_asc') {
         return a.payQty - b.payQty || a.buyItem.localeCompare(b.buyItem);
@@ -9068,9 +9109,10 @@
       if (selectedShopSort === 'name_asc') {
         return a.buyItem.localeCompare(b.buyItem);
       }
-      // Default 'best': squad's live server shops first (ordered S->B), then S-tier best-to-buy meta deals
+      // Default 'best': in-stock custom/live server shops first (ordered S->B), then S-tier best-to-buy meta deals
       return (
         (a.isCustom === b.isCustom ? 0 : a.isCustom ? -1 : 1) ||
+        soldOutScore(a) - soldOutScore(b) ||
         tierScore(a) - tierScore(b) ||
         (a.bestToBuy === b.bestToBuy ? 0 : a.bestToBuy ? -1 : 1) ||
         (a.shopType === b.shopType ? 0 : a.shopType === 'player' ? -1 : 1)
@@ -9093,11 +9135,19 @@
           const isAct = t.id === selectedShopTradeId;
           const locBadge = resolveShopGridBadge(t);
           const verdict = t.isCustom || t.shopType === 'player' ? evaluateShopPriceVerdict(t) : null;
-          const typePill = t.isCustom
-            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 Server Shop</span>`
-            : t.shopType === 'player'
-              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.16); color:#d8b4fe;">👤 Player Shop</span>`
-              : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.14); color:#86efac;">🏛️ NPC</span>`;
+          const typePill = t.liveSource
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45); font-weight:700;">📡 LIVE</span>`
+            : t.isCustom
+              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45);">📌 Server Shop</span>`
+              : t.shopType === 'player'
+                ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.16); color:#d8b4fe;">👤 Player Shop</span>`
+                : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.14); color:#86efac;">🏛️ NPC</span>`;
+          const stockPill =
+            typeof t.inStock === 'number'
+              ? t.inStock > 0
+                ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.16); color:#4ade80; border:1px solid rgba(34,197,94,0.4); font-weight:700;">📦 ${t.inStock} in stock</span>`
+                : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.16); color:#f87171; border:1px solid rgba(239,68,68,0.4); font-weight:700;">❌ SOLD OUT</span>`
+              : '';
           const bestPill = t.bestToBuy
             ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.2); color:#fde047; font-weight:700; border:1px solid rgba(250,204,21,0.45);">🏆 BEST TO BUY</span>`
             : t.tierRank === 'A'
@@ -9130,6 +9180,7 @@
                 <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
                   ${bestPill}
                   ${customVerdictPill}
+                  ${stockPill}
                   ${typePill}
                   ${dronePill}
                   ${delBtn}
@@ -9194,10 +9245,17 @@
       renderShopsModule();
     });
 
+    const inStockCb = document.getElementById('shopInStockOnlyCb');
+    inStockCb?.addEventListener('change', () => {
+      shopInStockOnly = Boolean(inStockCb.checked);
+      renderShopsModule();
+    });
+
     clearBtn?.addEventListener('click', () => {
       if (searchEl) searchEl.value = '';
       if (currencyEl) currencyEl.value = 'all';
       if (sortEl) sortEl.value = 'best';
+      if (inStockCb) inStockCb.checked = false;
       const askEl = document.getElementById('shopAskingPriceInput');
       if (askEl) askEl.value = '';
       const askGridEl = document.getElementById('shopAskingGridInput');
@@ -9207,6 +9265,7 @@
       selectedShopCategory = 'all';
       selectedShopCurrency = 'all';
       selectedShopSort = 'best';
+      shopInStockOnly = false;
       document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
         b.classList.toggle('active', b.getAttribute('data-sfilter') === 'all');
       });
@@ -9335,7 +9394,444 @@
       });
     });
 
+    // =========================================================================
+    // REAL-TIME SHOP SCANNER (OCR SCREENSHOT / WINDOW CAPTURE + RUST+ POLLER)
+    // =========================================================================
+    const SHOP_NON_GRID_TOKENS = new Set(['C4', 'F1', 'T1', 'T2', 'T3', 'M2', 'M9', 'G1', 'L9', 'X1', 'X2', 'X3', 'X4', 'X5']);
+    const SHOP_CURRENCIES_RE = /\b(sulfur\s+ore|sulfur|scrap|crude\s+oil|low\s+grade\s+fuel|lgf|high\s+quality\s+metal|hqm|metal\s+fragments|metal|wood|stones?|fertilizer|diesel(?:\s+fuel)?)\b/i;
+
+    const canonicalCurrency = (raw) => {
+      const s = String(raw || '').trim().toLowerCase();
+      if (s === 'sulfur ore') return 'Sulfur Ore';
+      if (s === 'sulfur') return 'Sulfur';
+      if (s === 'scrap') return 'Scrap';
+      if (s === 'crude oil') return 'Crude Oil';
+      if (s === 'low grade fuel' || s === 'lgf') return 'Low Grade Fuel';
+      if (s === 'high quality metal' || s === 'hqm') return 'High Quality Metal';
+      if (s === 'metal fragments' || s === 'metal') return 'Metal Fragments';
+      if (s === 'wood') return 'Wood';
+      if (s === 'stone' || s === 'stones') return 'Stone';
+      if (s === 'fertilizer') return 'Fertilizer';
+      if (s.startsWith('diesel')) return 'Diesel Fuel Barrel';
+      return raw ? raw.trim() : 'Sulfur';
+    };
+
+    function extractShopGridToken(text) {
+      const explicit = text.match(/(?:\[|@|grid\s*[:\-]?\s*)([A-Z]{1,2}\d{1,2})\]?/i);
+      if (explicit) return explicit[1].toUpperCase();
+      const loose = text.match(/\b([A-Z]{1,2}\d{1,2})\b/g) || [];
+      for (const tok of loose) {
+        const up = tok.toUpperCase();
+        const num = parseInt(up.replace(/^[A-Z]+/, ''), 10);
+        if (!SHOP_NON_GRID_TOKENS.has(up) && num >= 0 && num <= 32) return up;
+      }
+      return '';
+    }
+
+    function parseShopQtyName(raw, fallbackQty = 1) {
+      let clean = String(raw || '').trim();
+      let qty = fallbackQty;
+      const prefix = clean.match(/^(\d+)\s*[x×]?\s+(.+)$/i);
+      const suffix = clean.match(/^(.+?)\s+[x×]?\s*(\d+)$/i);
+      if (prefix) {
+        qty = Math.max(1, parseInt(prefix[1], 10));
+        clean = prefix[2].trim();
+      } else if (suffix && !/\b(?:5\.56|level\s+[123]|mp5a4|spas-12|lr-300|m39|m92|l96|f1)\b/i.test(clean)) {
+        qty = Math.max(1, parseInt(suffix[2], 10));
+        clean = suffix[1].trim();
+      }
+      return { qty, name: clean };
+    }
+
+    function parseShopTradesFromOcrText(rawText) {
+      const lines = String(rawText || '')
+        .split(/\r?\n|;/)
+        .map((l) => l.replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      const defaultGrid = extractShopGridToken(rawText);
+      const results = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        let inStock = undefined;
+        const stockMatch =
+          line.match(/\(\s*(\d+)\s*(?:in\s*stock|stock|left|avail(?:able)?)\s*\)/i) ||
+          line.match(/(?:in\s*stock|stock|left|avail(?:able)?)[\s:=]*(\d+)/i) ||
+          line.match(/\b(\d+)\s*(?:in\s*stock|stock|left)\b/i);
+        if (stockMatch) {
+          inStock = parseInt(stockMatch[1], 10);
+          line = line.replace(stockMatch[0], ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        let lineGrid = extractShopGridToken(line) || defaultGrid;
+        if (lineGrid) {
+          line = line
+            .replace(new RegExp(`(?:\\[|@|grid\\s*[:\\-]?\\s*)?\\b${lineGrid}\\b\\]?`, 'ig'), ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+
+        let leftPart = '';
+        let rightPart = '';
+        const sepMatch = line.match(/^(.+?)\s*(?:=|->|=>|⇄|\||\bfor\b)\s*(.+)$/i);
+        if (sepMatch) {
+          leftPart = sepMatch[1].trim();
+          rightPart = sepMatch[2].trim();
+        } else {
+          // Try trailing `<qty> <currency>` pattern (common on map vending OCR)
+          const tailCost = line.match(
+            new RegExp(`^(.+?)\\s+(\\d+)\\s*[x×]?\\s*(${SHOP_CURRENCIES_RE.source})$`, 'i')
+          );
+          if (tailCost) {
+            leftPart = tailCost[1].trim();
+            rightPart = `${tailCost[2]} ${tailCost[3]}`;
+          } else if (i + 1 < lines.length) {
+            // Sliding 2-line OCR window (Line i = Item, Line i+1 = Cost)
+            const nextLine = lines[i + 1];
+            const nextCost = nextLine.match(
+              new RegExp(`(\\d+)\\s*[x×]?\\s*(${SHOP_CURRENCIES_RE.source})`, 'i')
+            );
+            if (nextCost && !SHOP_CURRENCIES_RE.test(line)) {
+              leftPart = line;
+              rightPart = `${nextCost[1]} ${nextCost[2]}`;
+              i += 1;
+            }
+          }
+        }
+
+        if (!leftPart || !rightPart) continue;
+        const left = parseShopQtyName(leftPart, 1);
+        const right = parseShopQtyName(rightPart, 1);
+        if (!left.name || left.name.length < 2) continue;
+
+        const bench = findMatchingShopBenchmark(left.name);
+        const buyItem = bench?.buyItem || left.name;
+        const payItem = canonicalCurrency(right.name);
+
+        results.push({
+          id: 'ocr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          liveSource: 'ocr',
+          shopName: lineGrid ? `Map Scan [${lineGrid}]` : 'Map / Drone Scan',
+          buyQty: left.qty,
+          buyItem,
+          payQty: right.qty,
+          payItem,
+          inStock,
+          category: bench?.category || 'defense',
+          grid: lineGrid,
+          updatedAt: Date.now(),
+          notes: `Imported via live scanner${typeof inStock === 'number' ? ` (${inStock} in stock)` : ''}.`
+        });
+      }
+      return results;
+    }
+
+    function upsertLiveScannerShops(parsedEntries, statusEl, sourceLabel = 'Scanner') {
+      if (!Array.isArray(parsedEntries) || parsedEntries.length === 0) {
+        if (statusEl) statusEl.textContent = `⚠️ ${sourceLabel}: No shop prices recognized (try e.g. "Pure Ore Tea = 280 Sulfur @ M14 (6 stock)").`;
+        return 0;
+      }
+      const current = Array.isArray(appState.customShops) ? [...appState.customShops] : [];
+      for (const entry of parsedEntries) {
+        const dupIdx = current.findIndex(
+          (c) =>
+            String(c.buyItem || '').toLowerCase() === entry.buyItem.toLowerCase() &&
+            String(c.payItem || '').toLowerCase() === entry.payItem.toLowerCase() &&
+            String(c.grid || '').toUpperCase() === String(entry.grid || '').toUpperCase()
+        );
+        if (dupIdx >= 0) {
+          current[dupIdx] = { ...current[dupIdx], ...entry, id: current[dupIdx].id };
+        } else {
+          current.unshift(entry);
+        }
+      }
+      appState.customShops = current;
+      selectedShopTradeId = parsedEntries[0].id;
+      if (!['all', 'player', 'custom'].includes(selectedShopFilter)) {
+        selectedShopFilter = 'player';
+        document.querySelectorAll('#shopFilterBar .filter-pill').forEach((b) => {
+          b.classList.toggle('active', b.getAttribute('data-sfilter') === 'player');
+        });
+      }
+      syncStateToServer();
+      renderShopsModule();
+      if (statusEl) {
+        statusEl.textContent = `✅ ${sourceLabel}: Imported ${parsedEntries.length} shop ${parsedEntries.length === 1 ? 'deal' : 'deals'} and graded ROI!`;
+      }
+      return parsedEntries.length;
+    }
+
+    const scanStatusEl = document.getElementById('shopScannerStatus');
+    const quickBulkInputEl = document.getElementById('shopQuickBulkInput');
+    document.getElementById('shopQuickBulkBtn')?.addEventListener('click', () => {
+      const txt = quickBulkInputEl?.value.trim() || '';
+      if (!txt) return;
+      const parsed = parseShopTradesFromOcrText(txt);
+      const added = upsertLiveScannerShops(parsed, scanStatusEl, 'Quick Import');
+      if (added > 0 && quickBulkInputEl) quickBulkInputEl.value = '';
+    });
+    quickBulkInputEl?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('shopQuickBulkBtn')?.click();
+      }
+    });
+
+    async function runShopImageOcr(imgSource, label = 'Screenshot OCR') {
+      if (!imgSource) return;
+      try {
+        if (scanStatusEl) scanStatusEl.textContent = `⏳ ${label}: Initializing Tesseract OCR...`;
+        const worker = await ensureRaidOcrWorker((msg) => {
+          if (scanStatusEl) scanStatusEl.textContent = msg;
+        });
+        const res = await worker.recognize(imgSource);
+        const text = res?.data?.text || '';
+        const parsed = parseShopTradesFromOcrText(text);
+        upsertLiveScannerShops(parsed, scanStatusEl, label);
+      } catch (err) {
+        if (scanStatusEl) scanStatusEl.textContent = `❌ ${label} failed: ${err.message}`;
+      }
+    }
+
+    document.getElementById('shopOcrFileInput')?.addEventListener('change', (e) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = async () => {
+        await runShopImageOcr(img, 'Uploaded Image OCR');
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    });
+
+    document.getElementById('shopOcrPasteBtn')?.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard?.read) {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const imgType = item.types.find((t) => t.startsWith('image/'));
+            if (imgType) {
+              const blob = await item.getType(imgType);
+              return await runShopImageOcr(blob, 'Clipboard OCR');
+            }
+          }
+          const txtType = item.types.find((t) => t === 'text/plain');
+          if (txtType) {
+            const blob = await item.getType(txtType);
+            const text = await blob.text();
+            return upsertLiveScannerShops(parseShopTradesFromOcrText(text), scanStatusEl, 'Clipboard Text');
+          }
+        }
+        if (scanStatusEl) scanStatusEl.textContent = '💡 Press Ctrl+V anywhere on the Shops tab after Win+Shift+S to paste a vending screenshot.';
+      } catch (_) {
+        if (scanStatusEl) scanStatusEl.textContent = '💡 Press Ctrl+V anywhere on the Shops tab after copying a screenshot (Win+Shift+S).';
+      }
+    });
+
+    document.addEventListener('paste', (e) => {
+      if (!document.getElementById('tab-shops')?.classList.contains('active')) return;
+      const items = Array.from(e.clipboardData?.items || []);
+      const imgItem = items.find((it) => it.type.startsWith('image/'));
+      if (!imgItem) return;
+      const blob = imgItem.getAsFile();
+      if (!blob) return;
+      e.preventDefault();
+      const drawer = document.getElementById('liveShopTrackerDrawer');
+      if (drawer) drawer.open = true;
+      runShopImageOcr(blob, 'Clipboard Paste OCR');
+    });
+
+    let shopLiveStream = null;
+    let shopLiveTimer = null;
+    const shopLiveBtn = document.getElementById('shopLiveCaptureBtn');
+    const stopShopLiveCapture = () => {
+      if (shopLiveTimer) {
+        clearInterval(shopLiveTimer);
+        shopLiveTimer = null;
+      }
+      if (shopLiveStream) {
+        try { shopLiveStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+        shopLiveStream = null;
+      }
+      if (shopLiveBtn) shopLiveBtn.textContent = '🎥 Live Scan Rust Window';
+    };
+
+    shopLiveBtn?.addEventListener('click', async () => {
+      if (shopLiveStream) {
+        stopShopLiveCapture();
+        if (scanStatusEl) scanStatusEl.textContent = '⏹️ Live window shop scanner stopped.';
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        if (scanStatusEl) scanStatusEl.textContent = '⚠️ Screen capture requires localhost/HTTPS or Chrome/Edge desktop.';
+        return;
+      }
+      try {
+        shopLiveStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 2 }, audio: false });
+        shopLiveBtn.textContent = '⏹️ Stop Live Scan';
+        const video = document.createElement('video');
+        video.srcObject = shopLiveStream;
+        video.muted = true;
+        await video.play();
+        const capCanvas = document.createElement('canvas');
+        const capCtx = capCanvas.getContext('2d');
+        let lastFrameSig = '';
+
+        shopLiveStream.getVideoTracks()[0]?.addEventListener('ended', stopShopLiveCapture);
+        if (scanStatusEl) scanStatusEl.textContent = '🟢 Live watching Rust window — open Map/Drone vending screen to auto-import every 2.5s.';
+
+        shopLiveTimer = setInterval(async () => {
+          if (!shopLiveStream || video.videoWidth < 100) return;
+          capCanvas.width = video.videoWidth;
+          capCanvas.height = video.videoHeight;
+          capCtx.drawImage(video, 0, 0);
+          const sample = capCtx.getImageData(
+            Math.floor(capCanvas.width * 0.3),
+            Math.floor(capCanvas.height * 0.25),
+            Math.max(16, Math.floor(capCanvas.width * 0.4)),
+            Math.max(16, Math.floor(capCanvas.height * 0.5))
+          ).data;
+          let sig = 0;
+          for (let i = 0; i < sample.length; i += 64) sig = (sig + sample[i]) % 10000000;
+          const sigStr = String(sig);
+          if (sigStr === lastFrameSig) return;
+          lastFrameSig = sigStr;
+          await runShopImageOcr(capCanvas, 'Live Window Scan');
+        }, 2500);
+      } catch (err) {
+        stopShopLiveCapture();
+        if (scanStatusEl) scanStatusEl.textContent = `❌ Capture cancelled: ${err.message}`;
+      }
+    });
+
+    // Rust+ Live Vending Machine Poller UI
+    const jsonPasteEl = document.getElementById('rpShopJsonPasteInput');
+    jsonPasteEl?.addEventListener('input', () => {
+      const raw = jsonPasteEl.value.trim();
+      if (!raw.startsWith('{')) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.ip) document.getElementById('rpShopIpInput').value = String(parsed.ip);
+        if (parsed.port) document.getElementById('rpShopPortInput').value = String(parsed.port);
+        if (parsed.playerId) document.getElementById('rpShopPlayerIdInput').value = String(parsed.playerId);
+        if (parsed.playerToken) document.getElementById('rpShopTokenInput').value = String(parsed.playerToken);
+        const stEl = document.getElementById('rpShopStatusText');
+        if (stEl) stEl.textContent = '✅ Loaded server IP, port & Rust+ token from JSON — click Connect & Poll Live!';
+      } catch (_) {}
+    });
+
+    const readRustPlusFormConfig = () => ({
+      ip: document.getElementById('rpShopIpInput')?.value.trim() || '',
+      port: document.getElementById('rpShopPortInput')?.value.trim() || '28082',
+      playerId: document.getElementById('rpShopPlayerIdInput')?.value.trim() || '',
+      playerToken: document.getElementById('rpShopTokenInput')?.value.trim() || '',
+      autoPoll: Boolean(document.getElementById('rpShopAutoPollCb')?.checked),
+      discordAlertSteals: document.getElementById('rpShopDiscordStealCb')?.checked !== false
+    });
+
+    const triggerRustPlusShopPoll = async (simulate = false) => {
+      const statusEl = document.getElementById('rpShopStatusText');
+      const cfg = readRustPlusFormConfig();
+      if (!simulate && (!cfg.ip || !cfg.playerId || !cfg.playerToken)) {
+        if (statusEl) statusEl.textContent = '⚠️ Enter Server IP, SteamID64 (playerId), and Rust+ PlayerToken (or try Demo Live Server Feed).';
+        return;
+      }
+      if (statusEl) statusEl.textContent = simulate ? '⏳ Generating Demo Live Server Vending Snapshot...' : `⏳ Polling Rust+ map markers from ${cfg.ip}:${cfg.port}...`;
+      try {
+        const resp = await fetch('/api/shops/rustplus/poll', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
+          },
+          body: JSON.stringify({ ...cfg, simulate })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        if (data.state) {
+          appState = {
+            ...appState,
+            ...data.state,
+            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
+            rustPlusShopConfig: {
+              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+              ...(appState.rustPlusShopConfig || {}),
+              ...(data.state.rustPlusShopConfig || {})
+            }
+          };
+          saveLocalFallback();
+        }
+        if (statusEl) statusEl.textContent = data.lastStatus || `✅ Synced ${data.ordersCount || 0} live orders across ${data.shopsCount || 0} shops.`;
+        renderShopsModule();
+      } catch (err) {
+        if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+      }
+    };
+
+    document.getElementById('rpShopPollNowBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(false));
+    document.getElementById('rpShopSimulateBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(true));
+
+    const saveRustPlusPollSettings = async () => {
+      const cfg = readRustPlusFormConfig();
+      appState.rustPlusShopConfig = {
+        ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+        ...(appState.rustPlusShopConfig || {}),
+        ...cfg
+      };
+      try {
+        await fetch('/api/shops/rustplus/config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
+          },
+          body: JSON.stringify(cfg)
+        });
+      } catch (_) {}
+      saveLocalFallback();
+    };
+    document.getElementById('rpShopAutoPollCb')?.addEventListener('change', saveRustPlusPollSettings);
+    document.getElementById('rpShopDiscordStealCb')?.addEventListener('change', saveRustPlusPollSettings);
+
+    document.getElementById('rpShopClearLiveBtn')?.addEventListener('click', () => {
+      appState.customShops = (Array.isArray(appState.customShops) ? appState.customShops : []).filter(
+        (cs) => !cs.liveSource
+      );
+      if (appState.rustPlusShopConfig) {
+        appState.rustPlusShopConfig.lastStatus = 'Live vending feed cleared.';
+        appState.rustPlusShopConfig.autoPoll = false;
+      }
+      const autoCb = document.getElementById('rpShopAutoPollCb');
+      if (autoCb) autoCb.checked = false;
+      saveRustPlusPollSettings();
+      syncStateToServer();
+      renderShopsModule();
+      syncRustPlusShopUiFromState();
+    });
+
+    syncRustPlusShopUiFromState();
     renderShopsModule();
+  }
+
+  function syncRustPlusShopUiFromState() {
+    const cfg = appState.rustPlusShopConfig || DEFAULT_RUSTPLUS_SHOP_CONFIG;
+    const setIfIdle = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && document.activeElement !== el && val !== undefined) el.value = String(val || '');
+    };
+    setIfIdle('rpShopIpInput', cfg.ip || '');
+    setIfIdle('rpShopPortInput', cfg.port || '28082');
+    setIfIdle('rpShopPlayerIdInput', cfg.playerId || '');
+    setIfIdle('rpShopTokenInput', cfg.playerToken || '');
+    const autoCb = document.getElementById('rpShopAutoPollCb');
+    if (autoCb) autoCb.checked = Boolean(cfg.autoPoll);
+    const alertCb = document.getElementById('rpShopDiscordStealCb');
+    if (alertCb) alertCb.checked = cfg.discordAlertSteals !== false;
+    const statusEl = document.getElementById('rpShopStatusText');
+    if (statusEl && cfg.lastStatus) statusEl.textContent = cfg.lastStatus;
   }
 
   // =========================================================================
@@ -9358,6 +9854,7 @@
     renderDieselCalculator();
     renderDecayCalculator();
     renderShopsModule();
+    syncRustPlusShopUiFromState();
   }
 
   window.addEventListener('DOMContentLoaded', () => {
