@@ -54,7 +54,7 @@
   <nav class="nav-bar">
     <div class="nav-inner">
       <button class="nav-tab active" data-tab="tab-basefinder">
-        📍 Base Finder <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">RUSTMAPS</span>
+        📍 Base &amp; Trade Hub <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">MAP + RUST+</span>
       </button>
       <button class="nav-tab" data-tab="tab-map">
         🏛️ Monuments <span class="nav-badge">KEYCARDS</span>
@@ -64,9 +64,6 @@
       </button>
       <button class="nav-tab" data-tab="tab-recycler">
         ♻️ Recycler &amp; Decay <span class="nav-badge">SCRAP + BOOM</span>
-      </button>
-      <button class="nav-tab" data-tab="tab-shops">
-        🛒 Shops &amp; Trades <span class="nav-badge">VENDORS</span>
       </button>
       <button class="nav-tab" data-tab="tab-genetics">
         🌱 Genetics &amp; Tea <span class="nav-badge">6-GENE</span>
@@ -758,290 +755,6 @@
     </section>
 
     <!-- ==================================================================
-         TAB 6: IN-GAME PLAYER SHOPS, NPC VENDORS & BEST-TO-BUY EVALUATOR
-         ================================================================== -->
-    <section id="tab-shops" class="tab-panel">
-      <div class="panel" style="margin-bottom: 16px;">
-        <div class="panel-header">
-          <div>
-            <div class="panel-title">🛒 In-Game Player Shops, NPC Vendors &amp; Best-to-Buy Guide</div>
-            <div class="panel-subtitle">Search Player Vending Machine meta deals &amp; live Monument NPC trades — filter by shop source, category, payment currency, or ROI rank</div>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <button id="toggleShopMapBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd; background:rgba(56,189,248,0.14);">🗺️ Live Map</button>
-            <button id="openRustPlusPopupModalBtn" type="button" class="btn btn-sm btn-primary" style="background:#2563eb; border-color:#60a5fa;">🚀 Auto-Connect Rust+ (Popup)</button>
-            <span id="shopCountBadge" class="target-tier-tag">76 TRADES</span>
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
-          <input id="shopSearchInput" type="text" class="input" style="flex: 2; min-width: 240px;" placeholder="🔍 Search item, cost, shop, grid, or benefit (e.g. Pure Ore Tea, Garage Door, SAR, Diesel, Jackhammer)..." />
-          <select id="shopCurrencySelect" class="select" style="min-width: 175px;">
-            <option value="all">💰 All Currencies</option>
-            <option value="Sulfur">🟡 Pay: Sulfur (Player Meta)</option>
-            <option value="Scrap">⚙️ Pay: Scrap (NPC &amp; Player)</option>
-            <option value="other">🪨 Pay: Stone / Fert / Fish / Other</option>
-          </select>
-          <select id="shopSortSelect" class="select" style="min-width: 185px;">
-            <option value="best">🏆 Sort: Best to Buy First (S → B)</option>
-            <option value="cost_asc">📉 Sort: Lowest Cost First</option>
-            <option value="cost_desc">📈 Sort: Highest Cost First</option>
-            <option value="name_asc">🔤 Sort: Item Name (A–Z)</option>
-          </select>
-          <label style="display:flex; align-items:center; gap:5px; font-size:12px; cursor:pointer; padding:4px 8px; border-radius:4px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
-            <input id="shopInStockOnlyCb" type="checkbox" />
-            <span>📦 In Stock Only</span>
-          </label>
-          <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕ Reset</button>
-        </div>
-
-        <div id="shopFilterBar" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
-          <button type="button" class="filter-pill active" data-sfilter="all">All Trades</button>
-          <button type="button" class="filter-pill" data-sfilter="best">🏆 Best to Buy</button>
-          <button type="button" class="filter-pill" data-sfilter="player">👤 Player Shops (Meta &amp; Server)</button>
-          <button type="button" class="filter-pill" data-sfilter="custom">📌 My Server Shops</button>
-          <button type="button" class="filter-pill" data-sfilter="npc">🏛️ All NPC Shops</button>
-          <button type="button" class="filter-pill" data-sfilter="Outpost">🛡️ Outpost</button>
-          <button type="button" class="filter-pill" data-sfilter="Bandit Camp">🏴‍☠️ Bandit Camp</button>
-          <button type="button" class="filter-pill" data-sfilter="Fishing Village">⚓ Fishing Village</button>
-          <button type="button" class="filter-pill" data-sfilter="Ranch / Barn">🐎 Ranch / Barn</button>
-          <button type="button" class="filter-pill" data-sfilter="Water Well">🚰 Water Well</button>
-        </div>
-
-        <div id="shopCategoryBar" style="display: flex; gap: 6px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
-          <button type="button" class="filter-pill active" data-scat="all">All Categories</button>
-          <button type="button" class="filter-pill" data-scat="teas">🧪 Teas &amp; Clones</button>
-          <button type="button" class="filter-pill" data-scat="progression">⚙️ Workbenches &amp; BPs</button>
-          <button type="button" class="filter-pill" data-scat="weapons">🔫 Weapons &amp; Guns</button>
-          <button type="button" class="filter-pill" data-scat="raid">💥 Raid &amp; Boom</button>
-          <button type="button" class="filter-pill" data-scat="defense">🛡️ Doors &amp; Turrets</button>
-          <button type="button" class="filter-pill" data-scat="resources">⛏️ Resources &amp; Fuel</button>
-          <button type="button" class="filter-pill" data-scat="recycle">♻️ Scrap &amp; Recycle</button>
-          <button type="button" class="filter-pill" data-scat="tools">🛠️ Tools &amp; Elec</button>
-          <button type="button" class="filter-pill" data-scat="vehicles">🚁 Vehicles &amp; Horses</button>
-        </div>
-
-        <div id="shopWatchlistBar" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:8px; margin-top:8px; border-top:1px dashed rgba(148,163,184,0.22);">
-          <span style="font-size:11px; font-family:var(--font-mono); color:#86efac; font-weight:700;">🎯 WATCHLIST:</span>
-          <input id="shopWatchQueryInput" type="text" class="input" style="width:185px; font-size:11.5px; padding:4px 8px;" placeholder="Item (e.g. Diesel, Tea, AK)" />
-          <input id="shopWatchMaxPriceInput" type="number" class="input" style="width:105px; font-size:11.5px; padding:4px 8px;" min="1" placeholder="Max cost (opt)" />
-          <button id="shopWatchAddBtn" type="button" class="btn btn-sm" style="border-color:#4ade80; color:#bbf7d0;">🔔 Watch</button>
-          <div id="shopWatchlistPills" style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;"></div>
-        </div>
-      </div>
-
-      <!-- Interactive Live Rust+ Map Overlay (Shops + Squad GPS + World Events + Clock) -->
-      <div id="shopLiveMapCard" class="panel" style="display: none; margin-bottom: 16px;">
-        <div class="panel-header" style="margin-bottom: 8px; gap: 10px;">
-          <div>
-            <div class="panel-title">🗺️ Live Rust+ Tactical Radar — Shops, Squad GPS &amp; World Events</div>
-            <div id="shopLiveMapMeta" class="panel-subtitle">Click any shop pin to filter its offers, search above to highlight items on map, or hover for distance &amp; stock</div>
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer;"><input id="shopMapShowVendingCb" type="checkbox" checked /><span>🛒 Shops</span></label>
-            <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer;" title="Show only S-Tier Steal shops on map"><input id="shopMapStealsOnlyCb" type="checkbox" /><span>🔥 Steals</span></label>
-            <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer;" title="Hide sold-out vending pins on map"><input id="shopMapInStockOnlyCb" type="checkbox" /><span>📦 In Stock</span></label>
-            <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer;"><input id="shopMapShowTeamCb" type="checkbox" checked /><span>👥 Squad</span></label>
-            <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer;"><input id="shopMapShowEventsCb" type="checkbox" checked /><span>🚁 Events</span></label>
-            <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer;"><input id="shopMapShowMonumentsCb" type="checkbox" checked /><span>🏛️ Monuments</span></label>
-            <button id="shopMapZoomOutBtn" type="button" class="btn btn-sm" title="Zoom Out">➖</button>
-            <button id="shopMapZoomInBtn" type="button" class="btn btn-sm" title="Zoom In">➕</button>
-            <button id="shopMapZoomResetBtn" type="button" class="btn btn-sm" title="Reset Zoom">🏝️ 100%</button>
-            <button id="shopMapCenterMeBtn" type="button" class="btn btn-sm" style="border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
-            <button id="shopMapExpandBtn" type="button" class="btn btn-sm" title="Toggle expanded square tactical map view">⤢ Expand</button>
-            <button id="shopMapRefreshBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;" title="Re-fetch server map image, live shops, squad &amp; events">🔄 Sync Map</button>
-            <button id="shopMapOpenBaseFinderBtn" type="button" class="btn btn-sm" style="border-color:#4ade80; color:#bbf7d0;" title="Analyze this live server's seed in Base Finder">📍 Base Finder</button>
-          </div>
-        </div>
-        <div id="shopLiveAlertBanner" style="display:none; margin-bottom:8px;"></div>
-        <div id="shopLiveTeamStrip" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
-        <div id="shopLiveEventsStrip" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-        <div id="shopLiveMapWrap" style="position:relative; width:100%; max-width:680px; margin:0 auto; background:#0b3a4a; border:1px solid var(--border-subtle); border-radius:6px; overflow:hidden;">
-          <canvas id="shopLiveMapCanvas" width="900" height="900" style="width:100%; height:auto; aspect-ratio:1/1; display:block; cursor:grab;"></canvas>
-          <div id="shopMapTooltip" style="display:none; position:absolute; pointer-events:none; z-index:20; background:rgba(9,14,22,0.95); border:1px solid rgba(56,189,248,0.6); border-radius:6px; padding:8px 10px; font-size:11.5px; color:#e2e8f0; box-shadow:0 8px 24px rgba(0,0,0,0.6); max-width:290px;"></div>
-          <div id="shopMapHudReadout" style="display:none; position:absolute; bottom:8px; left:8px; pointer-events:none; z-index:15; background:rgba(9,14,22,0.85); border:1px solid var(--border-subtle); border-radius:4px; padding:3px 8px; font-family:var(--font-mono); font-size:11px; color:#cbd5e1;"></div>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:11px; color:var(--text-secondary);">
-          <div style="display:flex; gap:12px; flex-wrap:wrap;">
-            <span><strong style="color:#facc15;">★</strong> S-Tier Steal</span>
-            <span><strong style="color:#4ade80;">●</strong> In-Stock Shop</span>
-            <span><strong style="color:#38bdf8;">◎</strong> Search Match</span>
-            <span><strong style="color:#64748b;">●</strong> Sold Out</span>
-            <span><strong style="color:#22d3ee;">⌖ YOU</strong> / <strong style="color:#38bdf8;">●</strong> Squad GPS</span>
-            <span><strong style="color:#f43f5e;">🚁/🚢/📦</strong> World Events</span>
-          </div>
-          <span>Drag to pan • Scroll zooms to cursor • Click pin to filter deals</span>
-        </div>
-      </div>
-
-      <div class="grid-2" style="align-items: start;">
-        <!-- Left Column: Filterable Trades List -->
-        <div class="panel">
-          <div class="panel-header" style="margin-bottom: 10px;">
-            <div>
-              <div class="panel-title">🏪 Matching Player &amp; NPC Deals</div>
-              <div class="panel-subtitle">Click any trade to evaluate server pricing, calculate bulk batches &amp; check recycle ROI</div>
-            </div>
-          </div>
-          <div id="shopSelectedPinFilterBanner" style="display:none; margin-bottom:8px;"></div>
-          <div id="shopTradesList" class="monument-list" style="max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
-        </div>
-
-        <!-- Right Column: Deal Evaluator + Clean Rust+ Live Connection Panel -->
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <div id="shopTradeCalcPanel" class="panel">
-            <div class="panel-header" style="margin-bottom: 10px;">
-              <div>
-                <div class="panel-title">🧮 Deal Evaluator &amp; Batch Calculator</div>
-                <div class="panel-subtitle">Check if a Player Shop's asking price is a steal or rip-off, or calculate bulk NPC/Recycle trades</div>
-              </div>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px;">
-              <div style="flex: 1; min-width: 130px;">
-                <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">BATCH MULTIPLIER (×)</label>
-                <input id="shopBatchCountInput" type="number" class="input" value="1" min="1" max="500" style="width: 100%;" />
-              </div>
-              <div style="flex: 1; min-width: 160px;">
-                <label id="shopBudgetLabel" style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">OR AVAILABLE BUDGET</label>
-                <input id="shopBudgetInput" type="number" class="input" value="" min="0" placeholder="e.g. 1000 Scrap / Sulfur" style="width: 100%;" />
-              </div>
-            </div>
-            <label style="display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; margin-bottom: 12px;">
-              <input id="shopDroneFeeCb" type="checkbox" />
-              <span>🚁 Drone Marketplace Delivery (+20 Scrap per order, drone-eligible shops only)</span>
-            </label>
-
-            <div id="shopPriceCheckWrap" style="margin-bottom: 12px; padding: 10px; border-radius: 6px; background: rgba(15, 23, 42, 0.55); border: 1px solid var(--border-subtle);">
-              <label style="display:block; font-size:11px; font-family:var(--font-mono); color:#fde047; margin-bottom:6px;">
-                ⚖️ SERVER PRICE DEAL CHECKER (TEST A PLAYER SHOP ON YOUR MAP):
-              </label>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                <input id="shopAskingPriceInput" type="number" class="input" min="1" placeholder="Seller price (e.g. 250 Sulfur)" style="flex: 2; min-width: 145px;" />
-                <input id="shopAskingGridInput" type="text" class="input" placeholder="Grid (M14)" style="width: 82px;" />
-                <button id="pinDealShopBtn" type="button" class="btn btn-sm" style="border-color: #a855f7; color: #e9d5ff;">📌 Pin Deal</button>
-              </div>
-              <div id="shopDealVerdictBox" style="margin-top: 8px;"></div>
-            </div>
-
-            <div id="shopTradeCalcResult"></div>
-          </div>
-
-          <!-- Streamlined Rust+ Live Feed, Map, Team Chat & Smart Switches Drawer -->
-          <div class="panel">
-            <details id="liveShopTrackerDrawer" open>
-              <summary style="cursor:pointer; font-family:var(--font-display); font-weight:700; font-size:14px; color:#e9d5ff; display:flex; justify-content:space-between; align-items:center;">
-                <span>📡 Rust+ Live Server, Chat &amp; Smart Controls</span>
-                <span style="font-size:11px; font-family:var(--font-mono); color:#4ade80;">REAL-TIME</span>
-              </summary>
-              <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
-                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                  <select id="rpPairedServerSelect" class="select" style="flex:1; min-width:200px; font-size:12px;">
-                    <option value="">🌐 Paired Servers (Sign in below to auto-load)...</option>
-                  </select>
-                  <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔄 Sync Now</button>
-                  <button id="rpSyncCloudBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;">📡 Sync Pairings</button>
-                  <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm" title="Clear live Rust+ feed">🗑️ Clear</button>
-                </div>
-
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                  <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
-                    <input id="rpShopAutoPollCb" type="checkbox" />
-                    <span>🔄 Auto-poll live shops, map, squad &amp; events every 15s</span>
-                  </label>
-                  <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
-                    <input id="rpShopDiscordStealCb" type="checkbox" checked />
-                    <span>📣 Alert Discord Bot / Webhook when an S-Tier Steal is in stock</span>
-                  </label>
-                  <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
-                    <input id="rpShopDiscordEventsCb" type="checkbox" checked />
-                    <span>🚨 Alert Discord on Patrol Heli, Cargo Ship, Locked Crate &amp; Explosion</span>
-                  </label>
-                </div>
-
-                <div id="rpShopStatusText" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-                  Ready — sign in with Steam Popup or sync an in-game paired server.
-                </div>
-
-                <!-- Steam Popup Auth & Advanced Manual Config (clean collapsible) -->
-                <details id="rpPopupConnectSection" style="padding:8px 10px; border-radius:6px; background:rgba(37,99,235,0.1); border:1px solid rgba(96,165,250,0.4);">
-                  <summary style="cursor:pointer; font-family:var(--font-mono); font-size:11px; font-weight:700; color:#93c5fd;">
-                    🚀 Steam Login Popup &amp; Server Pairing Setup
-                  </summary>
-                  <div style="margin-top:8px;">
-                    <div style="font-size:11.5px; color:var(--text-main); line-height:1.45; margin-bottom:8px;">
-                      <strong>1.</strong> Click <strong>Sign In with Steam (Popup)</strong> &amp; log in.<br/>
-                      <strong>2.</strong> Copy the popup URL ending with <code>#code=...</code> (<code>Ctrl+L</code> → <code>Ctrl+C</code>) and click back here.<br/>
-                      <strong>3.</strong> In Rust (<code>ESC → Rust+</code>), click <strong>PAIR WITH SERVER</strong> to push your server token here automatically.
-                    </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                      <button id="rpPopupSteamLoginBtn" type="button" class="btn btn-primary btn-sm" style="background:#2563eb; border-color:#60a5fa;">🚀 Step 1: Sign In with Steam (Popup)</button>
-                      <button id="rpPasteClipboardBtn" type="button" class="btn btn-primary btn-sm" style="background:#16a34a; border-color:#4ade80;">📋 Step 2: Auto-Paste &amp; Connect</button>
-                    </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                      <input id="rpAuthCodeInput" type="text" class="input" style="flex:1; min-width:190px; font-family:var(--font-mono); font-size:11px;" placeholder="Paste #code=... popup URL or AuthToken..." />
-                      <button id="rpAuthExchangeBtn" type="button" class="btn btn-sm btn-primary">⚡ Exchange</button>
-                    </div>
-                    <details>
-                      <summary style="cursor:pointer; font-size:11px; color:var(--text-secondary);">⚙️ Manual IP / Port / PlayerToken (advanced)</summary>
-                      <div style="margin-top:6px;">
-                        <input id="rpShopJsonPasteInput" type="text" class="input" style="width:100%; font-size:11.5px; margin-bottom:6px;" placeholder='Paste rustplus.config.json snippet ({"ip":"...","port":28082,"playerId":"...","playerToken":...})' />
-                        <div style="display:grid; grid-template-columns:2fr 1fr; gap:6px; margin-bottom:6px;">
-                          <input id="rpShopIpInput" type="text" class="input" placeholder="Server IP or ID" />
-                          <input id="rpShopPortInput" type="text" class="input" value="28082" placeholder="App Port (28082)" />
-                        </div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-                          <input id="rpShopPlayerIdInput" type="text" class="input" placeholder="SteamID64 (playerId)" />
-                          <input id="rpShopTokenInput" type="password" class="input" placeholder="Rust+ PlayerToken" />
-                        </div>
-                      </div>
-                    </details>
-                  </div>
-                </details>
-
-                <!-- Collapsible Team Chat & Smart Switches -->
-                <details id="rpTeamChatDrawer" style="padding-top:8px; border-top:1px solid rgba(148,163,184,0.2);">
-                  <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#bae6fd; display:flex; justify-content:space-between; align-items:center;">
-                    <span>💬 In-Game Team Chat &amp; Quick Send</span>
-                    <span id="rpTeamChatCountBadge" style="font-size:10px; font-family:var(--font-mono); color:#7dd3fc;"></span>
-                  </summary>
-                  <div id="rpTeamChatList" style="max-height:145px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
-                  <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;">
-                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Countering — backup needed!">⚔️ Counter</button>
-                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="On Oil Rig / Cargo — watch counters">🛢️ On Rig</button>
-                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Patrol Heli is up — clear roof">🚁 Heli</button>
-                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Check team map pin!">📌 Check Map</button>
-                  </div>
-                  <div style="display:flex; gap:6px;">
-                    <input id="rpTeamChatInput" type="text" class="input" style="flex:1; font-size:11.5px;" placeholder="Send message to in-game Rust Team Chat..." />
-                    <button id="rpTeamChatSendBtn" type="button" class="btn btn-sm btn-primary">Send</button>
-                  </div>
-                </details>
-
-                <details id="rpSmartDevicesDrawer" style="padding-top:8px; border-top:1px solid rgba(148,163,184,0.2);">
-                  <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#fde68a; display:flex; justify-content:space-between; align-items:center;">
-                    <span>⚡ Smart Switches, Alarms &amp; TC Storage Monitors</span>
-                    <span id="rpSmartDevicesBadge" style="font-size:10px; font-family:var(--font-mono); color:#fde047;"></span>
-                  </summary>
-                  <div id="rpSmartDevicesList" style="display:flex; flex-direction:column; gap:6px; margin:6px 0;"></div>
-                  <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <select id="rpSmartDevTypeSelect" class="select" style="width:118px; font-size:11px;">
-                      <option value="switch">⚡ Switch</option>
-                      <option value="alarm">🚨 Alarm</option>
-                      <option value="storage">📦 TC / Box</option>
-                    </select>
-                    <input id="rpSmartDevIdInput" type="text" class="input" style="width:105px; font-size:11px;" placeholder="Entity ID" />
-                    <input id="rpSmartDevNameInput" type="text" class="input" style="flex:1; min-width:110px; font-size:11px;" placeholder="Label (e.g. Main TC, Turrets)" />
-                    <button id="rpSmartDevAddBtn" type="button" class="btn btn-sm">+ Add Device</button>
-                  </div>
-                </details>
-              </div>
-            </details>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================================================================
          TAB 7: RUSTMAPS BASE SPOT ANALYZER
          ================================================================== -->
     <section id="tab-basefinder" class="tab-panel active">
@@ -1057,6 +770,7 @@
           <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: 280px;" placeholder="https://rustmaps.com/map/4250_1337420  or  4250_1337420" />
           <button id="bfAnalyzeBtn" class="btn btn-primary" style="font-weight: 700;">🔍 Analyze Map &amp; Find Best Spots</button>
           <button id="bfSyncServerBtn" type="button" class="btn btn-sm" style="display:none; border-color:#38bdf8; color:#bae6fd; background:rgba(56,189,248,0.14);">🛰️ Use Live Server Seed</button>
+          <button id="openRustPlusPopupModalBtn" type="button" class="btn btn-sm btn-primary" style="background:#2563eb; border-color:#60a5fa;">🚀 Rust+ Connect</button>
         </div>
         <div id="bfRecentMapsBar" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;"></div>
 
@@ -1150,8 +864,12 @@
               <button id="bfZoomInBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom In">➕</button>
               <button id="bfZoomFitBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
               <button id="bfZoomResetBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
+              <button id="shopMapCenterMeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
             </div>
           </div>
+          <div id="shopLiveAlertBanner" style="display:none; margin-bottom:8px;"></div>
+          <div id="shopLiveTeamStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
+          <div id="shopLiveEventsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
           <div style="position: relative; background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
             <canvas id="bfMapCanvas" width="900" height="900" style="width: 100%; height: auto; display: block; cursor: grab;"></canvas>
             <div id="bfMapTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 20; background: rgba(9, 14, 22, 0.94); border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 6px; padding: 8px 10px; text-align: left; font-size: 11.5px; color: #e2e8f0; box-shadow: 0 8px 24px rgba(0,0,0,0.55); max-width: 260px;"></div>
@@ -1183,12 +901,14 @@
           </details>
         </div>
 
-        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips) -->
+        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips | Trades | Rust+) -->
         <div class="panel">
           <div class="bf-subtabs">
             <button class="bf-subtab-btn active" data-bf-sub="spots">🏆 Build Spots</button>
             <button class="bf-subtab-btn" data-bf-sub="farming">⛏️ Farming <span id="bfFarmCountBadge" style="opacity:0.75;"></span></button>
             <button class="bf-subtab-btn" data-bf-sub="route">⚡ Route &amp; Tips</button>
+            <button class="bf-subtab-btn" data-bf-sub="trades">🛒 Trades <span id="shopCountBadge" style="opacity:0.75;"></span></button>
+            <button class="bf-subtab-btn" data-bf-sub="rustplus">📡 Rust+</button>
           </div>
 
           <div id="bfSubSpots" class="bf-subpanel active">
@@ -1231,6 +951,201 @@
                 <div>• <strong style="color:#fff;">48h TC Upkeep Buffer:</strong> Always stock 24–48h upkeep before work; upgrade core to Sheet/HQM only after securing Garage Doors.</div>
                 <div>• <strong style="color:#fff;">Off-Peak Safe Recycling:</strong> Run <strong>Power Plant (2× Recyclers) or Sewer Branch (2× Recyclers)</strong>, <strong>Harbor</strong>, or <strong>Fishing Village → Underwater Labs</strong> instead of contesting Launch Site / Outpost.</div>
               </div>
+            </div>
+          </div>
+
+          <div id="bfSubTrades" class="bf-subpanel">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">
+              <input id="shopSearchInput" type="text" class="input" style="flex:2; min-width:160px; font-size:12px;" placeholder="🔍 Search item, cost, shop, grid..." />
+              <select id="shopCurrencySelect" class="select" style="min-width:115px; font-size:11.5px;">
+                <option value="all">💰 All Currencies</option>
+                <option value="Sulfur">🟡 Sulfur</option>
+                <option value="Scrap">⚙️ Scrap</option>
+                <option value="other">🪨 Other</option>
+              </select>
+              <select id="shopSortSelect" class="select" style="min-width:130px; font-size:11.5px;">
+                <option value="best">🏆 Best First</option>
+                <option value="cost_asc">📉 Lowest Cost</option>
+                <option value="cost_desc">📈 Highest Cost</option>
+                <option value="name_asc">🔤 Name A–Z</option>
+              </select>
+              <label style="display:flex; align-items:center; gap:4px; font-size:11.5px; cursor:pointer; padding:4px 7px; border-radius:4px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
+                <input id="shopInStockOnlyCb" type="checkbox" />
+                <span>📦 In Stock</span>
+              </label>
+              <button id="shopClearSearchBtn" type="button" class="btn btn-sm">✕</button>
+            </div>
+
+            <div id="shopFilterBar" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px;">
+              <button type="button" class="filter-pill active" data-sfilter="all">All</button>
+              <button type="button" class="filter-pill" data-sfilter="best">🏆 Best to Buy</button>
+              <button type="button" class="filter-pill" data-sfilter="player">👤 Player</button>
+              <button type="button" class="filter-pill" data-sfilter="custom">📌 Server</button>
+              <button type="button" class="filter-pill" data-sfilter="npc">🏛️ NPC</button>
+              <button type="button" class="filter-pill" data-sfilter="Outpost">🛡️ Outpost</button>
+              <button type="button" class="filter-pill" data-sfilter="Bandit Camp">🏴‍☠️ Bandit</button>
+              <button type="button" class="filter-pill" data-sfilter="Fishing Village">⚓ Fishing</button>
+              <button type="button" class="filter-pill" data-sfilter="Ranch / Barn">🐎 Ranch</button>
+              <button type="button" class="filter-pill" data-sfilter="Water Well">🚰 Well</button>
+            </div>
+
+            <div id="shopCategoryBar" style="display:flex; gap:5px; flex-wrap:wrap; padding-top:6px; margin-bottom:6px; border-top:1px solid var(--border-subtle);">
+              <button type="button" class="filter-pill active" data-scat="all">All</button>
+              <button type="button" class="filter-pill" data-scat="teas">🧪 Teas</button>
+              <button type="button" class="filter-pill" data-scat="progression">⚙️ WB/BPs</button>
+              <button type="button" class="filter-pill" data-scat="weapons">🔫 Guns</button>
+              <button type="button" class="filter-pill" data-scat="raid">💥 Raid</button>
+              <button type="button" class="filter-pill" data-scat="defense">🛡️ Defense</button>
+              <button type="button" class="filter-pill" data-scat="resources">⛏️ Fuel/Res</button>
+              <button type="button" class="filter-pill" data-scat="recycle">♻️ Recycle</button>
+              <button type="button" class="filter-pill" data-scat="tools">🛠️ Tools</button>
+              <button type="button" class="filter-pill" data-scat="vehicles">🚁 Vehicles</button>
+            </div>
+
+            <div id="shopWatchlistBar" style="display:flex; gap:5px; flex-wrap:wrap; align-items:center; padding:6px 0; margin-bottom:8px; border-top:1px dashed rgba(148,163,184,0.22); border-bottom:1px dashed rgba(148,163,184,0.22);">
+              <span style="font-size:10.5px; font-family:var(--font-mono); color:#86efac; font-weight:700;">🎯 WATCH:</span>
+              <input id="shopWatchQueryInput" type="text" class="input" style="width:140px; font-size:11px; padding:3px 7px;" placeholder="Item (Tea, Diesel...)" />
+              <input id="shopWatchMaxPriceInput" type="number" class="input" style="width:82px; font-size:11px; padding:3px 7px;" min="1" placeholder="Max cost" />
+              <button id="shopWatchAddBtn" type="button" class="btn btn-sm" style="border-color:#4ade80; color:#bbf7d0; padding:3px 8px;">🔔 Watch</button>
+              <div id="shopWatchlistPills" style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;"></div>
+            </div>
+
+            <div id="shopSelectedPinFilterBanner" style="display:none; margin-bottom:8px;"></div>
+            <div id="shopTradesList" class="monument-list" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:7px; margin-bottom:12px;"></div>
+
+            <div id="shopTradeCalcPanel" style="padding:10px 12px; border-radius:8px; background:rgba(15,23,42,0.65); border:1px solid var(--border-subtle);">
+              <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:#fff; margin-bottom:8px;">🧮 Deal Evaluator, Batch Calc &amp; Map Pin</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:8px;">
+                <div style="flex:1; min-width:95px;">
+                  <label style="display:block; font-size:10px; color:var(--text-secondary); margin-bottom:3px;">BATCH (×)</label>
+                  <input id="shopBatchCountInput" type="number" class="input" value="1" min="1" max="500" style="width:100%; font-size:12px;" />
+                </div>
+                <div style="flex:1.4; min-width:120px;">
+                  <label id="shopBudgetLabel" style="display:block; font-size:10px; color:var(--text-secondary); margin-bottom:3px;">OR BUDGET</label>
+                  <input id="shopBudgetInput" type="number" class="input" value="" min="0" placeholder="e.g. 1000 Scrap / Sulfur" style="width:100%; font-size:12px;" />
+                </div>
+              </div>
+              <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer; margin-bottom:8px;">
+                <input id="shopDroneFeeCb" type="checkbox" />
+                <span>🚁 Drone Delivery (+20 Scrap per order, drone-eligible only)</span>
+              </label>
+
+              <div id="shopPriceCheckWrap" style="margin-bottom:8px; padding:8px; border-radius:6px; background:rgba(9,14,22,0.55); border:1px solid var(--border-subtle);">
+                <label style="display:block; font-size:10.5px; font-family:var(--font-mono); color:#fde047; margin-bottom:5px;">
+                  ⚖️ GRADE SHOP PRICE &amp; PIN ON MAP:
+                </label>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                  <input id="shopAskingPriceInput" type="number" class="input" min="1" placeholder="Seller price (e.g. 250)" style="flex:2; min-width:120px; font-size:11.5px;" />
+                  <input id="shopAskingGridInput" type="text" class="input" placeholder="Grid (M14)" style="width:78px; font-size:11.5px;" />
+                  <button id="pinDealShopBtn" type="button" class="btn btn-sm" style="border-color:#a855f7; color:#e9d5ff;">📌 Pin Deal</button>
+                </div>
+                <div id="shopDealVerdictBox" style="margin-top:6px;"></div>
+              </div>
+
+              <div id="shopTradeCalcResult"></div>
+            </div>
+          </div>
+
+          <div id="bfSubRustPlus" class="bf-subpanel">
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                <select id="rpPairedServerSelect" class="select" style="flex:1; min-width:180px; font-size:12px;">
+                  <option value="">🌐 Paired Servers (Sign in below to auto-load)...</option>
+                </select>
+                <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔄 Sync Now</button>
+                <button id="rpSyncCloudBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;">📡 Pairings</button>
+                <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm" title="Clear live Rust+ feed">🗑️</button>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                  <input id="rpShopAutoPollCb" type="checkbox" />
+                  <span>🔄 Auto-poll Rust+ every 15s (Squad GPS, Chat, Clock &amp; Alarms)</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                  <input id="rpShopDiscordStealCb" type="checkbox" checked />
+                  <span>📣 Alert Discord Bot / Webhook on S-Tier Shop Steals &amp; Watchlist</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                  <input id="rpShopDiscordEventsCb" type="checkbox" checked />
+                  <span>🚨 Alert Discord on Base Smart Alarms &amp; World Events</span>
+                </label>
+              </div>
+
+              <div id="rpShopStatusText" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.55); border:1px solid var(--border-subtle);">
+                Ready — sign in with Steam Popup or sync an in-game paired server.
+              </div>
+
+              <details id="rpTeamChatDrawer" open style="padding:8px 10px; border-radius:6px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
+                <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#bae6fd; display:flex; justify-content:space-between; align-items:center;">
+                  <span>💬 In-Game Team Chat &amp; Quick Callouts</span>
+                  <span id="rpTeamChatCountBadge" style="font-size:10px; font-family:var(--font-mono); color:#7dd3fc;"></span>
+                </summary>
+                <div id="rpTeamChatList" style="max-height:135px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
+                <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;">
+                  <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Countering — backup needed!">⚔️ Counter</button>
+                  <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="On Oil Rig / Cargo — watch counters">🛢️ On Rig</button>
+                  <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Patrol Heli is up — clear roof">🚁 Heli</button>
+                  <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Check team map pin!">📌 Check Map</button>
+                </div>
+                <div style="display:flex; gap:6px;">
+                  <input id="rpTeamChatInput" type="text" class="input" style="flex:1; font-size:11.5px;" placeholder="Send message to in-game Rust Team Chat..." />
+                  <button id="rpTeamChatSendBtn" type="button" class="btn btn-sm btn-primary">Send</button>
+                </div>
+              </details>
+
+              <details id="rpSmartDevicesDrawer" open style="padding:8px 10px; border-radius:6px; background:rgba(15,23,42,0.5); border:1px solid var(--border-subtle);">
+                <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#fde68a; display:flex; justify-content:space-between; align-items:center;">
+                  <span>⚡ Smart Switches, Alarms &amp; TC Storage Monitors</span>
+                  <span id="rpSmartDevicesBadge" style="font-size:10px; font-family:var(--font-mono); color:#fde047;"></span>
+                </summary>
+                <div id="rpSmartDevicesList" style="display:flex; flex-direction:column; gap:6px; margin:6px 0;"></div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <select id="rpSmartDevTypeSelect" class="select" style="width:112px; font-size:11px;">
+                    <option value="switch">⚡ Switch</option>
+                    <option value="alarm">🚨 Alarm</option>
+                    <option value="storage">📦 TC / Box</option>
+                  </select>
+                  <input id="rpSmartDevIdInput" type="text" class="input" style="width:100px; font-size:11px;" placeholder="Entity ID" />
+                  <input id="rpSmartDevNameInput" type="text" class="input" style="flex:1; min-width:100px; font-size:11px;" placeholder="Label (Main TC, Turrets)" />
+                  <button id="rpSmartDevAddBtn" type="button" class="btn btn-sm">+ Add Device</button>
+                </div>
+              </details>
+
+              <details id="rpPopupConnectSection" style="padding:8px 10px; border-radius:6px; background:rgba(37,99,235,0.1); border:1px solid rgba(96,165,250,0.4);">
+                <summary style="cursor:pointer; font-family:var(--font-mono); font-size:11px; font-weight:700; color:#93c5fd;">
+                  🚀 Steam Login Popup &amp; Server Pairing Setup
+                </summary>
+                <div style="margin-top:8px;">
+                  <div style="font-size:11.5px; color:var(--text-main); line-height:1.45; margin-bottom:8px;">
+                    <strong>1.</strong> Click <strong>Sign In with Steam (Popup)</strong> &amp; log in.<br/>
+                    <strong>2.</strong> Copy the popup URL ending with <code>#code=...</code> (<code>Ctrl+L</code> → <code>Ctrl+C</code>) and click back here.<br/>
+                    <strong>3.</strong> In Rust (<code>ESC → Rust+</code>), click <strong>PAIR WITH SERVER</strong> to auto-sync your server.
+                  </div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                    <button id="rpPopupSteamLoginBtn" type="button" class="btn btn-primary btn-sm" style="background:#2563eb; border-color:#60a5fa;">🚀 Step 1: Steam Popup</button>
+                    <button id="rpPasteClipboardBtn" type="button" class="btn btn-primary btn-sm" style="background:#16a34a; border-color:#4ade80;">📋 Step 2: Auto-Paste</button>
+                  </div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                    <input id="rpAuthCodeInput" type="text" class="input" style="flex:1; min-width:170px; font-family:var(--font-mono); font-size:11px;" placeholder="Paste #code=... popup URL or AuthToken..." />
+                    <button id="rpAuthExchangeBtn" type="button" class="btn btn-sm btn-primary">⚡ Exchange</button>
+                  </div>
+                  <details>
+                    <summary style="cursor:pointer; font-size:11px; color:var(--text-secondary);">⚙️ Manual IP / Port / PlayerToken (advanced)</summary>
+                    <div style="margin-top:6px;">
+                      <input id="rpShopJsonPasteInput" type="text" class="input" style="width:100%; font-size:11.5px; margin-bottom:6px;" placeholder='Paste rustplus.config.json snippet ({"ip":"...","port":28082,"playerId":"...","playerToken":...})' />
+                      <div style="display:grid; grid-template-columns:2fr 1fr; gap:6px; margin-bottom:6px;">
+                        <input id="rpShopIpInput" type="text" class="input" placeholder="Server IP or ID" />
+                        <input id="rpShopPortInput" type="text" class="input" value="28082" placeholder="App Port (28082)" />
+                      </div>
+                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                        <input id="rpShopPlayerIdInput" type="text" class="input" placeholder="SteamID64 (playerId)" />
+                        <input id="rpShopTokenInput" type="password" class="input" placeholder="Rust+ PlayerToken" />
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </details>
             </div>
           </div>
         </div>

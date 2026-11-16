@@ -6319,9 +6319,24 @@
     document.querySelectorAll('.bf-subtab-btn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-bf-sub') === target);
     });
-    const map = { spots: 'bfSubSpots', farming: 'bfSubFarming', route: 'bfSubRoute' };
+    const map = {
+      spots: 'bfSubSpots',
+      farming: 'bfSubFarming',
+      route: 'bfSubRoute',
+      trades: 'bfSubTrades',
+      rustplus: 'bfSubRustPlus'
+    };
     document.querySelectorAll('.bf-subpanel').forEach((p) => p.classList.remove('active'));
     document.getElementById(map[target])?.classList.add('active');
+  }
+
+  function setBfMapView(wx, wy, minZoom = null) {
+    if (typeof wx === 'number' && Number.isFinite(wx)) bfPanX = wx;
+    if (typeof wy === 'number' && Number.isFinite(wy)) bfPanY = wy;
+    if (typeof minZoom === 'number' && Number.isFinite(minZoom)) {
+      bfZoom = Math.max(0.5, Math.min(5.0, Math.max(bfZoom, minZoom)));
+    }
+    renderBaseFinderMap();
   }
 
   function bfComputeFitZoom() {
@@ -7500,15 +7515,24 @@
     ctx.fillStyle = '#0b3a4a';
     ctx.fillRect(0, 0, W, H);
 
-    if (!bfMapData) {
+    const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+    const hasRustPlusMapData = Boolean(
+      (tel.vendingPins && tel.vendingPins.length > 0) ||
+      (tel.liveEvents && tel.liveEvents.length > 0) ||
+      (tel.teamMembers && tel.teamMembers.length > 0) ||
+      tel.serverInfo ||
+      cachedShopMapImg
+    );
+
+    if (!bfMapData && !hasRustPlusMapData) {
       ctx.fillStyle = '#64748b';
       ctx.font = '600 15px "Inter", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Paste a RustMaps URL above to visualize the map & best build grids', W / 2, H / 2);
+      ctx.fillText('Paste a RustMaps URL or connect Rust+ to view the live map, shops & build spots', W / 2, H / 2);
       return;
     }
 
-    const mapSize = bfMapData.size || 4000;
+    const mapSize = Number(bfMapData?.size || tel.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4000);
     const scale = (W / mapSize) * bfZoom;
     const toPx = (wx, wy) => ({
       px: W / 2 + (wx - bfPanX) * scale,
@@ -7517,6 +7541,55 @@
 
     const imgTopLeft = toPx(-mapSize / 2, mapSize / 2);
     const imgSizePx = mapSize * scale;
+
+    if (!bfMapData) {
+      if (cachedShopMapImg && cachedShopMapImg.complete && cachedShopMapImg.naturalWidth > 0) {
+        if (tel.mapMeta && tel.mapMeta.width > 0) {
+          const mw = tel.mapMeta.width;
+          const mh = tel.mapMeta.height || mw;
+          const margin = Number(tel.mapMeta.oceanMargin || 0);
+          const pxRatioW = imgSizePx / Math.max(1, mw - 2 * margin);
+          const pxRatioH = imgSizePx / Math.max(1, mh - 2 * margin);
+          ctx.drawImage(cachedShopMapImg, imgTopLeft.px - margin * pxRatioW, imgTopLeft.py - margin * pxRatioH, mw * pxRatioW, mh * pxRatioH);
+        } else {
+          ctx.drawImage(cachedShopMapImg, imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
+        }
+      }
+      const count = bfGridCount(mapSize);
+      const cellPx = imgSizePx / count;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.font = '600 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      for (let i = 0; i <= count; i++) {
+        const gx = imgTopLeft.px + i * cellPx;
+        const gy = imgTopLeft.py + i * cellPx;
+        ctx.beginPath(); ctx.moveTo(gx, imgTopLeft.py); ctx.lineTo(gx, imgTopLeft.py + imgSizePx); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(imgTopLeft.px, gy); ctx.lineTo(imgTopLeft.px + imgSizePx, gy); ctx.stroke();
+        if (i < count) {
+          ctx.fillText(bfColLabel(i), gx + 3, Math.max(11, imgTopLeft.py + 11));
+          ctx.fillText(String(i), Math.max(3, imgTopLeft.px + 3), gy + 18);
+        }
+      }
+      ctx.restore();
+      bfRenderedPins = [];
+      if (document.getElementById('bfShowRustPlusCb')?.checked !== false) {
+        drawRustPlusOverlayOnCanvas(ctx, {
+          toPx,
+          scale,
+          mapSize,
+          showVending: true,
+          showTeam: true,
+          showEvents: true,
+          inStockOnly: shopInStockOnly,
+          highlightedIds: lastShopMatchedMarkerIds,
+          selectedShopPinId: selectedShopMapPinId,
+          pinOut: bfRenderedPins
+        });
+      }
+      return;
+    }
 
     if (bfLoadedImage) {
       ctx.drawImage(bfLoadedImage, imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
@@ -7885,6 +7958,8 @@
         showVending: true,
         showTeam: true,
         showEvents: true,
+        inStockOnly: shopInStockOnly,
+        highlightedIds: lastShopMatchedMarkerIds,
         selectedShopPinId: selectedShopMapPinId,
         pinOut: bfRenderedPins
       });
@@ -8549,11 +8624,12 @@
         dragging = false;
         bfCanvas.style.cursor = 'grab';
       });
+      const getActiveBfMapSize = () => Number(bfMapData?.size || appState.rustPlusTelemetry?.serverInfo?.mapSize || 0);
       window.addEventListener('mousemove', (e) => {
-        if (!dragging || !bfMapData) return;
+        const mapSize = getActiveBfMapSize();
+        if (!dragging || !mapSize) return;
         dragMoved += Math.hypot(e.clientX - lastX, e.clientY - lastY);
         const rect = bfCanvas.getBoundingClientRect();
-        const mapSize = bfMapData.size || 4000;
         const scale = (bfCanvas.width / mapSize) * bfZoom;
         const dx = ((e.clientX - lastX) * bfCanvas.width) / Math.max(1, rect.width);
         const dy = ((e.clientY - lastY) * bfCanvas.height) / Math.max(1, rect.height);
@@ -8564,7 +8640,8 @@
         renderBaseFinderMap();
       });
       bfCanvas.addEventListener('click', (e) => {
-        if (dragMoved >= 6 || !bfMapData || !bfRenderedPins.length) return;
+        const mapSize = getActiveBfMapSize();
+        if (dragMoved >= 6 || !mapSize || !bfRenderedPins.length) return;
         const rect = bfCanvas.getBoundingClientRect();
         const cx = ((e.clientX - rect.left) * bfCanvas.width) / Math.max(1, rect.width);
         const cy = ((e.clientY - rect.top) * bfCanvas.height) / Math.max(1, rect.height);
@@ -8595,6 +8672,14 @@
           if (statusEl) {
             statusEl.textContent = `🎯 Ranked top build spots around ${mon.type} [${mon.grid}] — Best: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
           }
+        } else if (nearestActionPin.selectAction.type === 'vending') {
+          const nextId = String(nearestActionPin.selectAction.markerId || '');
+          selectedShopMapPinId = selectedShopMapPinId === nextId ? '' : nextId;
+          bfSwitchSubtab('trades');
+          renderShopsModule();
+          renderBaseFinderMap();
+        } else if (nearestActionPin.selectAction.type === 'event' || nearestActionPin.selectAction.type === 'team') {
+          setBfMapView(nearestActionPin.wx, nearestActionPin.wy, 1.9);
         }
       });
       const tooltipEl = document.getElementById('bfMapTooltip');
@@ -8604,9 +8689,9 @@
         if (hudEl) hudEl.style.display = 'none';
       });
       bfCanvas.addEventListener('mousemove', (e) => {
-        if (dragging || !bfMapData) return;
+        const mapSize = getActiveBfMapSize();
+        if (dragging || !mapSize) return;
         const rect = bfCanvas.getBoundingClientRect();
-        const mapSize = bfMapData.size || 4000;
         const scale = (bfCanvas.width / mapSize) * bfZoom;
         const cx = ((e.clientX - rect.left) * bfCanvas.width) / Math.max(1, rect.width);
         const cy = ((e.clientY - rect.top) * bfCanvas.height) / Math.max(1, rect.height);
@@ -8661,7 +8746,7 @@
       bfCanvas.addEventListener(
         'wheel',
         (e) => {
-          if (!bfMapData) return;
+          if (!getActiveBfMapSize()) return;
           e.preventDefault();
           const factor = e.deltaY < 0 ? 1.14 : 0.88;
           setZoomClamped(bfZoom * factor);
@@ -8702,13 +8787,6 @@
   // =========================================================================
   let selectedShopMapPinId = '';
   let lastShopMatchedMarkerIds = null;
-  let shopMapVisible = false;
-  let shopMapAutoOpened = false;
-  let shopMapExpanded = false;
-  let shopMapZoom = 1;
-  let shopMapPanX = 0;
-  let shopMapPanY = 0;
-  let shopLiveMapRenderedPins = [];
   let cachedShopMapImg = null;
   let cachedShopMapImgUrl = '';
 
@@ -9067,49 +9145,16 @@
     }
   }
 
-  function getShopMapScale(canvas, mapSize) {
-    const fitSpan = Math.min(canvas.width, canvas.height) * 0.94;
-    return (fitSpan / Math.max(1, mapSize)) * shopMapZoom;
-  }
-
   function renderShopLiveMap() {
-    const card = document.getElementById('shopLiveMapCard');
-    const toggleBtn = document.getElementById('toggleShopMapBtn');
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+    const info = tel.serverInfo || {};
+    const eventsStrip = document.getElementById('shopLiveEventsStrip');
     const hasLiveData = Boolean(
       (tel.vendingPins && tel.vendingPins.length > 0) ||
       (tel.liveEvents && tel.liveEvents.length > 0) ||
       (tel.teamMembers && tel.teamMembers.length > 0) ||
       tel.serverInfo
     );
-    if (hasLiveData && !shopMapAutoOpened) {
-      shopMapVisible = true;
-      shopMapAutoOpened = true;
-    }
-    if (card) card.style.display = shopMapVisible ? 'block' : 'none';
-    if (toggleBtn) {
-      toggleBtn.textContent = shopMapVisible ? '🗺️ Hide Map' : '🗺️ Live Map';
-      toggleBtn.style.borderColor = hasLiveData ? '#4ade80' : '#38bdf8';
-    }
-    if (!shopMapVisible) return;
-
-    const metaEl = document.getElementById('shopLiveMapMeta');
-    const eventsStrip = document.getElementById('shopLiveEventsStrip');
-    const info = tel.serverInfo || {};
-    const time = tel.time || null;
-    const mapSize = Number(info.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-
-    if (metaEl) {
-      if (!hasLiveData) {
-        metaEl.textContent = 'Connect Steam Popup or Sync Paired Server to load your live server map, shops, squad GPS & world events.';
-      } else {
-        const popStr = info.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}${info.queuedPlayers ? ` (+${info.queuedPlayers}Q)` : ''}` : '';
-        const clkStr = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted} (${time.nextPhase} in ~${time.minutesUntilChange}m)` : '';
-        const seedStr = info.seed ? `Seed ${info.mapSize}_${info.seed}` : `${mapSize}m`;
-        const shopCountStr = `🛒 ${(tel.vendingPins || []).length} shops`;
-        metaEl.textContent = [info.name || 'Live Server', popStr, clkStr, shopCountStr, seedStr].filter(Boolean).join(' • ');
-      }
-    }
 
     // Live Alert Banner (Triggered Smart Alarm or Watchlist Match)
     const alertBannerEl = document.getElementById('shopLiveAlertBanner');
@@ -9153,7 +9198,7 @@
       }
     }
 
-    // Live Squad GPS Roster Pills (Click teammate to pan map to them)
+    // Live Squad GPS Roster Pills (Click teammate to pan unified Base Finder map to them)
     const teamStripEl = document.getElementById('shopLiveTeamStrip');
     if (teamStripEl) {
       const members = Array.isArray(tel.teamMembers) ? tel.teamMembers : [];
@@ -9170,10 +9215,7 @@
           .join('');
         teamStripEl.querySelectorAll('.shop-team-pill').forEach((btn) => {
           btn.addEventListener('click', () => {
-            shopMapPanX = parseFloat(btn.getAttribute('data-wx')) || 0;
-            shopMapPanY = parseFloat(btn.getAttribute('data-wy')) || 0;
-            shopMapZoom = Math.max(shopMapZoom, 1.9);
-            renderShopLiveMap();
+            setBfMapView(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, 1.9);
           });
         });
       } else {
@@ -9183,212 +9225,78 @@
 
     if (eventsStrip) {
       const evts = tel.liveEvents || [];
-      eventsStrip.innerHTML = evts.length
-        ? evts
-            .map((ev) => {
-              const crateBtn = ev.type === 6
-                ? `<button type="button" class="filter-pill shop-evt-crate-timer" data-grid="${escapeHtml(ev.grid)}" style="border-color:#f59e0b; color:#fde047;">⏱️ Track 15:00 Crate [${escapeHtml(ev.grid)}]</button>`
-                : '';
-              return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
-            })
-            .join('')
-        : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.vendingCount === 0 && tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts Shops &amp; World Events on the Rust+ API for most vanilla/community servers. Squad GPS, Map Notes, Chat, Clock &amp; Smart Devices stay live; pin spotted player shops by grid via "📌 Pin Deal".` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
-      eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          shopMapPanX = parseFloat(btn.getAttribute('data-wx')) || 0;
-          shopMapPanY = parseFloat(btn.getAttribute('data-wy')) || 0;
-          shopMapZoom = Math.max(shopMapZoom, 1.85);
-          renderShopLiveMap();
+      if (!hasLiveData && evts.length === 0) {
+        eventsStrip.style.display = 'none';
+      } else {
+        eventsStrip.style.display = 'flex';
+        eventsStrip.innerHTML = evts.length
+          ? evts
+              .map((ev) => {
+                const crateBtn = ev.type === 6
+                  ? `<button type="button" class="filter-pill shop-evt-crate-timer" data-grid="${escapeHtml(ev.grid)}" style="border-color:#f59e0b; color:#fde047;">⏱️ Track 15:00 Crate [${escapeHtml(ev.grid)}]</button>`
+                  : '';
+                return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
+              })
+              .join('')
+          : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.vendingCount === 0 && tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts Shops &amp; World Events on the Rust+ API for most vanilla/community servers. Squad GPS, Map Notes, Chat, Clock &amp; Smart Devices stay live; pin spotted player shops by grid via "📌 Pin Deal".` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
+        eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            setBfMapView(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, 1.85);
+          });
         });
-      });
-      eventsStrip.querySelectorAll('.shop-evt-crate-timer').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const grid = btn.getAttribute('data-grid') || '';
-          const now = Date.now();
-          appState.activeTimers = [
-            ...(Array.isArray(appState.activeTimers) ? appState.activeTimers : []),
-            {
-              id: 't-' + now + '-crate',
-              name: `Locked Crate [${grid}]`,
-              category: 'Locked Crate',
-              durationSec: 900,
-              endsAt: now + 900 * 1000,
-              startedAt: now,
-              paused: false
-            }
-          ];
-          syncStateToServer();
-          renderTimersTick();
-          btn.textContent = `✓ Timer Started [${grid}]`;
+        eventsStrip.querySelectorAll('.shop-evt-crate-timer').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const grid = btn.getAttribute('data-grid') || '';
+            const now = Date.now();
+            appState.activeTimers = [
+              ...(Array.isArray(appState.activeTimers) ? appState.activeTimers : []),
+              {
+                id: 't-' + now + '-crate',
+                name: `Locked Crate [${grid}]`,
+                category: 'Locked Crate',
+                durationSec: 900,
+                endsAt: now + 900 * 1000,
+                startedAt: now,
+                paused: false
+              }
+            ];
+            syncStateToServer();
+            renderTimersTick();
+            btn.textContent = `✓ Timer Started [${grid}]`;
+          });
         });
-      });
+      }
     }
 
-    const wrap = document.getElementById('shopLiveMapWrap');
-    if (wrap) wrap.style.maxWidth = shopMapExpanded ? '900px' : '680px';
-    const canvas = document.getElementById('shopLiveMapCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#0b3a4a';
-    ctx.fillRect(0, 0, W, H);
-
-    // Shared 1:1 Base-Finder scale so the island renders sharp & unstretched
-    const scale = getShopMapScale(canvas, mapSize);
-    const toPx = (wx, wy) => ({
-      px: W / 2 + (wx - shopMapPanX) * scale,
-      py: H / 2 - (wy - shopMapPanY) * scale
-    });
-    const imgTopLeft = toPx(-mapSize / 2, mapSize / 2);
-    const imgSizePx = mapSize * scale;
-
-    // Auto-load clean RustMaps base image from Base Finder whenever Rust+ gives a new server seed
+    // Auto-load clean RustMaps base image in Base Finder whenever Rust+ gives a new server seed
     const liveSeedKey = info?.mapSize && info?.seed ? `${info.mapSize}_${info.seed}` : '';
     const bfSeedKey = bfMapData?.size && bfMapData?.seed ? `${bfMapData.size}_${bfMapData.seed}` : '';
-    const bfSameSeed = !liveSeedKey || !bfSeedKey || bfSeedKey === liveSeedKey;
     if (liveSeedKey && bfSeedKey !== liveSeedKey && bfAutoLoadedLiveSeedKey !== liveSeedKey && bfExternalLoadSeedFn) {
       bfAutoLoadedLiveSeedKey = liveSeedKey;
       setTimeout(() => bfExternalLoadSeedFn(liveSeedKey), 50);
     }
 
-    // Prefer Base Finder's crisp RustMaps image when matching current server seed; fall back to Rust+ AppMap JPG
-    const bfReady = Boolean(bfSameSeed && bfLoadedImage && bfLoadedImage.complete && bfLoadedImage.naturalWidth > 0);
+    // Load AppMap JPG fallback when Base Finder hasn't analyzed a matching seed yet
     const rpImgUrl = tel.mapMeta?.imageUrl || '';
-    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl && !bfReady) {
+    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl && !bfLoadedImage) {
       cachedShopMapImgUrl = rpImgUrl;
       const im = new Image();
       im.onload = () => {
         cachedShopMapImg = im;
-        renderShopLiveMap();
+        renderBaseFinderMap();
       };
       im.src = rpImgUrl;
     }
 
-    const activeImg = bfReady ? bfLoadedImage : cachedShopMapImg;
-    if (activeImg && activeImg.complete && activeImg.naturalWidth > 0) {
-      if (activeImg === cachedShopMapImg && tel.mapMeta && tel.mapMeta.width > 0) {
-        const mw = tel.mapMeta.width;
-        const mh = tel.mapMeta.height || mw;
-        const margin = Number(tel.mapMeta.oceanMargin || 0);
-        const innerW = Math.max(1, mw - 2 * margin);
-        const innerH = Math.max(1, mh - 2 * margin);
-        const pxRatioW = imgSizePx / innerW;
-        const pxRatioH = imgSizePx / innerH;
-        ctx.drawImage(
-          activeImg,
-          imgTopLeft.px - margin * pxRatioW,
-          imgTopLeft.py - margin * pxRatioH,
-          mw * pxRatioW,
-          mh * pxRatioH
-        );
-      } else {
-        ctx.drawImage(activeImg, imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
-      }
-    } else {
-      // Crisp landmass placeholder while Base Finder clean map loads
-      ctx.save();
-      ctx.fillStyle = '#0f3644';
-      ctx.fillRect(imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
-      ctx.beginPath();
-      ctx.arc(W / 2 - shopMapPanX * scale, H / 2 + shopMapPanY * scale, imgSizePx * 0.39, 0, Math.PI * 2);
-      ctx.fillStyle = '#1f2e24';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.25)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Rust Grid Overlay (matching Facepunch grid math)
-    const count = bfGridCount(mapSize);
-    const cellPx = imgSizePx / count;
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-    ctx.lineWidth = 1;
-    ctx.font = '600 9.5px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    for (let i = 0; i <= count; i++) {
-      const gx = imgTopLeft.px + i * cellPx;
-      const gy = imgTopLeft.py + i * cellPx;
-      ctx.beginPath();
-      ctx.moveTo(gx, imgTopLeft.py);
-      ctx.lineTo(gx, imgTopLeft.py + imgSizePx);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(imgTopLeft.px, gy);
-      ctx.lineTo(imgTopLeft.px + imgSizePx, gy);
-      ctx.stroke();
-      if (i < count) {
-        ctx.fillText(bfColLabel(i), gx + 3, Math.max(11, imgTopLeft.py + 11));
-        ctx.fillText(String(i), Math.max(3, imgTopLeft.px + 3), gy + 18);
-      }
-    }
-    ctx.restore();
-
-    // Base Finder Clean Monument Pins Layer (only use Base Finder monuments when seed matches live server)
-    if (document.getElementById('shopMapShowMonumentsCb')?.checked !== false) {
-      const useBfMons = Boolean(bfSameSeed && bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0);
-      const mons = useBfMons
-        ? bfMapData.monuments.map((m) => {
-          const vis = bfGetMonumentVisual(m, '');
-          return vis ? { vis, wx: m.x, wy: m.y } : null;
-        })
-        : (tel.mapMeta?.monuments || []).map((m) => {
-          const fmt = formatRustPlusMonumentToken(m.token);
-          return fmt ? { vis: { color: fmt.color, short: fmt.label, r: fmt.r, isMajor: fmt.isMajor }, wx: m.wx, wy: m.wy } : null;
-        });
-      ctx.save();
-      ctx.textAlign = 'center';
-      mons.forEach((item) => {
-        if (!item) return;
-        const { vis, wx, wy } = item;
-        const { px, py } = toPx(wx, wy);
-        ctx.beginPath();
-        ctx.arc(px, py, vis.r, 0, Math.PI * 2);
-        ctx.fillStyle = vis.color;
-        ctx.fill();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = '#090b0e';
-        ctx.stroke();
-        if (vis.short) {
-          ctx.font = vis.isMajor ? '700 10px "Inter", sans-serif' : '600 9px "Inter", sans-serif';
-          ctx.strokeStyle = 'rgba(0,0,0,0.88)';
-          ctx.lineWidth = 3;
-          ctx.strokeText(vis.short, px, py - vis.r - 4);
-          ctx.fillStyle = '#f8fafc';
-          ctx.fillText(vis.short, px, py - vis.r - 4);
-        }
-      });
-      ctx.restore();
-    }
-
-    shopLiveMapRenderedPins = [];
-    drawRustPlusOverlayOnCanvas(ctx, {
-      toPx,
-      scale,
-      mapSize,
-      showVending: document.getElementById('shopMapShowVendingCb')?.checked !== false,
-      showTeam: document.getElementById('shopMapShowTeamCb')?.checked !== false,
-      showEvents: document.getElementById('shopMapShowEventsCb')?.checked !== false,
-      stealsOnly: Boolean(document.getElementById('shopMapStealsOnlyCb')?.checked),
-      inStockOnly: Boolean(document.getElementById('shopMapInStockOnlyCb')?.checked),
-      highlightedIds: lastShopMatchedMarkerIds,
-      selectedShopPinId: selectedShopMapPinId,
-      pinOut: shopLiveMapRenderedPins
-    });
+    renderBaseFinderMap();
   }
 
   function focusShopOnLiveMap(wx, wy, markerId = '') {
-    shopMapVisible = true;
+    document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
     if (markerId) selectedShopMapPinId = String(markerId);
-    shopMapPanX = Number(wx) || 0;
-    shopMapPanY = Number(wy) || 0;
-    shopMapZoom = Math.max(shopMapZoom, 1.9);
     renderShopsModule();
-    renderShopLiveMap();
-    document.getElementById('shopLiveMapCard')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    setBfMapView(Number(wx) || 0, Number(wy) || 0, 1.9);
+    document.getElementById('bfMapCanvas')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
   }
 
   function formatTcUpkeepRemaining(protectionExpirySec, hasProtection) {
@@ -10161,7 +10069,7 @@
     } else {
       lastShopMatchedMarkerIds = null;
     }
-    if (shopMapVisible) renderShopLiveMap();
+    renderShopLiveMap();
 
     const tierScore = (t) => (t.tierRank === 'S' ? 0 : t.tierRank === 'A' ? 1 : 2);
     const soldOutScore = (t) => (typeof t.inStock === 'number' && t.inStock <= 0 ? 1 : 0);
@@ -10607,8 +10515,8 @@
     let lastExchangedShopAuthInput = '';
 
     const openSteamShopPopup = (launchWindow = true) => {
-      const drawer = document.getElementById('liveShopTrackerDrawer');
-      if (drawer) drawer.open = true;
+      document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
+      bfSwitchSubtab('rustplus');
       const popupSec = document.getElementById('rpPopupConnectSection');
       if (popupSec) popupSec.open = true;
       popupSec?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
@@ -10861,186 +10769,26 @@
       renderAll();
     });
 
-    // HUD Rust+ Quick Jump Pill
+    // HUD Rust+ Quick Jump Pill -> open Base & Trade Hub right to Rust+ / Trades
     document.getElementById('hudRustPlusPill')?.addEventListener('click', () => {
-      document.querySelector('.nav-tab[data-tab="tab-shops"]')?.click();
-      shopMapVisible = true;
+      document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
+      const hasAlarm = (appState.rustPlusTelemetry?.smartDevices || []).some((d) => d.entityType === 'alarm' && d.active);
+      bfSwitchSubtab(hasAlarm ? 'rustplus' : 'trades');
       renderShopLiveMap();
     });
 
-    // Live Shop Map Controls (Toggle, Layers, Expand, Sync, Zoom-to-Cursor, Pan, Hover, Click-to-Filter)
-    document.getElementById('toggleShopMapBtn')?.addEventListener('click', () => {
-      shopMapVisible = !shopMapVisible;
-      renderShopLiveMap();
-    });
-    ['shopMapShowVendingCb', 'shopMapStealsOnlyCb', 'shopMapInStockOnlyCb', 'shopMapShowTeamCb', 'shopMapShowEventsCb', 'shopMapShowMonumentsCb'].forEach((id) => {
-      document.getElementById(id)?.addEventListener('change', renderShopLiveMap);
-    });
-    const setShopZoomClamped = (z, anchorCx = null, anchorCy = null) => {
-      const nextZoom = Math.max(0.65, Math.min(5.0, z));
-      const c = document.getElementById('shopLiveMapCanvas');
-      if (c && anchorCx !== null && anchorCy !== null) {
-        const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-        const oldScale = getShopMapScale(c, mapSize);
-        const wxBefore = (anchorCx - c.width / 2) / oldScale + shopMapPanX;
-        const wyBefore = -(anchorCy - c.height / 2) / oldScale + shopMapPanY;
-        shopMapZoom = nextZoom;
-        const newScale = getShopMapScale(c, mapSize);
-        shopMapPanX = wxBefore - (anchorCx - c.width / 2) / newScale;
-        shopMapPanY = wyBefore + (anchorCy - c.height / 2) / newScale;
-      } else {
-        shopMapZoom = nextZoom;
-      }
-      renderShopLiveMap();
-    };
-    document.getElementById('shopMapZoomInBtn')?.addEventListener('click', () => setShopZoomClamped(shopMapZoom * 1.25));
-    document.getElementById('shopMapZoomOutBtn')?.addEventListener('click', () => setShopZoomClamped(shopMapZoom * 0.8));
-    document.getElementById('shopMapZoomResetBtn')?.addEventListener('click', () => {
-      shopMapPanX = 0;
-      shopMapPanY = 0;
-      setShopZoomClamped(1);
-    });
+    // Unified Base Finder Center-On-Me button
     document.getElementById('shopMapCenterMeBtn')?.addEventListener('click', () => {
       const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
       const me = findMyRustPlusTeamMember(tel);
       if (!me || typeof me.wx !== 'number' || typeof me.wy !== 'number') {
+        bfSwitchSubtab('rustplus');
         const st = document.getElementById('rpShopStatusText');
         if (st) st.textContent = '⚠️ Connect Rust+ and sync your live team position first.';
         return;
       }
-      shopMapPanX = me.wx;
-      shopMapPanY = me.wy;
-      setShopZoomClamped(Math.max(shopMapZoom, 2.0));
+      setBfMapView(me.wx, me.wy, 2.0);
     });
-    document.getElementById('shopMapExpandBtn')?.addEventListener('click', () => {
-      shopMapExpanded = !shopMapExpanded;
-      const btn = document.getElementById('shopMapExpandBtn');
-      if (btn) btn.textContent = shopMapExpanded ? '⤡ Compact' : '⤢ Expand';
-      renderShopLiveMap();
-    });
-    document.getElementById('shopMapRefreshBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(true));
-    document.getElementById('shopMapOpenBaseFinderBtn')?.addEventListener('click', () => {
-      const info = appState.rustPlusTelemetry?.serverInfo;
-      document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
-      if (info && info.mapSize && info.seed) {
-        const inp = document.getElementById('bfMapUrlInput');
-        if (inp) inp.value = `${info.mapSize}_${info.seed}`;
-        document.getElementById('bfAnalyzeBtn')?.click();
-      }
-    });
-
-    const shopCanvas = document.getElementById('shopLiveMapCanvas');
-    const shopTooltip = document.getElementById('shopMapTooltip');
-    const shopHudReadout = document.getElementById('shopMapHudReadout');
-    if (shopCanvas) {
-      let dragging = false;
-      let dragMoved = 0;
-      let lastX = 0;
-      let lastY = 0;
-      shopCanvas.addEventListener('mousedown', (e) => {
-        dragging = true;
-        dragMoved = 0;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        shopCanvas.style.cursor = 'grabbing';
-      });
-      window.addEventListener('mouseup', () => {
-        if (!dragging) return;
-        dragging = false;
-        shopCanvas.style.cursor = 'grab';
-      });
-      window.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        dragMoved += Math.hypot(e.clientX - lastX, e.clientY - lastY);
-        const rect = shopCanvas.getBoundingClientRect();
-        const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-        const scale = getShopMapScale(shopCanvas, mapSize);
-        const dx = ((e.clientX - lastX) * shopCanvas.width) / Math.max(1, rect.width);
-        const dy = ((e.clientY - lastY) * shopCanvas.height) / Math.max(1, rect.height);
-        lastX = e.clientX;
-        lastY = e.clientY;
-        shopMapPanX -= dx / scale;
-        shopMapPanY += dy / scale;
-        renderShopLiveMap();
-      });
-      shopCanvas.addEventListener('mousemove', (e) => {
-        if (dragging) {
-          if (shopTooltip) shopTooltip.style.display = 'none';
-          return;
-        }
-        const rect = shopCanvas.getBoundingClientRect();
-        const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
-        const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
-        const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
-        const scale = getShopMapScale(shopCanvas, mapSize);
-        const wx = (cx - shopCanvas.width / 2) / scale + shopMapPanX;
-        const wy = -(cy - shopCanvas.height / 2) / scale + shopMapPanY;
-        if (shopHudReadout) {
-          shopHudReadout.style.display = 'block';
-          shopHudReadout.textContent = `Grid ${bfWorldToSubGrid(wx, wy, mapSize)} • Zoom ${Math.round(shopMapZoom * 100)}%`;
-        }
-        let hit = null;
-        let minDist = Infinity;
-        for (const pin of shopLiveMapRenderedPins) {
-          const d = Math.hypot(cx - pin.px, cy - pin.py);
-          if (d <= pin.r + 7 && d < minDist) {
-            minDist = d;
-            hit = pin;
-          }
-        }
-        if (shopTooltip) {
-          if (hit) {
-            shopCanvas.style.cursor = 'pointer';
-            shopTooltip.style.display = 'block';
-            shopTooltip.style.left = `${Math.min(rect.width - 250, Math.max(8, e.clientX - rect.left + 14))}px`;
-            shopTooltip.style.top = `${Math.min(rect.height - 120, Math.max(8, e.clientY - rect.top + 14))}px`;
-            shopTooltip.innerHTML = `<div style="font-weight:700; color:${escapeHtml(hit.color || '#38bdf8')}; margin-bottom:4px;">${escapeHtml(hit.title)}</div>` +
-              (hit.lines || []).map((l) => `<div style="font-size:11px; color:#cbd5e1;">${escapeHtml(l)}</div>`).join('');
-          } else {
-            shopCanvas.style.cursor = 'grab';
-            shopTooltip.style.display = 'none';
-          }
-        }
-      });
-      shopCanvas.addEventListener('mouseleave', () => {
-        if (shopTooltip) shopTooltip.style.display = 'none';
-        if (shopHudReadout) shopHudReadout.style.display = 'none';
-      });
-      shopCanvas.addEventListener('click', (e) => {
-        if (dragMoved >= 6 || !shopLiveMapRenderedPins.length) return;
-        const rect = shopCanvas.getBoundingClientRect();
-        const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
-        const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
-        let hit = null;
-        let minDist = Infinity;
-        for (const pin of shopLiveMapRenderedPins) {
-          if (!pin.selectAction) continue;
-          const d = Math.hypot(cx - pin.px, cy - pin.py);
-          if (d <= pin.r + 8 && d < minDist) {
-            minDist = d;
-            hit = pin;
-          }
-        }
-        if (!hit) return;
-        if (hit.selectAction.type === 'vending') {
-          const nextId = String(hit.selectAction.markerId || '');
-          selectedShopMapPinId = selectedShopMapPinId === nextId ? '' : nextId;
-          renderShopsModule();
-          renderShopLiveMap();
-        } else if (hit.selectAction.type === 'event' || hit.selectAction.type === 'team') {
-          shopMapPanX = hit.wx;
-          shopMapPanY = hit.wy;
-          setShopZoomClamped(Math.max(shopMapZoom, 1.9));
-        }
-      });
-      shopCanvas.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const rect = shopCanvas.getBoundingClientRect();
-        const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
-        const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
-        setShopZoomClamped(shopMapZoom * (e.deltaY < 0 ? 1.15 : 0.87), cx, cy);
-      }, { passive: false });
-    }
 
     // Team Chat Quick Send
     const sendTeamChatMsg = async () => {

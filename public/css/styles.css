@@ -330,7 +330,7 @@ body::before {
 
 .bf-map-layout {
   display: grid;
-  grid-template-columns: 1.75fr 1fr;
+  grid-template-columns: 1.55fr 1.1fr;
   gap: 20px;
   align-items: start;
 }
@@ -340,9 +340,9 @@ body::before {
 }
 
 .bf-subtabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
@@ -351,14 +351,16 @@ body::before {
 }
 
 .bf-subtab-btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--text-secondary);
   font-family: var(--font-display);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
-  padding: 8px 10px;
+  padding: 7px 9px;
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: center;
