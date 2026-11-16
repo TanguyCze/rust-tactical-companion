@@ -8531,6 +8531,9 @@
               ok: true,
               rustmapsUrl: '',
               fromRustPlus: true,
+              mapWidth: Number(tel.mapMeta?.width || 0),
+              mapHeight: Number(tel.mapMeta?.height || 0),
+              oceanMargin: Number(tel.mapMeta?.oceanMargin || 0),
               id: `${rpSize}_${rpSeed}`,
               size: rpSize,
               seed: rpSeed,
@@ -8591,7 +8594,25 @@
           ? new Promise((resolve) => {
               const img = new Image();
               img.onload = () => {
-                bfLoadedImage = img;
+                const margin = data.fromRustPlus ? Number(data.oceanMargin || appState.rustPlusTelemetry?.mapMeta?.oceanMargin || 0) : 0;
+                const mw = Number(data.mapWidth || appState.rustPlusTelemetry?.mapMeta?.width || img.naturalWidth || 0);
+                const mh = Number(data.mapHeight || appState.rustPlusTelemetry?.mapMeta?.height || img.naturalHeight || mw);
+                if (margin > 0 && mw > 2 * margin && mh > 2 * margin) {
+                  const natW = img.naturalWidth || mw;
+                  const natH = img.naturalHeight || mh;
+                  const sx = margin * (natW / mw);
+                  const sy = margin * (natH / mh);
+                  const sw = (mw - 2 * margin) * (natW / mw);
+                  const sh = (mh - 2 * margin) * (natH / mh);
+                  const cropCanvas = document.createElement('canvas');
+                  cropCanvas.width = Math.max(1, Math.round(sw));
+                  cropCanvas.height = Math.max(1, Math.round(sh));
+                  const cctx = cropCanvas.getContext('2d');
+                  cctx.drawImage(img, sx, sy, sw, sh, 0, 0, cropCanvas.width, cropCanvas.height);
+                  bfLoadedImage = cropCanvas;
+                } else {
+                  bfLoadedImage = img;
+                }
                 resolve();
               };
               img.onerror = () => {

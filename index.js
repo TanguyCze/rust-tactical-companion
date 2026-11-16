@@ -165,6 +165,8 @@ function broadcastState(eventType = 'state_update', extra = {}) {
 // ============================================================================
 const bmCache = new Map();
 const BM_CACHE_TTL = 60 * 1000;
+const rustmapsAnalyzeCache = new Map();
+const RUSTMAPS_CACHE_TTL_MS = 6 * 3600 * 1000;
 
 function fetchJsonHttps(urlStr, token = '') {
   return new Promise((resolve, reject) => {
@@ -2912,7 +2914,25 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        const html = await fetchTextHttps(rustmapsUrl);
+        const cachedRm = rustmapsAnalyzeCache.get(rustmapsUrl);
+        if (cachedRm && Date.now() - cachedRm.time < RUSTMAPS_CACHE_TTL_MS) {
+          return sendJson(res, 200, cachedRm.payload);
+        }
+
+        let html = '';
+        let rmFetchErr = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            html = await fetchTextHttps(rustmapsUrl);
+            rmFetchErr = null;
+            break;
+          } catch (err) {
+            rmFetchErr = err;
+            if (attempt === 0) await new Promise((r) => setTimeout(r, 700));
+          }
+        }
+        if (rmFetchErr) throw rmFetchErr;
+
         const mapData = parseRustMapsFromHtml(html);
         if (!mapData) {
           return sendJson(res, 502, {
@@ -2939,7 +2959,7 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        return sendJson(res, 200, {
+        const rmPayload = {
           ok: true,
           rustmapsUrl,
           id: mapData.id,
@@ -2978,7 +2998,9 @@ const server = http.createServer(async (req, res) => {
               y: Number(m.coordinates?.y || 0)
             };
           })
-        });
+        };
+        rustmapsAnalyzeCache.set(rustmapsUrl, { time: Date.now(), payload: rmPayload });
+        return sendJson(res, 200, rmPayload);
       } catch (err) {
         return sendJson(res, 502, { error: `Failed to analyze RustMaps URL: ${err.message}` });
       }
