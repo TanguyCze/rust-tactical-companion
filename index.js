@@ -63,25 +63,8 @@ const DEFAULT_STATE = {
   ],
   battlemetrics: {
     serverId: '',
-    serverName: 'Rustoria.co - EU Main',
-    watchlist: [
-      {
-        id: 'w1',
-        name: '[ZERG] ChadThundercock',
-        grid: 'Q14',
-        typicalOffline: '03:30 - 10:00',
-        notes: 'Main builder / TC auth, logs off around 3:30 AM CET',
-        status: 'offline'
-      },
-      {
-        id: 'w2',
-        name: 'xX_OilRigController_Xx',
-        grid: 'U4',
-        typicalOffline: '02:00 - 09:00',
-        notes: 'Counters Small Rig from snow cliff boat base',
-        status: 'online'
-      }
-    ]
+    serverName: '',
+    watchlist: []
   },
   discordWebhookUrl: '',
   discordConfig: {
@@ -726,6 +709,13 @@ function encodeRustPlusSendMessage(text) {
   writeVarint(out, (1 << 3) | 2);
   writeVarint(out, strBytes.length);
   for (let i = 0; i < strBytes.length; i++) out.push(strBytes[i]);
+  return out;
+}
+
+function encodeRustPlusPromoteToLeader(steamId) {
+  const out = [];
+  writeVarint(out, (1 << 3) | 0);
+  writeVarint(out, BigInt(String(steamId || '0').replace(/[^\d]/g, '') || '0'));
   return out;
 }
 
@@ -1453,13 +1443,19 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
 }
 
 let cachedRustPlusMap = null;
+const lastWorkingRustPlusModeByServer = new Map();
+
+function getRustPlusServerKey(cfg) {
+  return `${cfg?.serverId || cfg?.ip || 'live'}:${cfg?.port || '28082'}`;
+}
 
 function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
-  const needMap = Boolean(forceMap);
+  const serverKey = getRustPlusServerKey(cfg);
+  const needMap = Boolean(forceMap) || !cachedRustPlusMap?.buffer || cachedRustPlusMap.serverKey !== serverKey;
   const entityIds = (Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : [])
     .map((d) => String(d.entityId || '').replace(/[^\d]/g, ''))
     .filter(Boolean)
-    .slice(0, 6);
+    .slice(0, 24);
 
   let infoResult = null;
   let timeResult = null;
@@ -1573,16 +1569,25 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
 
 async function runRustPlusModes(cfg, runner) {
   const attempts = [];
-  if (cfg.serverId && cfg.authToken) attempts.push('socket');
-  if (cfg.ip && cfg.useProxy) attempts.push('proxy');
-  if (cfg.ip) attempts.push('direct');
-  if (cfg.ip && !cfg.useProxy) attempts.push('proxy');
+  const serverKey = getRustPlusServerKey(cfg);
+  const preferred = lastWorkingRustPlusModeByServer.get(serverKey);
+  if (preferred) {
+    if ((preferred === 'socket' && cfg.serverId) || ((preferred === 'proxy' || preferred === 'direct') && cfg.ip)) {
+      attempts.push(preferred);
+    }
+  }
+  if (cfg.serverId && cfg.authToken && !attempts.includes('socket')) attempts.push('socket');
+  if (cfg.ip && cfg.useProxy && !attempts.includes('proxy')) attempts.push('proxy');
+  if (cfg.ip && !attempts.includes('direct')) attempts.push('direct');
+  if (cfg.ip && !cfg.useProxy && !attempts.includes('proxy')) attempts.push('proxy');
   if (cfg.serverId && !attempts.includes('socket')) attempts.push('socket');
 
   let lastErr = new Error('No Rust+ server configured');
   for (const mode of attempts) {
     try {
-      return await runner(mode);
+      const res = await runner(mode);
+      lastWorkingRustPlusModeByServer.set(serverKey, mode);
+      return res;
     } catch (err) {
       lastErr = err;
     }
@@ -1619,6 +1624,7 @@ const sentShopStealAlerts = new Set();
 const sentWorldEventAlerts = new Set();
 const sentWatchlistAlerts = new Set();
 const sentSmartAlarmAlerts = new Set();
+const sentLowUpkeepAlerts = new Set();
 let prevShopOrderSnapshot = new Map();
 let hasSeededShopSnapshot = false;
 let rustPlusShopInterval = null;
@@ -1944,6 +1950,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   }
 
   const triggeredAlarms = [];
+  const lowUpkeepDevices = [];
   const smartDevices = (Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : []).map((dev) => {
     const eid = String(dev.entityId || '').replace(/[^\d]/g, '');
     const liveEnt = snapshot?.entityInfoById?.[eid];
@@ -1955,6 +1962,17 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
       if (!sentSmartAlarmAlerts.has(alarmKey)) {
         sentSmartAlarmAlerts.add(alarmKey);
         triggeredAlarms.push({ entityId: eid, name: dev.name || `Alarm #${eid}` });
+      }
+    }
+    const protectionExpiry = Number(liveEnt.protectionExpiry || 0);
+    if (mappedType === 'storage' && liveEnt.hasProtection && protectionExpiry > 0) {
+      const remSec = protectionExpiry - Math.floor(nowTs / 1000);
+      if (remSec > 0 && remSec < 21600) {
+        const ukKey = `${serverKey}:upkeep:${eid}:${Math.floor(protectionExpiry / 3600)}`;
+        if (!sentLowUpkeepAlerts.has(ukKey)) {
+          sentLowUpkeepAlerts.add(ukKey);
+          lowUpkeepDevices.push({ entityId: eid, name: dev.name || `TC #${eid}`, remHours: (remSec / 3600).toFixed(1) });
+        }
       }
     }
     const mergedItems = aggregateEntityStorageItems(liveEnt.items || []);
@@ -2031,7 +2049,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         .join('\n');
       sendDiscordNotification({
         title: `🔥 S-Tier Player Shop Steal Live on Map!`,
-        description: `${topList}\n\nOpen **🛒 Shops & Trades** to reserve via Marketplace Drone.`,
+        description: `${topList}\n\nOpen **📍 Base & Trade Hub → 🛒 Trades** to review deals.`,
         color: 0xa855f7
       }).catch(() => {});
     }
@@ -2060,6 +2078,14 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         title: `🚨 BASE SMART ALARM TRIGGERED!`,
         description: `${alarmLines}${nextServerInfo.name ? `\n\nServer: **${nextServerInfo.name}**` : ''}`,
         color: 0xef4444
+      }).catch(() => {});
+    }
+    if (lowUpkeepDevices.length > 0) {
+      const ukLines = lowUpkeepDevices.map((d) => `• ⏳ **${d.name}** — **${d.remHours}h** upkeep left!`).join('\n');
+      sendDiscordNotification({
+        title: `⚠️ TC LOW UPKEEP WARNING (< 6h Remaining)`,
+        description: `${ukLines}${nextServerInfo.name ? `\n\nServer: **${nextServerInfo.name}**` : ''}`,
+        color: 0xf59e0b
       }).catch(() => {});
     }
   }
@@ -3209,6 +3235,36 @@ const server = http.createServer(async (req, res) => {
         saveState(squadState);
         broadcastState('state_update');
         return sendJson(res, 200, { ok: true, teamChat: squadState.rustPlusTelemetry.teamChat });
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    if (pathname === '/api/shops/rustplus/promote' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      const steamId = String(body.steamId || '').replace(/[^\d]/g, '');
+      if (!/^\d{15,22}$/.test(steamId)) {
+        return sendJson(res, 400, { error: 'Valid target teammate SteamID64 required.' });
+      }
+      const cfg = squadState.rustPlusShopConfig || {};
+      if ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken) {
+        return sendJson(res, 400, { error: 'Connect to Rust+ first before promoting team leader.' });
+      }
+      try {
+        await sendRustPlusCommand(cfg, 19, encodeRustPlusPromoteToLeader(steamId));
+        const nextMembers = (Array.isArray(squadState.rustPlusTelemetry?.teamMembers) ? squadState.rustPlusTelemetry.teamMembers : []).map((m) => ({
+          ...m,
+          isLeader: String(m.steamId) === steamId
+        }));
+        squadState.rustPlusTelemetry = {
+          ...DEFAULT_STATE.rustPlusTelemetry,
+          ...(squadState.rustPlusTelemetry || {}),
+          teamMembers: nextMembers
+        };
+        saveState(squadState);
+        broadcastState('state_update');
+        return sendJson(res, 200, { ok: true, leaderSteamId: steamId, teamMembers: nextMembers });
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
       }

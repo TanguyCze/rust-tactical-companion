@@ -1,8 +1,8 @@
 /**
  * RUST TACTICAL COMPANION — CORE FRONTEND APPLICATION
- * Handles Squad SSE Sync, Raid & Sulfur Combo Optimizer, Monument Keycard/Fuse Guide,
- * Live Audio Timers, 6-Gene Crossbreeding Solver,
- * and BattleMetrics 24h Raid Window Intelligence.
+ * Handles Squad SSE Sync, Base & Trade Hub (RustMaps + Rust+), Monument Keycard/Fuse Guide,
+ * Raid & Sulfur Combo Optimizer, Live Audio Timers, 6-Gene Crossbreeding Solver,
+ * and BattleMetrics 24h Server Pop Intelligence.
  */
 
 (function () {
@@ -128,23 +128,8 @@
     ],
     battlemetrics: {
       serverId: '',
-      serverName: 'Rustoria.co - EU Main',
-      watchlist: [
-        {
-          id: 'w1',
-          name: '[ZERG] Roofcampers',
-          grid: 'Q14',
-          typicalOffline: '03:30 - 10:00',
-          notes: '2x2 Multi-TC, 3 Garage Doors + 1 Stone Wall to core'
-        },
-        {
-          id: 'w2',
-          name: 'OilRigControllers',
-          grid: 'V5',
-          typicalOffline: '02:00 - 09:00',
-          notes: 'Snow cliff boat base near Large Oil Rig'
-        }
-      ]
+      serverName: '',
+      watchlist: []
     }
   };
 
@@ -8480,14 +8465,49 @@
       if (statusEl) statusEl.textContent = 'Fetching map & monuments from RustMaps...';
 
       try {
-        const res = await fetch('/api/rustmaps/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url })
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          throw new Error(data.error || 'Failed to analyze map');
+        let data = null;
+        let usedRustPlusFallback = false;
+        try {
+          const res = await fetch('/api/rustmaps/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+          });
+          const parsed = await res.json();
+          if (!res.ok || parsed.error) {
+            throw new Error(parsed.error || 'Failed to analyze map');
+          }
+          data = parsed;
+        } catch (rmErr) {
+          const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+          const rpMons = Array.isArray(tel.mapMeta?.monuments) ? tel.mapMeta.monuments : [];
+          if (rpMons.length > 0 && tel.mapMeta?.imageUrl) {
+            const rpSize = Number(tel.serverInfo?.mapSize || tel.mapMeta?.mapSize || 4250);
+            const rpSeed = Number(tel.serverInfo?.seed || 0);
+            data = {
+              ok: true,
+              rustmapsUrl: '',
+              fromRustPlus: true,
+              id: `${rpSize}_${rpSeed}`,
+              size: rpSize,
+              seed: rpSeed,
+              imageUrl: tel.mapMeta.imageUrl,
+              buildingBlockArea: null,
+              biomePercentages: {},
+              heatMaps: {},
+              heatMapBaseUrls: {},
+              monuments: rpMons
+                .map((m) => {
+                  const type = bfRustPlusTokenToCanonicalType(m.token);
+                  if (!type) return null;
+                  return { type, nameOverride: m.token || '', hasRedKeycard: null, x: Number(m.wx || 0), y: Number(m.wy || 0) };
+                })
+                .filter(Boolean)
+            };
+            usedRustPlusFallback = true;
+          } else {
+            throw rmErr;
+          }
         }
 
         bfMapData = data;
@@ -8498,19 +8518,23 @@
         bfPanY = 0;
         bfHeatmapImages = {};
         bfHeatmapGrids = {};
-        bfSaveRecentMap({
-          id: `${data.size}_${data.seed}`,
-          url: data.rustmapsUrl || `${data.size}_${data.seed}`
-        });
+        if (!usedRustPlusFallback) {
+          bfSaveRecentMap({
+            id: `${data.size}_${data.seed}`,
+            url: data.rustmapsUrl || `${data.size}_${data.seed}`
+          });
+        }
         if (metaEl) {
-          metaEl.textContent = `Size: ${data.size} • Seed: ${data.seed} • ${data.monuments.length} map features detected`;
+          metaEl.textContent = `Size: ${data.size} • Seed: ${data.seed || 'Custom'} • ${data.monuments.length} map features${usedRustPlusFallback ? ' (Rust+ Live Map Fallback)' : ' detected'}`;
         }
         if (statusEl) {
-          statusEl.textContent = `✓ Loaded ${data.size}_${data.seed} (${data.monuments.length} monuments). Scanning coast, ore nodes & low-traffic grids...`;
+          statusEl.textContent = usedRustPlusFallback
+            ? `🛰️ Loaded ${data.size}_${data.seed || 'Custom'} directly from Rust+ AppMap (${data.monuments.length} monuments) — scoring build spots...`
+            : `✓ Loaded ${data.size}_${data.seed} (${data.monuments.length} monuments). Scanning coast, ore nodes & low-traffic grids...`;
         }
 
         // Preload RustMaps resource heatmaps (Nodes, Hemp, Berries, Horses, PlayerSpawns) in parallel
-        const hmKeys = ['Nodes', 'Hemp', 'Berries', 'Horses', 'PlayerSpawns'];
+        const hmKeys = usedRustPlusFallback ? [] : ['Nodes', 'Hemp', 'Berries', 'Horses', 'PlayerSpawns'];
         const hmPromises = hmKeys.map(async (key) => {
           const hmVisual = await bfLoadHeatmapCanvas(key, data);
           if (!hmVisual) return;
@@ -8531,7 +8555,7 @@
                 bfLoadedImage = null;
                 resolve();
               };
-              img.src = `/api/rustmaps/image?url=${encodeURIComponent(data.imageUrl)}`;
+              img.src = data.imageUrl.startsWith('/api/') ? data.imageUrl : `/api/rustmaps/image?url=${encodeURIComponent(data.imageUrl)}`;
             })
           : Promise.resolve((bfLoadedImage = null));
 
@@ -8539,7 +8563,7 @@
         rerunBaseFinderScoring();
         renderShopLiveMap();
         if (statusEl) {
-          statusEl.textContent = `✓ Analysis complete for ${data.size}_${data.seed}! Top spot: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
+          statusEl.textContent = `${usedRustPlusFallback ? '🛰️ Rust+ fallback' : '✓ Analysis'} complete for ${data.size}_${data.seed || 'Custom'}! Top spot: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
         }
       } catch (err) {
         if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
@@ -8810,6 +8834,68 @@
     const angleDeg = (Math.atan2(dx, dy) * 180) / Math.PI;
     const compass = dirs[Math.round(((angleDeg + 360) % 360) / 45) % 8];
     return `📏 ${dist.toLocaleString()}m ${compass} from you`;
+  }
+
+  function bfRustPlusTokenToCanonicalType(rawToken) {
+    const s = String(rawToken || '').toLowerCase();
+    if (!s || /cave|tunnel_entrance|swamp|substation|power_sub|bus_stop|bunker|rock|iceberg|ice_lake|ruin|glacier|canyon|cliff|bridge|mining_quarry_a/.test(s)) return '';
+    if (s.includes('launch')) return 'Launch Site';
+    if (s.includes('silo')) return 'Missile Silo';
+    if (s.includes('military_tunnel')) return 'Military Tunnel';
+    if (s.includes('abandoned_military')) return 'Military Base A';
+    if (s.includes('oil') && s.includes('large')) return 'Large Oilrig';
+    if (s.includes('oil') && s.includes('small')) return 'Oilrig';
+    if (s.includes('powerplant') || s.includes('power_plant')) return 'Powerplant';
+    if (s.includes('water_treatment')) return 'Water Treatment';
+    if (s.includes('trainyard')) return 'Trainyard';
+    if (s.includes('airfield')) return 'Airfield';
+    if (s.includes('arctic')) return 'Arctic Research Base A';
+    if (s.includes('excavator')) return 'Excavator';
+    if (s.includes('outpost') && !s.includes('mining')) return 'Outpost';
+    if (s.includes('bandit')) return 'Bandit Town';
+    if (s.includes('fishing')) return 'Fishing Village';
+    if (s.includes('harbor')) return 'Harbor';
+    if (s.includes('ferry')) return 'Ferry Terminal';
+    if (s.includes('underwater_lab')) return 'Underwater Lab';
+    if (s.includes('dome') || s.includes('sphere')) return 'Sphere Tank';
+    if (s.includes('sewer')) return 'Sewer Branch';
+    if (s.includes('satellite')) return 'Satellite';
+    if (s.includes('radtown')) return 'Radtown';
+    if (s.includes('ziggurat')) return 'Ziggurat';
+    if (s.includes('junkyard')) return 'Junkyard';
+    if (s.includes('ranch') || s.includes('stables')) return 'Ranch';
+    if (s.includes('barn')) return 'Large Barn';
+    if (s.includes('waterwell')) return 'Water Well A';
+    if (s.includes('supermarket')) return 'Supermarket';
+    if (s.includes('gas_station') || s.includes('oxum')) return 'Gas Station';
+    if (s.includes('mining_outpost')) return 'Warehouse';
+    if (s.includes('lighthouse')) return 'Lighthouse';
+    if (s.includes('sulfur') && s.includes('quarry')) return 'Sulfur Quarry';
+    if (s.includes('hqm') && s.includes('quarry')) return 'HQM Quarry';
+    if (s.includes('quarry')) return 'Stone Quarry';
+    return '';
+  }
+
+  function formatTeamDeathAgo(tm) {
+    if (!tm || tm.isAlive) return '';
+    const dt = Number(tm.deathTime || 0);
+    if (!dt || dt <= 0) return 'Dead';
+    const sec = Math.max(0, Math.floor(Date.now() / 1000) - dt);
+    if (sec < 60) return `${sec}s ago`;
+    if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s ago`;
+    return `${Math.floor(sec / 3600)}h ago`;
+  }
+
+  function formatWipeElapsed(wipeTimeSec) {
+    const wt = Number(wipeTimeSec || 0);
+    if (!wt || wt <= 0) return '';
+    const sec = Math.max(0, Math.floor(Date.now() / 1000) - wt);
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
   }
 
   function formatRustPlusMonumentToken(rawToken) {
@@ -9123,7 +9209,8 @@
         ctx.textAlign = 'center';
         ctx.strokeStyle = 'rgba(0,0,0,0.95)';
         ctx.lineWidth = 3;
-        const badge = `${isMe ? '⌖ YOU • ' : tm.isLeader ? '👑 ' : ''}${!tm.isAlive ? '💀 ' : ''}${tm.name} [${tm.grid}]`;
+        const deathAgo = !tm.isAlive ? formatTeamDeathAgo(tm) : '';
+        const badge = `${isMe ? '⌖ YOU • ' : tm.isLeader ? '👑 ' : ''}${!tm.isAlive ? '💀 ' : ''}${tm.name} [${tm.grid}]${deathAgo && deathAgo !== 'Dead' ? ` • ${deathAgo}` : ''}`;
         ctx.strokeText(badge, px, py - 13);
         ctx.fillStyle = !tm.isAlive ? '#fca5a5' : isMe ? '#67e8f9' : tm.isOnline ? '#bae6fd' : '#94a3b8';
         ctx.fillText(badge, px, py - 13);
@@ -9138,7 +9225,10 @@
           wy: tm.wy,
           title: `${isMe ? '⌖ YOU — ' : tm.isLeader ? '👑 ' : ''}${tm.name} [${tm.grid}]`,
           color: dotColor,
-          lines: [`Status: ${tm.isOnline ? 'Online' : 'Offline'} • ${tm.isAlive ? 'Alive' : 'Dead / Sleeping'}`, distLine].filter(Boolean),
+          lines: [
+            `Status: ${tm.isOnline ? 'Online' : 'Offline'} • ${tm.isAlive ? 'Alive' : `Dead (${deathAgo || 'Sleeping'})`}`,
+            distLine
+          ].filter(Boolean),
           selectAction: { type: 'team', member: tm }
         });
       });
@@ -9160,6 +9250,7 @@
     const alertBannerEl = document.getElementById('shopLiveAlertBanner');
     if (alertBannerEl) {
       const triggeredAlarms = (tel.smartDevices || []).filter((d) => d.entityType === 'alarm' && d.active);
+      const quickSwitches = (tel.smartDevices || []).filter((d) => d.entityType === 'switch').slice(0, 3);
       const watchMatches = (tel.vendingPins || []).flatMap((vp) =>
         (vp.orders || [])
           .filter((o) => o.watchlistMatch && o.inStock > 0)
@@ -9168,8 +9259,14 @@
       if (triggeredAlarms.length || watchMatches.length) {
         const parts = [];
         if (triggeredAlarms.length) {
+          const swPills = quickSwitches
+            .map(
+              (sw) =>
+                `<button type="button" class="filter-pill rp-alert-sw-btn" data-eid="${escapeHtml(sw.entityId)}" data-next="${sw.active ? '0' : '1'}" style="border-color:${sw.active ? '#ef4444' : '#4ade80'}; color:${sw.active ? '#fca5a5' : '#bbf7d0'};">⚡ ${escapeHtml(sw.name)}: ${sw.active ? 'Turn OFF' : 'Turn ON'}</button>`
+            )
+            .join('');
           parts.push(
-            `<div style="padding:7px 10px; border-radius:6px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; color:#fecaca; font-size:12px; font-weight:700;">🚨 RAID ALARM TRIGGERED: ${triggeredAlarms.map((a) => escapeHtml(a.name)).join(', ')}</div>`
+            `<div style="padding:7px 10px; border-radius:6px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; color:#fecaca; font-size:12px; font-weight:700; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><span>🚨 RAID ALARM TRIGGERED: ${triggeredAlarms.map((a) => escapeHtml(a.name)).join(', ')}</span>${swPills}</div>`
           );
         }
         if (watchMatches.length) {
@@ -9193,6 +9290,28 @@
             focusShopOnLiveMap(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, btn.getAttribute('data-mid') || '');
           });
         });
+        alertBannerEl.querySelectorAll('.rp-alert-sw-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const eid = btn.getAttribute('data-eid');
+            const next = btn.getAttribute('data-next') === '1';
+            btn.disabled = true;
+            try {
+              const resp = await fetch('/api/shops/rustplus/smart-switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+                body: JSON.stringify({ entityId: eid, active: next })
+              });
+              const data = await resp.json();
+              if (resp.ok && Array.isArray(data.smartDevices)) {
+                appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+                renderRustPlusHeaderAndWidgets();
+                renderShopLiveMap();
+              }
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
       } else {
         alertBannerEl.style.display = 'none';
       }
@@ -9209,8 +9328,10 @@
           .map((tm) => {
             const isMe = me && String(tm.steamId) === String(me.steamId);
             const dot = !tm.isAlive ? '💀' : tm.isOnline ? '🟢' : '⚫';
+            const deathAgo = !tm.isAlive ? formatTeamDeathAgo(tm) : '';
             const bCol = isMe ? '#22d3ee' : !tm.isAlive ? '#ef4444' : tm.isOnline ? '#4ade80' : '#475569';
-            return `<button type="button" class="filter-pill shop-team-pill" data-wx="${tm.wx}" data-wy="${tm.wy}" style="border-color:${bCol}; color:${isMe ? '#a5f3fc' : '#e2e8f0'};">${dot} ${isMe ? 'YOU' : escapeHtml(tm.name)} [${escapeHtml(tm.grid)}]</button>`;
+            const suffix = deathAgo && deathAgo !== 'Dead' ? ` (${deathAgo})` : '';
+            return `<button type="button" class="filter-pill shop-team-pill" data-wx="${tm.wx}" data-wy="${tm.wy}" style="border-color:${bCol}; color:${isMe ? '#a5f3fc' : !tm.isAlive ? '#fca5a5' : '#e2e8f0'};">${dot} ${isMe ? 'YOU' : escapeHtml(tm.name)} [${escapeHtml(tm.grid)}]${escapeHtml(suffix)}</button>`;
           })
           .join('');
         teamStripEl.querySelectorAll('.shop-team-pill').forEach((btn) => {
@@ -9316,20 +9437,63 @@
     return `<img src="https://files.facepunch.com/rust/item/${escapeHtml(shortname)}_256.png" alt="${escapeHtml(alt)}" width="${size}" height="${size}" loading="lazy" style="width:${size}px; height:${size}px; object-fit:contain; vertical-align:middle; border-radius:3px;" onerror="this.style.display='none'" />`;
   }
 
+  let lastTriggeredAlarmIdsKey = '';
+  let bmPopIntelCache = { key: '', loading: false, error: '', serverName: '', serverId: '', history: [] };
+
+  function renderBm24hSparklineHtml(history) {
+    if (!Array.isArray(history) || history.length < 2) return '';
+    const vals = history.map((pt) => Number(pt?.attributes?.value ?? pt?.attributes?.mean ?? 0));
+    const maxV = Math.max(1, ...vals);
+    const minV = Math.min(...vals);
+    let minIdx = 0;
+    vals.forEach((v, idx) => { if (v < vals[minIdx]) minIdx = idx; });
+    const quietPt = history[minIdx]?.attributes?.timestamp ? new Date(history[minIdx].attributes.timestamp) : null;
+    const quietHour = quietPt && !Number.isNaN(quietPt.getTime())
+      ? `${String(quietPt.getHours()).padStart(2, '0')}:00`
+      : '';
+    const w = 240;
+    const h = 34;
+    const bw = w / vals.length;
+    const bars = vals
+      .map((v, idx) => {
+        const bh = Math.max(2, Math.round((v / maxV) * (h - 4)));
+        const col = idx === minIdx ? '#4ade80' : v >= maxV * 0.8 ? '#f97316' : '#38bdf8';
+        return `<rect x="${(idx * bw).toFixed(1)}" y="${h - bh}" width="${Math.max(1.5, bw - 1.5).toFixed(1)}" height="${bh}" rx="1" fill="${col}" opacity="0.9"><title>${Math.round(v)} players</title></rect>`;
+      })
+      .join('');
+    return `
+      <div style="margin-top:6px; padding-top:6px; border-top:1px dashed rgba(148,163,184,0.22); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+        <div>
+          <div style="font-size:10px; font-family:var(--font-mono); color:#93c5fd;">📊 24H SERVER POP (${Math.round(minV)}–${Math.round(maxV)})</div>
+          ${quietHour ? `<div style="font-size:10px; color:#86efac;">🌙 Quietest ~${quietHour} (${Math.round(vals[minIdx])}p)</div>` : ''}
+        </div>
+        <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block; background:rgba(9,14,22,0.7); border-radius:4px; padding:2px;">${bars}</svg>
+      </div>`;
+  }
+
   function renderRustPlusHeaderAndWidgets() {
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
     const pill = document.getElementById('hudRustPlusPill');
     const info = tel.serverInfo;
     const time = tel.time;
     const activeAlarms = (tel.smartDevices || []).filter((d) => d.entityType === 'alarm' && d.active);
+    const alarmKey = activeAlarms.map((a) => a.entityId).sort().join(',');
+    if (alarmKey && alarmKey !== lastTriggeredAlarmIdsKey) {
+      lastTriggeredAlarmIdsKey = alarmKey;
+      playAlertSound('urgent');
+    } else if (!alarmKey) {
+      lastTriggeredAlarmIdsKey = '';
+    }
 
     if (pill) {
       if (!info && (!tel.vendingPins || tel.vendingPins.length === 0) && activeAlarms.length === 0) {
         pill.style.display = 'none';
       } else {
         pill.style.display = 'inline-flex';
-        const phase = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted}` : '';
-        const pop = info?.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}` : '';
+        const phaseNext = time?.minutesUntilChange ? ` (${time.nextPhase === 'Night' ? '🌙' : '☀️'} ${time.minutesUntilChange}m)` : '';
+        const phase = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted}${phaseNext}` : '';
+        const qStr = info?.queuedPlayers > 0 ? ` 🚦Q:${info.queuedPlayers}` : '';
+        const pop = info?.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}${qStr}` : '';
         const shops = (tel.vendingPins || []).length ? `🛒 ${tel.vendingPins.length}` : '';
         const evts = (tel.liveEvents || []).length ? `⚡ ${tel.liveEvents.length}` : '';
         const alarmPrefix = activeAlarms.length ? `🚨 ALARM (${activeAlarms.length})` : `🟢 ${String(info?.name || 'Rust+').slice(0, 22)}`;
@@ -9337,6 +9501,107 @@
         pill.textContent = [alarmPrefix, pop, phase, shops, evts]
           .filter(Boolean)
           .join(' • ');
+      }
+    }
+
+    // Live Server Intel Card inside Rust+ subtab (Wipe Age, Queue, Phase Timer, Leader Handoff, 24h BM Pop)
+    const intelCard = document.getElementById('rpLiveServerIntelCard');
+    if (intelCard) {
+      const members = Array.isArray(tel.teamMembers) ? tel.teamMembers : [];
+      const me = findMyRustPlusTeamMember(tel);
+      const amLeader = Boolean(me && me.isLeader);
+      if (!info && members.length === 0 && !time) {
+        intelCard.style.display = 'none';
+      } else {
+        intelCard.style.display = 'block';
+        const wipeAge = info?.wipeTime ? formatWipeElapsed(info.wipeTime) : '';
+        const qNum = Number(info?.queuedPlayers || 0);
+        const phaseFull = time
+          ? `${time.isDay ? '☀️ Day' : '🌙 Night'} ${time.formatted}${time.minutesUntilChange ? ` • ${time.nextPhase} in <strong>${time.minutesUntilChange}m</strong>` : ''}`
+          : '';
+        const squadRows = members.length
+          ? `<div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:6px;">${members
+              .map((tm) => {
+                const isMe = me && String(tm.steamId) === String(me.steamId);
+                const dot = !tm.isAlive ? '💀' : tm.isOnline ? '🟢' : '⚫';
+                const promoteBtn = amLeader && !isMe
+                  ? `<button type="button" class="btn btn-sm rp-promote-lead-btn" data-sid="${escapeHtml(tm.steamId)}" title="Promote ${escapeHtml(tm.name)} to Team Leader" style="padding:1px 5px; font-size:10px; border-color:#f59e0b; color:#fde047;">👑 Lead</button>`
+                  : '';
+                return `<span style="display:inline-flex; align-items:center; gap:4px; font-size:10.5px; padding:2px 6px; border-radius:4px; background:rgba(9,14,22,0.75); border:1px solid ${tm.isLeader ? 'rgba(245,158,11,0.5)' : 'var(--border-subtle)'}; color:${isMe ? '#a5f3fc' : '#e2e8f0'};">${dot} ${tm.isLeader ? '👑 ' : ''}${isMe ? 'YOU' : escapeHtml(tm.name)} <span style="color:#94a3b8; font-family:var(--font-mono);">[${escapeHtml(tm.grid)}]</span>${promoteBtn}</span>`;
+              })
+              .join('')}</div>`
+          : '';
+        const bmMatched = bmPopIntelCache.key && info?.name && bmPopIntelCache.key === info.name && bmPopIntelCache.history.length > 0;
+        const bmHtml = bmMatched
+          ? renderBm24hSparklineHtml(bmPopIntelCache.history)
+          : bmPopIntelCache.error && bmPopIntelCache.key === info?.name
+            ? `<div style="margin-top:5px; font-size:10px; color:#fca5a5;">BattleMetrics: ${escapeHtml(bmPopIntelCache.error)}</div>`
+            : '';
+
+        intelCard.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+            <div style="font-size:11.5px; font-weight:700; color:#f8fafc;">🛰️ ${escapeHtml(info?.name || 'Connected Server')}</div>
+            <div style="display:flex; gap:5px; align-items:center;">
+              ${wipeAge ? `<span style="font-size:10px; font-family:var(--font-mono); padding:1px 6px; border-radius:4px; background:rgba(56,189,248,0.14); color:#7dd3fc;">⏳ Wipe ${escapeHtml(wipeAge)}</span>` : ''}
+              ${qNum > 0 ? `<span style="font-size:10px; font-family:var(--font-mono); padding:1px 6px; border-radius:4px; background:rgba(245,158,11,0.18); color:#fde047;">🚦 Queue: ${qNum}</span>` : ''}
+              ${info?.name ? `<button id="rpLoadBmPopBtn" type="button" class="btn btn-sm" style="padding:2px 7px; font-size:10px; border-color:#38bdf8; color:#bae6fd;" ${bmPopIntelCache.loading ? 'disabled' : ''}>${bmPopIntelCache.loading ? '⏳...' : '📊 24h Pop'}</button>` : ''}
+            </div>
+          </div>
+          ${phaseFull ? `<div style="font-size:10.5px; font-family:var(--font-mono); color:#cbd5e1; margin-top:4px;">${phaseFull}${info?.players !== undefined ? ` • 👥 ${info.players}/${info.maxPlayers || '?'}` : ''}</div>` : ''}
+          ${squadRows}
+          ${bmHtml}
+        `;
+
+        intelCard.querySelectorAll('.rp-promote-lead-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const sid = btn.getAttribute('data-sid');
+            btn.disabled = true;
+            try {
+              const resp = await fetch('/api/shops/rustplus/promote', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+                body: JSON.stringify({ steamId: sid })
+              });
+              const data = await resp.json();
+              if (resp.ok && Array.isArray(data.teamMembers)) {
+                appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), teamMembers: data.teamMembers };
+                renderRustPlusHeaderAndWidgets();
+                renderShopLiveMap();
+              } else if (data.error) {
+                alert(data.error);
+              }
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
+        intelCard.querySelector('#rpLoadBmPopBtn')?.addEventListener('click', async () => {
+          const srvName = String(info?.name || '').trim();
+          if (!srvName) return;
+          bmPopIntelCache = { key: srvName, loading: true, error: '', serverName: srvName, serverId: '', history: [] };
+          renderRustPlusHeaderAndWidgets();
+          try {
+            const sRes = await fetch(`/api/battlemetrics/search?q=${encodeURIComponent(srvName.slice(0, 60))}`);
+            const sJson = await sRes.json();
+            const list = Array.isArray(sJson?.data) ? sJson.data : [];
+            const match = list.find((s) => String(s?.attributes?.name || '').toLowerCase() === srvName.toLowerCase()) || list[0];
+            if (!match?.id) throw new Error('Server not found on BattleMetrics');
+            const dRes = await fetch(`/api/battlemetrics/server/${encodeURIComponent(match.id)}`);
+            const dJson = await dRes.json();
+            bmPopIntelCache = {
+              key: srvName,
+              loading: false,
+              error: '',
+              serverName: match.attributes?.name || srvName,
+              serverId: match.id,
+              history: Array.isArray(dJson?.history) ? dJson.history : []
+            };
+          } catch (err) {
+            bmPopIntelCache = { key: srvName, loading: false, error: err.message || 'Lookup failed', serverName: srvName, serverId: '', history: [] };
+          }
+          renderRustPlusHeaderAndWidgets();
+        });
       }
     }
 
