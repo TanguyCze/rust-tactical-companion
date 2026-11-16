@@ -58,6 +58,7 @@
   const DEFAULT_RUSTPLUS_SHOP_CONFIG = {
     ip: '',
     port: '28082',
+    serverId: '',
     playerId: '',
     playerToken: '',
     serverName: '',
@@ -68,9 +69,22 @@
     useProxy: false,
     autoPoll: false,
     discordAlertSteals: true,
+    discordAlertEvents: true,
     lastPolledAt: 0,
     lastStatus: '',
     mapSize: 4250
+  };
+
+  const DEFAULT_RUSTPLUS_TELEMETRY = {
+    serverInfo: null,
+    time: null,
+    mapMeta: null,
+    liveEvents: [],
+    vendingPins: [],
+    teamMembers: [],
+    mapNotes: [],
+    teamChat: [],
+    smartDevices: []
   };
 
   const DEFAULT_RAID_STASH = {
@@ -103,6 +117,7 @@
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     customShops: [],
     rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
+    rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY },
     savedClones: [
       { id: 'c1', crop: 'Hemp', genes: 'YGYWGG' },
       { id: 'c2', crop: 'Hemp', genes: 'GGYYXW' },
@@ -225,6 +240,7 @@
               raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) },
               discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
               rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(appState.rustPlusShopConfig || {}), ...(msg.state.rustPlusShopConfig || {}) },
+              rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), ...(msg.state.rustPlusTelemetry || {}) },
               customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || [])
             };
             saveLocalFallback();
@@ -7831,6 +7847,20 @@
         selectAction: { type: 'farm', idx: fIdx }
       });
     });
+
+    // 6. Live Rust+ Overlay (Vending Pins, Squad GPS, Map Notes, World Events)
+    if (document.getElementById('bfShowRustPlusCb')?.checked !== false) {
+      drawRustPlusOverlayOnCanvas(ctx, {
+        toPx,
+        scale,
+        mapSize,
+        showVending: true,
+        showTeam: true,
+        showEvents: true,
+        selectedShopPinId: selectedShopMapPinId,
+        pinOut: bfRenderedPins
+      });
+    }
   }
 
   function bfFormatOffshoreInfo(s) {
@@ -8428,6 +8458,16 @@
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowNoBuildCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowRouteCb')?.addEventListener('change', renderBaseFinderMap);
+    document.getElementById('bfShowRustPlusCb')?.addEventListener('change', renderBaseFinderMap);
+    document.getElementById('bfSyncServerBtn')?.addEventListener('click', () => {
+      const info = appState.rustPlusTelemetry?.serverInfo;
+      if (!info || !info.mapSize || !info.seed) {
+        alert('Connect to Rust+ first so Server Seed & Map Size are known.');
+        return;
+      }
+      if (urlInput) urlInput.value = `${info.mapSize}_${info.seed}`;
+      runAnalyze();
+    });
 
     // Zoom, Fit All, Island 100%, Full-Width Expand, and Drag-to-Pan controls
     const setZoomClamped = (nextZoom) => {
@@ -8622,6 +8662,514 @@
   // =========================================================================
   // MODULE 8: IN-GAME PLAYER SHOPS, NPC VENDORS & BEST-TO-BUY EVALUATOR
   // =========================================================================
+  let selectedShopMapPinId = '';
+  let shopMapVisible = false;
+  let shopMapAutoOpened = false;
+  let shopMapZoom = 1;
+  let shopMapPanX = 0;
+  let shopMapPanY = 0;
+  let shopLiveMapRenderedPins = [];
+  let cachedShopMapImg = null;
+  let cachedShopMapImgUrl = '';
+
+  function drawRustPlusOverlayOnCanvas(ctx, { toPx, scale, mapSize, showVending = true, showTeam = true, showEvents = true, selectedShopPinId = '', pinOut = [] }) {
+    const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+    if (!tel) return;
+
+    // A. In-Game Map Notes (Leader & Personal markers)
+    if (showTeam && Array.isArray(tel.mapNotes)) {
+      tel.mapNotes.forEach((n) => {
+        const { px, py } = toPx(n.wx, n.wy);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle = n.type === 1 ? 'rgba(239,68,68,0.85)' : 'rgba(250,204,21,0.85)';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#090b0e';
+        ctx.stroke();
+        if (n.label) {
+          ctx.font = '700 9.5px "Inter", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+          ctx.lineWidth = 3;
+          const lbl = `📌 ${n.label}`;
+          ctx.strokeText(lbl, px, py - 9);
+          ctx.fillStyle = '#fde68a';
+          ctx.fillText(lbl, px, py - 9);
+        }
+        ctx.restore();
+      });
+    }
+
+    // B. Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Vendor)
+    if (showEvents && Array.isArray(tel.liveEvents)) {
+      tel.liveEvents.forEach((ev) => {
+        const { px, py } = toPx(ev.wx, ev.wy);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 14, 0, Math.PI * 2);
+        ctx.fillStyle = `${ev.color || '#ef4444'}33`;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = ev.color || '#ef4444';
+        ctx.stroke();
+
+        ctx.font = '14px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ev.icon || '⚡', px, py + 0.5);
+
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = '700 10px "JetBrains Mono", monospace';
+        ctx.strokeStyle = 'rgba(0,0,0,0.94)';
+        ctx.lineWidth = 3;
+        const lbl = `${ev.label} [${ev.grid}]`;
+        ctx.strokeText(lbl, px, py + 23);
+        ctx.fillStyle = ev.color || '#fca5a5';
+        ctx.fillText(lbl, px, py + 23);
+        ctx.restore();
+
+        pinOut.push({
+          px,
+          py,
+          r: 15,
+          wx: ev.wx,
+          wy: ev.wy,
+          title: `${ev.icon} ${ev.label} [${ev.grid}]`,
+          color: ev.color || '#f43f5e',
+          lines: [
+            ev.type === 6 ? 'Locked Crate active — start/track 15:00 hack timer in Timers!' :
+            ev.type === 5 ? 'Cargo Ship circling map — timed locked crates onboard!' :
+            ev.type === 8 ? 'Patrol Helicopter roaming — take cover or pull!' :
+            ev.type === 2 ? '💥 Explosion / Boom detected!' :
+            'Live server event marker'
+          ],
+          selectAction: { type: 'event', event: ev }
+        });
+      });
+    }
+
+    // C. Live Vending Machines (Color-coded: Gold Star = S-Tier Steal, Green = In Stock, Grey = Sold Out)
+    if (showVending && Array.isArray(tel.vendingPins)) {
+      tel.vendingPins.forEach((vp) => {
+        const { px, py } = toPx(vp.wx, vp.wy);
+        const isSel = selectedShopPinId && String(vp.markerId) === String(selectedShopPinId);
+        const hasSteal = (vp.stealCount || 0) > 0;
+        const hasStock = (vp.inStockCount || 0) > 0;
+        const fill = hasSteal ? '#eab308' : hasStock ? '#22c55e' : '#64748b';
+        const ring = isSel ? '#38bdf8' : hasSteal ? '#c084fc' : hasStock ? '#4ade80' : '#475569';
+        const r = isSel ? 12 : hasSteal ? 10.5 : 8.5;
+
+        ctx.save();
+        if (hasSteal || isSel) {
+          ctx.beginPath();
+          ctx.arc(px, py, r + 5, 0, Math.PI * 2);
+          ctx.fillStyle = isSel ? 'rgba(56,189,248,0.28)' : 'rgba(168,85,247,0.25)';
+          ctx.fill();
+          ctx.lineWidth = isSel ? 2.4 : 1.6;
+          ctx.strokeStyle = ring;
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#090b0e';
+        ctx.stroke();
+
+        ctx.font = '800 10px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = hasSteal ? '#090b0e' : '#ffffff';
+        ctx.fillText(hasSteal ? '★' : '🛒', px, py + 0.5);
+
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = '700 9.5px "JetBrains Mono", monospace';
+        ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+        ctx.lineWidth = 3;
+        const tag = `[${vp.grid}] ${vp.name.slice(0, 18)}`;
+        ctx.strokeText(tag, px, py - (r + 5));
+        ctx.fillStyle = hasSteal ? '#fde047' : hasStock ? '#bbf7d0' : '#94a3b8';
+        ctx.fillText(tag, px, py - (r + 5));
+        ctx.restore();
+
+        const orderLines = (vp.orders || []).slice(0, 5).map((o) => {
+          const stLbl = o.inStock > 0 ? `${o.inStock} left` : 'SOLD OUT';
+          return `${o.isSteal ? '🔥 ' : '• '}${o.buyQty}× ${o.buyItem} ⇄ ${o.payQty} ${o.payItem} (${stLbl})`;
+        });
+        if (!orderLines.length) orderLines.push('Click to filter trades in list');
+        else orderLines.push('Click pin → Filter list to this shop');
+
+        pinOut.push({
+          px,
+          py,
+          r: r + 4,
+          wx: vp.wx,
+          wy: vp.wy,
+          title: `🛒 ${vp.name} [${vp.grid}] (${vp.inStockCount}/${vp.totalOrders} stocked)`,
+          color: ring,
+          lines: orderLines,
+          selectAction: { type: 'vending', markerId: vp.markerId, pin: vp }
+        });
+      });
+    }
+
+    // D. Live Squad Teammates GPS
+    if (showTeam && Array.isArray(tel.teamMembers)) {
+      tel.teamMembers.forEach((tm) => {
+        const { px, py } = toPx(tm.wx, tm.wy);
+        const dotColor = !tm.isOnline ? '#64748b' : !tm.isAlive ? '#ef4444' : '#38bdf8';
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 10, 0, Math.PI * 2);
+        ctx.fillStyle = `${dotColor}30`;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(px, py, 6.5, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#090b0e';
+        ctx.stroke();
+
+        ctx.font = '700 10px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+        ctx.lineWidth = 3;
+        const badge = `${tm.isLeader ? '👑 ' : ''}${!tm.isAlive ? '💀 ' : ''}${tm.name} [${tm.grid}]`;
+        ctx.strokeText(badge, px, py - 11);
+        ctx.fillStyle = !tm.isAlive ? '#fca5a5' : tm.isOnline ? '#bae6fd' : '#94a3b8';
+        ctx.fillText(badge, px, py - 11);
+        ctx.restore();
+
+        pinOut.push({
+          px,
+          py,
+          r: 10,
+          wx: tm.wx,
+          wy: tm.wy,
+          title: `${tm.isLeader ? '👑 ' : ''}${tm.name} [${tm.grid}]`,
+          color: dotColor,
+          lines: [`Status: ${tm.isOnline ? 'Online' : 'Offline'} • ${tm.isAlive ? 'Alive' : 'Dead / Sleeping'}`],
+          selectAction: { type: 'team', member: tm }
+        });
+      });
+    }
+  }
+
+  function renderShopLiveMap() {
+    const card = document.getElementById('shopLiveMapCard');
+    const toggleBtn = document.getElementById('toggleShopMapBtn');
+    const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+    const hasLiveData = Boolean(
+      (tel.vendingPins && tel.vendingPins.length > 0) ||
+      (tel.liveEvents && tel.liveEvents.length > 0) ||
+      (tel.teamMembers && tel.teamMembers.length > 0) ||
+      tel.serverInfo
+    );
+    if (hasLiveData && !shopMapAutoOpened) {
+      shopMapVisible = true;
+      shopMapAutoOpened = true;
+    }
+    if (card) card.style.display = shopMapVisible ? 'block' : 'none';
+    if (toggleBtn) {
+      toggleBtn.textContent = shopMapVisible ? '🗺️ Hide Map' : '🗺️ Live Map';
+      toggleBtn.style.borderColor = hasLiveData ? '#4ade80' : '#38bdf8';
+    }
+    if (!shopMapVisible) return;
+
+    const metaEl = document.getElementById('shopLiveMapMeta');
+    const eventsStrip = document.getElementById('shopLiveEventsStrip');
+    const info = tel.serverInfo || {};
+    const time = tel.time || null;
+    const mapSize = Number(info.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
+
+    if (metaEl) {
+      if (!hasLiveData) {
+        metaEl.textContent = 'Connect via Steam Popup (or click Demo Shops) to load live Vending Machines, Squad GPS & World Events.';
+      } else {
+        const popStr = info.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}${info.queuedPlayers ? ` (+${info.queuedPlayers}Q)` : ''}` : '';
+        const clkStr = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted} (${time.nextPhase} in ~${time.minutesUntilChange}m)` : '';
+        const seedStr = info.seed ? `Seed ${info.mapSize}_${info.seed}` : `${mapSize}m`;
+        metaEl.textContent = [info.name || 'Live Server', popStr, clkStr, seedStr].filter(Boolean).join(' • ');
+      }
+    }
+
+    if (eventsStrip) {
+      const evts = tel.liveEvents || [];
+      eventsStrip.innerHTML = evts.length
+        ? evts
+            .map(
+              (ev) =>
+                `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>`
+            )
+            .join('')
+        : `<span style="font-size:11px; color:var(--text-muted);">No active Cargo / Heli / Crate markers on map right now.</span>`;
+      eventsStrip.querySelectorAll('.shop-evt-pill').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          shopMapPanX = parseFloat(btn.getAttribute('data-wx')) || 0;
+          shopMapPanY = parseFloat(btn.getAttribute('data-wy')) || 0;
+          shopMapZoom = Math.max(shopMapZoom, 1.85);
+          renderShopLiveMap();
+        });
+      });
+    }
+
+    const canvas = document.getElementById('shopLiveMapCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#09232e';
+    ctx.fillRect(0, 0, W, H);
+
+    // Maintain square scale based on canvas height so entire island fits neatly at 100% zoom
+    const fitSpan = Math.min(W, H) * 0.94;
+    const scale = (fitSpan / mapSize) * shopMapZoom;
+    const toPx = (wx, wy) => ({
+      px: W / 2 + (wx - shopMapPanX) * scale,
+      py: H / 2 - (wy - shopMapPanY) * scale
+    });
+    const imgTopLeft = toPx(-mapSize / 2, mapSize / 2);
+    const imgSizePx = mapSize * scale;
+
+    // Load live Rust+ AppMap JPG if available, else fall back to Base Finder image
+    const rpImgUrl = tel.mapMeta?.imageUrl || '';
+    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl) {
+      cachedShopMapImgUrl = rpImgUrl;
+      const im = new Image();
+      im.onload = () => {
+        cachedShopMapImg = im;
+        renderShopLiveMap();
+      };
+      im.src = rpImgUrl;
+    }
+
+    const activeImg = cachedShopMapImg || bfLoadedImage;
+    if (activeImg && activeImg.complete && activeImg.naturalWidth > 0) {
+      if (cachedShopMapImg && tel.mapMeta && tel.mapMeta.width > 0) {
+        const mw = tel.mapMeta.width;
+        const mh = tel.mapMeta.height || mw;
+        const margin = Number(tel.mapMeta.oceanMargin || 0);
+        const innerW = Math.max(1, mw - 2 * margin);
+        const innerH = Math.max(1, mh - 2 * margin);
+        const pxRatioW = imgSizePx / innerW;
+        const pxRatioH = imgSizePx / innerH;
+        ctx.drawImage(
+          activeImg,
+          imgTopLeft.px - margin * pxRatioW,
+          imgTopLeft.py - margin * pxRatioH,
+          mw * pxRatioW,
+          mh * pxRatioH
+        );
+      } else {
+        ctx.drawImage(activeImg, imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
+      }
+    } else {
+      // Crisp procedural landmass placeholder so Demo & Pre-JPG states still look tactical
+      ctx.save();
+      ctx.fillStyle = '#0f3644';
+      ctx.fillRect(imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
+      ctx.beginPath();
+      ctx.arc(W / 2 - shopMapPanX * scale, H / 2 + shopMapPanY * scale, imgSizePx * 0.39, 0, Math.PI * 2);
+      ctx.fillStyle = '#1f2e24';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.25)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Rust Grid Overlay (matching Facepunch grid math)
+    const count = bfGridCount(mapSize);
+    const cellPx = imgSizePx / count;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.font = '600 9.5px "JetBrains Mono", monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+    for (let i = 0; i <= count; i++) {
+      const gx = imgTopLeft.px + i * cellPx;
+      const gy = imgTopLeft.py + i * cellPx;
+      ctx.beginPath();
+      ctx.moveTo(gx, imgTopLeft.py);
+      ctx.lineTo(gx, imgTopLeft.py + imgSizePx);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(imgTopLeft.px, gy);
+      ctx.lineTo(imgTopLeft.px + imgSizePx, gy);
+      ctx.stroke();
+      if (i < count) {
+        ctx.fillText(bfColLabel(i), gx + 3, Math.max(11, imgTopLeft.py + 11));
+        ctx.fillText(String(i), Math.max(3, imgTopLeft.px + 3), gy + 18);
+      }
+    }
+    ctx.restore();
+
+    // Draw subtle Monument labels from Base Finder or Rust+ AppMap
+    const mons = (bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0)
+      ? bfMapData.monuments.map((m) => ({ name: m.type, wx: m.x, wy: m.y }))
+      : (tel.mapMeta?.monuments || []).map((m) => ({
+          name: String(m.token || '').replace(/_display_name|_monument_name|monument_/gi, '').replace(/_/g, ' ').trim(),
+          wx: m.wx,
+          wy: m.wy
+        }));
+    ctx.save();
+    ctx.font = '600 9.5px "Inter", sans-serif';
+    ctx.textAlign = 'center';
+    mons.forEach((m) => {
+      if (!m.name || /cave|train_tunnel|swamp|power_sub/i.test(m.name)) return;
+      const { px, py } = toPx(m.wx, m.wy);
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.strokeText(m.name, px, py);
+      ctx.fillStyle = 'rgba(226,232,240,0.72)';
+      ctx.fillText(m.name, px, py);
+    });
+    ctx.restore();
+
+    shopLiveMapRenderedPins = [];
+    drawRustPlusOverlayOnCanvas(ctx, {
+      toPx,
+      scale,
+      mapSize,
+      showVending: document.getElementById('shopMapShowVendingCb')?.checked !== false,
+      showTeam: document.getElementById('shopMapShowTeamCb')?.checked !== false,
+      showEvents: document.getElementById('shopMapShowEventsCb')?.checked !== false,
+      selectedShopPinId: selectedShopMapPinId,
+      pinOut: shopLiveMapRenderedPins
+    });
+  }
+
+  function focusShopOnLiveMap(wx, wy, markerId = '') {
+    shopMapVisible = true;
+    if (markerId) selectedShopMapPinId = String(markerId);
+    shopMapPanX = Number(wx) || 0;
+    shopMapPanY = Number(wy) || 0;
+    shopMapZoom = Math.max(shopMapZoom, 1.9);
+    renderShopsModule();
+    renderShopLiveMap();
+    document.getElementById('shopLiveMapCard')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function renderRustPlusHeaderAndWidgets() {
+    const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+    const pill = document.getElementById('hudRustPlusPill');
+    const info = tel.serverInfo;
+    const time = tel.time;
+
+    if (pill) {
+      if (!info && (!tel.vendingPins || tel.vendingPins.length === 0)) {
+        pill.style.display = 'none';
+      } else {
+        pill.style.display = 'inline-flex';
+        const phase = time ? `${time.isDay ? '☀️' : '🌙'} ${time.formatted}` : '';
+        const pop = info?.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}` : '';
+        const shops = (tel.vendingPins || []).length ? `🛒 ${tel.vendingPins.length}` : '';
+        const evts = (tel.liveEvents || []).length ? `⚡ ${tel.liveEvents.length}` : '';
+        pill.textContent = [`🟢 ${String(info?.name || 'Rust+').slice(0, 22)}`, pop, phase, shops, evts]
+          .filter(Boolean)
+          .join(' • ');
+      }
+    }
+
+    // Base Finder quick button to analyze connected live server seed
+    const bfSyncBtn = document.getElementById('bfSyncServerBtn');
+    if (bfSyncBtn) {
+      if (info && info.mapSize && info.seed) {
+        bfSyncBtn.style.display = 'inline-flex';
+        bfSyncBtn.textContent = `🛰️ Load Server (${info.mapSize}_${info.seed})`;
+      } else {
+        bfSyncBtn.style.display = 'none';
+      }
+    }
+
+    // Team Chat list
+    const chatList = document.getElementById('rpTeamChatList');
+    if (chatList) {
+      const msgs = Array.isArray(tel.teamChat) ? tel.teamChat : [];
+      chatList.innerHTML = msgs.length
+        ? msgs
+            .map(
+              (m) =>
+                `<div><strong style="color:${escapeHtml(m.color || '#4ade80')};">${escapeHtml(m.name || 'Teammate')}:</strong> <span style="color:#e2e8f0;">${escapeHtml(m.message || '')}</span></div>`
+            )
+            .join('')
+        : `<span style="color:var(--text-muted);">No recent in-game team messages yet.</span>`;
+      chatList.scrollTop = chatList.scrollHeight;
+    }
+
+    // Smart Switches & Raid Alarms list
+    const devList = document.getElementById('rpSmartDevicesList');
+    if (devList) {
+      const devs = Array.isArray(tel.smartDevices) ? tel.smartDevices : [];
+      devList.innerHTML = devs.length
+        ? devs
+            .map((d) => {
+              const isAlarm = d.entityType === 'alarm';
+              const statusTxt = isAlarm ? '🚨 ARMED ALARM' : d.active ? '🟢 ON' : '⚫ OFF';
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; border-radius:4px; background:rgba(15,23,42,0.7); border:1px solid var(--border-subtle);">
+                  <div>
+                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">${isAlarm ? '🚨' : '⚡'} ${escapeHtml(d.name)}</div>
+                    <div style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">ID: ${escapeHtml(d.entityId)} • ${statusTxt}</div>
+                  </div>
+                  <div style="display:flex; gap:5px;">
+                    ${!isAlarm ? `<button type="button" class="btn btn-sm rp-switch-toggle-btn" data-eid="${escapeHtml(d.entityId)}" data-next="${d.active ? '0' : '1'}" style="border-color:${d.active ? '#ef4444' : '#4ade80'}; color:${d.active ? '#fca5a5' : '#bbf7d0'};">${d.active ? 'Turn OFF' : 'Turn ON'}</button>` : ''}
+                    <button type="button" class="btn btn-sm rp-switch-del-btn" data-eid="${escapeHtml(d.entityId)}" style="padding:2px 6px;">✕</button>
+                  </div>
+                </div>
+              `;
+            })
+            .join('')
+        : `<span style="font-size:11px; color:var(--text-muted);">Pair a Smart Switch/Alarm in Rust (ESC → Rust+ → Pair) or add an Entity ID below.</span>`;
+
+      devList.querySelectorAll('.rp-switch-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const eid = btn.getAttribute('data-eid');
+          const next = btn.getAttribute('data-next') === '1';
+          btn.disabled = true;
+          try {
+            const resp = await fetch('/api/shops/rustplus/smart-switch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+              body: JSON.stringify({ entityId: eid, active: next })
+            });
+            const data = await resp.json();
+            if (resp.ok && Array.isArray(data.smartDevices)) {
+              appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+              renderRustPlusHeaderAndWidgets();
+            } else if (data.error) {
+              alert(data.error);
+            }
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      devList.querySelectorAll('.rp-switch-del-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const eid = btn.getAttribute('data-eid');
+          const resp = await fetch('/api/shops/rustplus/smart-device', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+            body: JSON.stringify({ action: 'remove', entityId: eid })
+          });
+          const data = await resp.json();
+          if (resp.ok && Array.isArray(data.smartDevices)) {
+            appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+            renderRustPlusHeaderAndWidgets();
+          }
+        });
+      });
+    }
+  }
+
   const SHOP_CATEGORY_LABELS = {
     teas: '🧪 Teas & Clones',
     progression: '⚙️ WB & BPs',
@@ -8798,6 +9346,9 @@
       const shopLabel = String(cs.shopName || '').trim();
       const entry = {
         id: cs.id,
+        markerId: cs.markerId || '',
+        wx: typeof cs.wx === 'number' ? cs.wx : undefined,
+        wy: typeof cs.wy === 'number' ? cs.wy : undefined,
         isCustom: true,
         liveSource: cs.liveSource || '',
         shopName: shopLabel,
@@ -9051,6 +9602,7 @@
       .filter(Boolean);
 
     const filtered = allTrades.filter((t) => {
+      if (selectedShopMapPinId && String(t.markerId || '') !== String(selectedShopMapPinId)) return false;
       if (selectedShopFilter === 'best' && !t.bestToBuy) return false;
       else if (selectedShopFilter === 'player' && t.shopType !== 'player') return false;
       else if (selectedShopFilter === 'npc' && t.shopType !== 'npc') return false;
@@ -9128,6 +9680,29 @@
       badgeEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'TRADE' : 'TRADES'}`;
     }
 
+    const pinBanner = document.getElementById('shopSelectedPinFilterBanner');
+    if (pinBanner) {
+      if (selectedShopMapPinId) {
+        const pinObj = (appState.rustPlusTelemetry?.vendingPins || []).find((p) => String(p.markerId) === String(selectedShopMapPinId));
+        pinBanner.style.display = 'flex';
+        pinBanner.style.justifyContent = 'space-between';
+        pinBanner.style.alignItems = 'center';
+        pinBanner.style.padding = '6px 10px';
+        pinBanner.style.borderRadius = '6px';
+        pinBanner.style.background = 'rgba(56, 189, 248, 0.14)';
+        pinBanner.style.border = '1px solid rgba(56, 189, 248, 0.45)';
+        pinBanner.style.fontSize = '12px';
+        pinBanner.innerHTML = `<span>📍 Map Filter: <strong style="color:#bae6fd;">${escapeHtml(pinObj?.name || 'Selected Shop')} [${escapeHtml(pinObj?.grid || '')}]</strong></span><button id="clearShopMapPinFilterBtn" type="button" class="btn btn-sm">✕ Show All Shops</button>`;
+        document.getElementById('clearShopMapPinFilterBtn')?.addEventListener('click', () => {
+          selectedShopMapPinId = '';
+          renderShopsModule();
+          renderShopLiveMap();
+        });
+      } else {
+        pinBanner.style.display = 'none';
+      }
+    }
+
     if (filtered.length > 0 && !filtered.some((t) => t.id === selectedShopTradeId)) {
       selectedShopTradeId = filtered[0].id;
     }
@@ -9165,6 +9740,10 @@
           const dronePill = t.drone
             ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.12); color:#7dd3fc;">🚁 Drone</span>`
             : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(148,163,184,0.15); color:#cbd5e1;">🏃 In-Person</span>`;
+          const mapLocBtn =
+            typeof t.wx === 'number' && typeof t.wy === 'number'
+              ? `<button type="button" class="btn btn-sm shop-locate-btn" data-wx="${t.wx}" data-wy="${t.wy}" data-mid="${escapeHtml(t.markerId || '')}" style="padding:2px 7px; font-size:10.5px; border-color:rgba(56,189,248,0.45); color:#7dd3fc;" title="Focus this vending machine on Live Map">📍 Map</button>`
+              : '';
           const delBtn = t.isCustom
             ? `<button type="button" class="btn btn-sm shop-del-btn" data-del-shop="${escapeHtml(t.id)}" style="padding:2px 7px; font-size:10.5px;">✕</button>`
             : '';
@@ -9188,6 +9767,7 @@
                   ${stockPill}
                   ${typePill}
                   ${dronePill}
+                  ${mapLocBtn}
                   ${delBtn}
                 </div>
               </div>
@@ -9202,9 +9782,19 @@
         .join('');
     }
 
+    listEl.querySelectorAll('.shop-locate-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wx = parseFloat(btn.getAttribute('data-wx')) || 0;
+        const wy = parseFloat(btn.getAttribute('data-wy')) || 0;
+        const mid = btn.getAttribute('data-mid') || '';
+        focusShopOnLiveMap(wx, wy, mid);
+      });
+    });
+
     listEl.querySelectorAll('.shop-trade-card').forEach((card) => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.shop-del-btn')) return;
+        if (e.target.closest('.shop-del-btn') || e.target.closest('.shop-locate-btn')) return;
         selectedShopTradeId = card.getAttribute('data-shop-id') || '';
         const budgetEl = document.getElementById('shopBudgetInput');
         if (budgetEl) budgetEl.value = '';
@@ -9726,6 +10316,37 @@
       } catch (_) {}
     });
 
+    const hydrateRustPlusStateFromResponse = (data) => {
+      if (data?.state) {
+        appState = {
+          ...appState,
+          ...data.state,
+          customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
+          rustPlusShopConfig: {
+            ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+            ...(appState.rustPlusShopConfig || {}),
+            ...(data.state.rustPlusShopConfig || {})
+          },
+          rustPlusTelemetry: {
+            ...DEFAULT_RUSTPLUS_TELEMETRY,
+            ...(appState.rustPlusTelemetry || {}),
+            ...(data.state.rustPlusTelemetry || {})
+          }
+        };
+        saveLocalFallback();
+      } else if (Array.isArray(data?.pairedServers)) {
+        appState.rustPlusShopConfig = {
+          ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+          ...(appState.rustPlusShopConfig || {}),
+          ...(data.activeServer || {}),
+          pairedServers: data.pairedServers,
+          lastStatus: data.lastStatus || ''
+        };
+        saveLocalFallback();
+      }
+      renderAll();
+    };
+
     const readRustPlusFormConfig = () => {
       const ipOrId = document.getElementById('rpShopIpInput')?.value.trim() || '';
       const storedSid = appState.rustPlusShopConfig?.serverId || '';
@@ -9737,7 +10358,8 @@
         playerId: document.getElementById('rpShopPlayerIdInput')?.value.trim() || '',
         playerToken: document.getElementById('rpShopTokenInput')?.value.trim() || '',
         autoPoll: Boolean(document.getElementById('rpShopAutoPollCb')?.checked),
-        discordAlertSteals: document.getElementById('rpShopDiscordStealCb')?.checked !== false
+        discordAlertSteals: document.getElementById('rpShopDiscordStealCb')?.checked !== false,
+        discordAlertEvents: document.getElementById('rpShopDiscordEventsCb')?.checked !== false
       };
     };
 
@@ -9749,7 +10371,7 @@
         return;
       }
       const targetDesc = cfg.ip ? `${cfg.ip}:${cfg.port}` : `Relay ${cfg.serverId.slice(0, 8)}...`;
-      if (statusEl) statusEl.textContent = simulate ? '⏳ Generating Demo Live Server Vending Snapshot...' : `⏳ Polling Rust+ map markers from ${targetDesc}...`;
+      if (statusEl) statusEl.textContent = simulate ? '⏳ Generating Demo Live Server Snapshot...' : `⏳ Polling Rust+ map, shops, squad & events from ${targetDesc}...`;
       try {
         const resp = await fetch('/api/shops/rustplus/poll', {
           method: 'POST',
@@ -9763,22 +10385,8 @@
         if (!resp.ok || data.error) {
           throw new Error(data.error || `HTTP ${resp.status}`);
         }
-        if (data.state) {
-          appState = {
-            ...appState,
-            ...data.state,
-            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
-            rustPlusShopConfig: {
-              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
-              ...(appState.rustPlusShopConfig || {}),
-              ...(data.state.rustPlusShopConfig || {})
-            }
-          };
-          saveLocalFallback();
-        }
+        hydrateRustPlusStateFromResponse(data);
         if (statusEl) statusEl.textContent = data.lastStatus || `✅ Synced ${data.ordersCount || 0} live orders across ${data.shopsCount || 0} shops.`;
-        syncRustPlusShopUiFromState();
-        renderShopsModule();
       } catch (err) {
         if (statusEl) statusEl.textContent = `❌ ${err.message}`;
       }
@@ -9847,34 +10455,11 @@
         if (!resp.ok || data.error) {
           throw new Error(data.error || `HTTP ${resp.status}`);
         }
-        if (data.state) {
-          appState = {
-            ...appState,
-            ...data.state,
-            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
-            rustPlusShopConfig: {
-              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
-              ...(appState.rustPlusShopConfig || {}),
-              ...(data.state.rustPlusShopConfig || {})
-            }
-          };
-          saveLocalFallback();
-        } else if (Array.isArray(data.pairedServers)) {
-          appState.rustPlusShopConfig = {
-            ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
-            ...(appState.rustPlusShopConfig || {}),
-            ...(data.activeServer || {}),
-            pairedServers: data.pairedServers,
-            lastStatus: data.lastStatus || ''
-          };
-          saveLocalFallback();
-        }
+        hydrateRustPlusStateFromResponse(data);
         if (codeInp && !simulate) {
           codeInp.value = '';
           codeInp.placeholder = '✅ Connected to Facepunch Cloud (paste a new #code= only if re-logging in)';
         }
-        syncRustPlusShopUiFromState();
-        renderShopsModule();
         if (statusEl) {
           statusEl.textContent = data.lastStatus || `✅ Connected via Facepunch Cloud! Found ${(data.pairedServers || []).length} paired server(s).`;
         }
@@ -9926,21 +10511,7 @@
         });
         const data = await resp.json();
         if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
-        if (data.state) {
-          appState = {
-            ...appState,
-            ...data.state,
-            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
-            rustPlusShopConfig: {
-              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
-              ...(appState.rustPlusShopConfig || {}),
-              ...(data.state.rustPlusShopConfig || {})
-            }
-          };
-          saveLocalFallback();
-        }
-        syncRustPlusShopUiFromState();
-        renderShopsModule();
+        hydrateRustPlusStateFromResponse(data);
         if (Array.isArray(data.pairedServers) && data.pairedServers.length > 0) {
           stopClientCloudWaitPoll();
         }
@@ -10061,21 +10632,225 @@
     };
     document.getElementById('rpShopAutoPollCb')?.addEventListener('change', saveRustPlusPollSettings);
     document.getElementById('rpShopDiscordStealCb')?.addEventListener('change', saveRustPlusPollSettings);
+    document.getElementById('rpShopDiscordEventsCb')?.addEventListener('change', saveRustPlusPollSettings);
 
     document.getElementById('rpShopClearLiveBtn')?.addEventListener('click', () => {
       appState.customShops = (Array.isArray(appState.customShops) ? appState.customShops : []).filter(
         (cs) => !cs.liveSource
       );
+      appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY };
+      selectedShopMapPinId = '';
+      cachedShopMapImg = null;
+      cachedShopMapImgUrl = '';
       if (appState.rustPlusShopConfig) {
-        appState.rustPlusShopConfig.lastStatus = 'Live vending feed cleared.';
+        appState.rustPlusShopConfig.lastStatus = 'Live vending feed & telemetry cleared.';
         appState.rustPlusShopConfig.autoPoll = false;
       }
       const autoCb = document.getElementById('rpShopAutoPollCb');
       if (autoCb) autoCb.checked = false;
       saveRustPlusPollSettings();
       syncStateToServer();
-      renderShopsModule();
-      syncRustPlusShopUiFromState();
+      renderAll();
+    });
+
+    // HUD Rust+ Quick Jump Pill
+    document.getElementById('hudRustPlusPill')?.addEventListener('click', () => {
+      document.querySelector('.nav-tab[data-tab="tab-shops"]')?.click();
+      shopMapVisible = true;
+      renderShopLiveMap();
+    });
+
+    // Live Shop Map Controls (Toggle, Layers, Zoom, Pan, Hover, Click-to-Filter)
+    document.getElementById('toggleShopMapBtn')?.addEventListener('click', () => {
+      shopMapVisible = !shopMapVisible;
+      renderShopLiveMap();
+    });
+    ['shopMapShowVendingCb', 'shopMapShowTeamCb', 'shopMapShowEventsCb'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', renderShopLiveMap);
+    });
+    const setShopZoomClamped = (z) => {
+      shopMapZoom = Math.max(0.65, Math.min(4.2, z));
+      renderShopLiveMap();
+    };
+    document.getElementById('shopMapZoomInBtn')?.addEventListener('click', () => setShopZoomClamped(shopMapZoom * 1.25));
+    document.getElementById('shopMapZoomOutBtn')?.addEventListener('click', () => setShopZoomClamped(shopMapZoom * 0.8));
+    document.getElementById('shopMapZoomResetBtn')?.addEventListener('click', () => {
+      shopMapPanX = 0;
+      shopMapPanY = 0;
+      setShopZoomClamped(1);
+    });
+    document.getElementById('shopMapOpenBaseFinderBtn')?.addEventListener('click', () => {
+      const info = appState.rustPlusTelemetry?.serverInfo;
+      document.querySelector('.nav-tab[data-tab="tab-basefinder"]')?.click();
+      if (info && info.mapSize && info.seed) {
+        const inp = document.getElementById('bfMapUrlInput');
+        if (inp) inp.value = `${info.mapSize}_${info.seed}`;
+        document.getElementById('bfAnalyzeBtn')?.click();
+      }
+    });
+
+    const shopCanvas = document.getElementById('shopLiveMapCanvas');
+    const shopTooltip = document.getElementById('shopMapTooltip');
+    const shopHudReadout = document.getElementById('shopMapHudReadout');
+    if (shopCanvas) {
+      let dragging = false;
+      let dragMoved = 0;
+      let lastX = 0;
+      let lastY = 0;
+      shopCanvas.addEventListener('mousedown', (e) => {
+        dragging = true;
+        dragMoved = 0;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        shopCanvas.style.cursor = 'grabbing';
+      });
+      window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        shopCanvas.style.cursor = 'grab';
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        dragMoved += Math.hypot(e.clientX - lastX, e.clientY - lastY);
+        const rect = shopCanvas.getBoundingClientRect();
+        const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
+        const fitSpan = Math.min(shopCanvas.width, shopCanvas.height) * 0.94;
+        const scale = (fitSpan / mapSize) * shopMapZoom;
+        const dx = ((e.clientX - lastX) * shopCanvas.width) / Math.max(1, rect.width);
+        const dy = ((e.clientY - lastY) * shopCanvas.height) / Math.max(1, rect.height);
+        lastX = e.clientX;
+        lastY = e.clientY;
+        shopMapPanX -= dx / scale;
+        shopMapPanY += dy / scale;
+        renderShopLiveMap();
+      });
+      shopCanvas.addEventListener('mousemove', (e) => {
+        if (dragging) {
+          if (shopTooltip) shopTooltip.style.display = 'none';
+          return;
+        }
+        const rect = shopCanvas.getBoundingClientRect();
+        const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
+        const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
+        const mapSize = Number(appState.rustPlusTelemetry?.serverInfo?.mapSize || appState.rustPlusShopConfig?.mapSize || 4250);
+        const fitSpan = Math.min(shopCanvas.width, shopCanvas.height) * 0.94;
+        const scale = (fitSpan / mapSize) * shopMapZoom;
+        const wx = (cx - shopCanvas.width / 2) / scale + shopMapPanX;
+        const wy = -(cy - shopCanvas.height / 2) / scale + shopMapPanY;
+        if (shopHudReadout) {
+          shopHudReadout.style.display = 'block';
+          shopHudReadout.textContent = `Grid ${bfWorldToSubGrid(wx, wy, mapSize)} • Zoom ${Math.round(shopMapZoom * 100)}%`;
+        }
+        let hit = null;
+        let minDist = Infinity;
+        for (const pin of shopLiveMapRenderedPins) {
+          const d = Math.hypot(cx - pin.px, cy - pin.py);
+          if (d <= pin.r + 7 && d < minDist) {
+            minDist = d;
+            hit = pin;
+          }
+        }
+        if (shopTooltip) {
+          if (hit) {
+            shopCanvas.style.cursor = 'pointer';
+            shopTooltip.style.display = 'block';
+            shopTooltip.style.left = `${Math.min(rect.width - 250, Math.max(8, e.clientX - rect.left + 14))}px`;
+            shopTooltip.style.top = `${Math.min(rect.height - 120, Math.max(8, e.clientY - rect.top + 14))}px`;
+            shopTooltip.innerHTML = `<div style="font-weight:700; color:${escapeHtml(hit.color || '#38bdf8')}; margin-bottom:4px;">${escapeHtml(hit.title)}</div>` +
+              (hit.lines || []).map((l) => `<div style="font-size:11px; color:#cbd5e1;">${escapeHtml(l)}</div>`).join('');
+          } else {
+            shopCanvas.style.cursor = 'grab';
+            shopTooltip.style.display = 'none';
+          }
+        }
+      });
+      shopCanvas.addEventListener('mouseleave', () => {
+        if (shopTooltip) shopTooltip.style.display = 'none';
+        if (shopHudReadout) shopHudReadout.style.display = 'none';
+      });
+      shopCanvas.addEventListener('click', (e) => {
+        if (dragMoved >= 6 || !shopLiveMapRenderedPins.length) return;
+        const rect = shopCanvas.getBoundingClientRect();
+        const cx = ((e.clientX - rect.left) * shopCanvas.width) / Math.max(1, rect.width);
+        const cy = ((e.clientY - rect.top) * shopCanvas.height) / Math.max(1, rect.height);
+        let hit = null;
+        let minDist = Infinity;
+        for (const pin of shopLiveMapRenderedPins) {
+          if (!pin.selectAction) continue;
+          const d = Math.hypot(cx - pin.px, cy - pin.py);
+          if (d <= pin.r + 8 && d < minDist) {
+            minDist = d;
+            hit = pin;
+          }
+        }
+        if (!hit) return;
+        if (hit.selectAction.type === 'vending') {
+          const nextId = String(hit.selectAction.markerId || '');
+          selectedShopMapPinId = selectedShopMapPinId === nextId ? '' : nextId;
+          renderShopsModule();
+          renderShopLiveMap();
+        } else if (hit.selectAction.type === 'event' || hit.selectAction.type === 'team') {
+          shopMapPanX = hit.wx;
+          shopMapPanY = hit.wy;
+          setShopZoomClamped(Math.max(shopMapZoom, 1.9));
+        }
+      });
+      shopCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        setShopZoomClamped(shopMapZoom * (e.deltaY < 0 ? 1.15 : 0.87));
+      }, { passive: false });
+    }
+
+    // Team Chat Quick Send
+    const sendTeamChatMsg = async () => {
+      const inp = document.getElementById('rpTeamChatInput');
+      const btn = document.getElementById('rpTeamChatSendBtn');
+      const message = inp?.value.trim() || '';
+      if (!message) return;
+      if (btn) btn.disabled = true;
+      try {
+        const resp = await fetch('/api/shops/rustplus/team-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+          body: JSON.stringify({ message })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+        if (inp) inp.value = '';
+        appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), teamChat: data.teamChat || [] };
+        renderRustPlusHeaderAndWidgets();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    };
+    document.getElementById('rpTeamChatSendBtn')?.addEventListener('click', sendTeamChatMsg);
+    document.getElementById('rpTeamChatInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendTeamChatMsg();
+    });
+
+    // Add Smart Switch / Alarm
+    document.getElementById('rpSmartDevAddBtn')?.addEventListener('click', async () => {
+      const idEl = document.getElementById('rpSmartDevIdInput');
+      const nameEl = document.getElementById('rpSmartDevNameInput');
+      const entityId = idEl?.value.trim() || '';
+      const name = nameEl?.value.trim() || '';
+      if (!entityId) return;
+      const resp = await fetch('/api/shops/rustplus/smart-device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+        body: JSON.stringify({ action: 'add', entityId, name })
+      });
+      const data = await resp.json();
+      if (resp.ok && Array.isArray(data.smartDevices)) {
+        if (idEl) idEl.value = '';
+        if (nameEl) nameEl.value = '';
+        appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+        renderRustPlusHeaderAndWidgets();
+      } else if (data.error) {
+        alert(data.error);
+      }
     });
 
     syncRustPlusShopUiFromState();
@@ -10114,6 +10889,8 @@
     if (autoCb) autoCb.checked = Boolean(cfg.autoPoll);
     const alertCb = document.getElementById('rpShopDiscordStealCb');
     if (alertCb) alertCb.checked = cfg.discordAlertSteals !== false;
+    const evtAlertCb = document.getElementById('rpShopDiscordEventsCb');
+    if (evtAlertCb) evtAlertCb.checked = cfg.discordAlertEvents !== false;
     const statusEl = document.getElementById('rpShopStatusText');
     if (statusEl && cfg.lastStatus) statusEl.textContent = cfg.lastStatus;
   }
@@ -10139,6 +10916,9 @@
     renderDecayCalculator();
     renderShopsModule();
     syncRustPlusShopUiFromState();
+    renderShopLiveMap();
+    renderRustPlusHeaderAndWidgets();
+    if (bfMapData) renderBaseFinderMap();
   }
 
   window.addEventListener('DOMContentLoaded', () => {

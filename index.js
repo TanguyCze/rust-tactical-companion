@@ -106,9 +106,21 @@ const DEFAULT_STATE = {
     useProxy: false,
     autoPoll: false,
     discordAlertSteals: true,
+    discordAlertEvents: true,
     lastPolledAt: 0,
     lastStatus: '',
     mapSize: 4250
+  },
+  rustPlusTelemetry: {
+    serverInfo: null,
+    time: null,
+    mapMeta: null,
+    liveEvents: [],
+    vendingPins: [],
+    teamMembers: [],
+    mapNotes: [],
+    teamChat: [],
+    smartDevices: []
   },
   updatedAt: Date.now()
 };
@@ -123,7 +135,8 @@ function loadState() {
         ...DEFAULT_STATE,
         ...parsed,
         discordConfig: { ...DEFAULT_STATE.discordConfig, ...(parsed.discordConfig || {}) },
-        rustPlusShopConfig: { ...DEFAULT_STATE.rustPlusShopConfig, ...(parsed.rustPlusShopConfig || {}) }
+        rustPlusShopConfig: { ...DEFAULT_STATE.rustPlusShopConfig, ...(parsed.rustPlusShopConfig || {}) },
+        rustPlusTelemetry: { ...DEFAULT_STATE.rustPlusTelemetry, ...(parsed.rustPlusTelemetry || {}) }
       };
       if (rustPlus || markers || mapConfig) saveState(state);
       return state;
@@ -669,7 +682,7 @@ function skipWireField(buf, offset, wireType) {
   return buf.length;
 }
 
-function encodeRustPlusRequest(seq, playerId, playerToken, fieldNum) {
+function encodeRustPlusRequest(seq, playerId, playerToken, fieldNum, innerBytesOrObj = []) {
   const out = [];
   writeVarint(out, (1 << 3) | 0);
   writeVarint(out, seq);
@@ -677,9 +690,24 @@ function encodeRustPlusRequest(seq, playerId, playerToken, fieldNum) {
   writeVarint(out, BigInt(String(playerId || '0')));
   writeVarint(out, (3 << 3) | 0);
   writeVarint(out, BigInt(parseInt(String(playerToken || '0'), 10)));
+  if (innerBytesOrObj && !Array.isArray(innerBytesOrObj) && typeof innerBytesOrObj.entityId === 'number') {
+    writeVarint(out, (4 << 3) | 0);
+    writeVarint(out, innerBytesOrObj.entityId);
+  }
+  const payload = Array.isArray(innerBytesOrObj) ? innerBytesOrObj : innerBytesOrObj?.bytes || [];
   writeVarint(out, (fieldNum << 3) | 2);
-  writeVarint(out, 0);
+  writeVarint(out, payload.length);
+  for (let i = 0; i < payload.length; i++) out.push(payload[i]);
   return Buffer.from(out);
+}
+
+function encodeRustPlusSendMessage(text) {
+  const strBytes = Buffer.from(String(text || ''), 'utf8');
+  const out = [];
+  writeVarint(out, (1 << 3) | 2);
+  writeVarint(out, strBytes.length);
+  for (let i = 0; i < strBytes.length; i++) out.push(strBytes[i]);
+  return out;
 }
 
 function decodeRustPlusAppInfo(buf) {
@@ -690,24 +718,288 @@ function decodeRustPlusAppInfo(buf) {
     pos = tag.offset;
     const fn = Number(tag.value >> 3n);
     const wt = Number(tag.value & 7n);
-    if (wt === 2 && fn === 1) {
+    if (wt === 2 && [1, 2, 3, 4].includes(fn)) {
       const len = readVarint(buf, pos);
       pos = len.offset;
-      info.name = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      const str = buf.slice(pos, pos + Number(len.value)).toString('utf8');
       pos += Number(len.value);
-    } else if (wt === 0 && (fn === 5 || fn === 7 || fn === 8 || fn === 10)) {
+      if (fn === 1) info.name = str;
+      else if (fn === 2) info.headerImage = str;
+      else if (fn === 3) info.url = str;
+      else if (fn === 4) info.map = str;
+    } else if (wt === 0 && [5, 6, 7, 8, 9, 10, 11].includes(fn)) {
       const v = readVarint(buf, pos);
       pos = v.offset;
       const num = Number(v.value);
       if (fn === 5) info.mapSize = num;
+      else if (fn === 6) info.wipeTime = num;
       else if (fn === 7) info.players = num;
       else if (fn === 8) info.maxPlayers = num;
+      else if (fn === 9) info.queuedPlayers = num;
       else if (fn === 10) info.seed = num;
+      else if (fn === 11) info.salt = num;
     } else {
       pos = skipWireField(buf, pos, wt);
     }
   }
   return info;
+}
+
+function decodeRustPlusAppTime(buf) {
+  let pos = 0;
+  const time = {};
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 1) time.dayLengthMinutes = val;
+      else if (fn === 2) time.timeScale = val;
+      else if (fn === 3) time.sunrise = val;
+      else if (fn === 4) time.sunset = val;
+      else if (fn === 5) time.time = val;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return time;
+}
+
+function decodeRustPlusMapMonument(buf) {
+  let pos = 0;
+  const mon = { token: '', x: 0, y: 0 };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2 && fn === 1) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      mon.token = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+    } else if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 2) mon.x = val;
+      else if (fn === 3) mon.y = val;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return mon;
+}
+
+function decodeRustPlusAppMap(buf) {
+  let pos = 0;
+  const map = { width: 0, height: 0, oceanMargin: 0, jpgImage: null, background: '', monuments: [] };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0 && (fn === 1 || fn === 2 || fn === 4)) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) map.width = Number(v.value);
+      else if (fn === 2) map.height = Number(v.value);
+      else if (fn === 4) map.oceanMargin = Number(v.value);
+    } else if (wt === 2) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 3) map.jpgImage = sub;
+      else if (fn === 5) map.monuments.push(decodeRustPlusMapMonument(sub));
+      else if (fn === 6) map.background = sub.toString('utf8');
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return map;
+}
+
+function decodeRustPlusTeamMember(buf) {
+  let pos = 0;
+  const m = { steamId: '0', name: '', x: 0, y: 0, isOnline: false, spawnTime: 0, isAlive: false, deathTime: 0 };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) m.steamId = v.value.toString();
+      else if (fn === 5) m.isOnline = v.value !== 0n;
+      else if (fn === 6) m.spawnTime = Number(v.value);
+      else if (fn === 7) m.isAlive = v.value !== 0n;
+      else if (fn === 8) m.deathTime = Number(v.value);
+    } else if (wt === 2 && fn === 2) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      m.name = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+    } else if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 3) m.x = val;
+      else if (fn === 4) m.y = val;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return m;
+}
+
+function decodeRustPlusMapNote(buf) {
+  let pos = 0;
+  const note = { type: 0, x: 0, y: 0, icon: 0, colourIndex: 0, label: '' };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) note.type = Number(v.value);
+      else if (fn === 4) note.icon = Number(v.value);
+      else if (fn === 5) note.colourIndex = Number(v.value);
+    } else if (wt === 5 && pos + 4 <= buf.length) {
+      const val = buf.readFloatLE(pos);
+      pos += 4;
+      if (fn === 2) note.x = val;
+      else if (fn === 3) note.y = val;
+    } else if (wt === 2 && fn === 6) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      note.label = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return note;
+}
+
+function decodeRustPlusTeamInfo(buf) {
+  let pos = 0;
+  const ti = { leaderSteamId: '0', members: [], mapNotes: [], leaderMapNotes: [] };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0 && fn === 1) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      ti.leaderSteamId = v.value.toString();
+    } else if (wt === 2 && (fn === 2 || fn === 3 || fn === 4)) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const sub = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      if (fn === 2) ti.members.push(decodeRustPlusTeamMember(sub));
+      else if (fn === 3) ti.mapNotes.push(decodeRustPlusMapNote(sub));
+      else if (fn === 4) ti.leaderMapNotes.push(decodeRustPlusMapNote(sub));
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return ti;
+}
+
+function decodeRustPlusTeamMessage(buf) {
+  let pos = 0;
+  const msg = { steamId: '0', name: '', message: '', color: '#a7f3d0', time: 0 };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) msg.steamId = v.value.toString();
+      else if (fn === 5) msg.time = Number(v.value);
+    } else if (wt === 2 && [2, 3, 4].includes(fn)) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const s = buf.slice(pos, pos + Number(len.value)).toString('utf8');
+      pos += Number(len.value);
+      if (fn === 2) msg.name = s;
+      else if (fn === 3) msg.message = s;
+      else if (fn === 4) msg.color = s;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return msg;
+}
+
+function decodeRustPlusTeamChat(buf) {
+  let pos = 0;
+  const messages = [];
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 2 && fn === 1) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      messages.push(decodeRustPlusTeamMessage(buf.slice(pos, pos + Number(len.value))));
+      pos += Number(len.value);
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return messages;
+}
+
+function decodeRustPlusEntityInfo(buf) {
+  let pos = 0;
+  const ent = { type: 0, value: false, capacity: 0, hasProtection: false, protectionExpiry: 0 };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0 && fn === 1) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      ent.type = Number(v.value);
+    } else if (wt === 2 && fn === 3) {
+      const len = readVarint(buf, pos);
+      pos = len.offset;
+      const pBuf = buf.slice(pos, pos + Number(len.value));
+      pos += Number(len.value);
+      let pPos = 0;
+      while (pPos < pBuf.length) {
+        const pt = readVarint(pBuf, pPos);
+        pPos = pt.offset;
+        const pfn = Number(pt.value >> 3n);
+        const pwt = Number(pt.value & 7n);
+        if (pwt === 0) {
+          const pv = readVarint(pBuf, pPos);
+          pPos = pv.offset;
+          if (pfn === 1) ent.value = pv.value !== 0n;
+          else if (pfn === 3) ent.capacity = Number(pv.value);
+          else if (pfn === 4) ent.hasProtection = pv.value !== 0n;
+          else if (pfn === 5) ent.protectionExpiry = Number(pv.value);
+        } else {
+          pPos = skipWireField(pBuf, pPos, pwt);
+        }
+      }
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  return ent;
 }
 
 function decodeRustPlusSellOrder(buf) {
@@ -746,7 +1038,7 @@ function decodeRustPlusSellOrder(buf) {
 
 function decodeRustPlusMarker(buf) {
   let pos = 0;
-  const mk = { id: 0, type: 0, x: 0, y: 0, name: '', outOfStock: false, sellOrders: [] };
+  const mk = { id: 0, type: 0, x: 0, y: 0, steamId: '0', rotation: 0, radius: 0, name: '', outOfStock: false, sellOrders: [] };
   while (pos < buf.length) {
     const tag = readVarint(buf, pos);
     pos = tag.offset;
@@ -757,12 +1049,15 @@ function decodeRustPlusMarker(buf) {
       pos = v.offset;
       if (fn === 1) mk.id = Number(v.value);
       else if (fn === 2) mk.type = Number(v.value);
+      else if (fn === 5) mk.steamId = v.value.toString();
       else if (fn === 12) mk.outOfStock = v.value !== 0n;
     } else if (wt === 5 && pos + 4 <= buf.length) {
       const val = buf.readFloatLE(pos);
       pos += 4;
       if (fn === 3) mk.x = val;
       else if (fn === 4) mk.y = val;
+      else if (fn === 6) mk.rotation = val;
+      else if (fn === 7) mk.radius = val;
     } else if (wt === 2 && (fn === 11 || fn === 13)) {
       const len = readVarint(buf, pos);
       pos = len.offset;
@@ -809,7 +1104,6 @@ function decodeRustPlusResponseMessage(buf) {
       pos = len.offset;
       const respBuf = buf.slice(pos, pos + Number(len.value));
       pos += Number(len.value);
-      // Decode AppResponse
       let rpos = 0;
       const resp = {};
       while (rpos < respBuf.length) {
@@ -828,6 +1122,11 @@ function decodeRustPlusResponseMessage(buf) {
           rpos += Number(rlen.value);
           if (rfn === 4) resp.error = sub.toString('utf8');
           else if (rfn === 6) resp.info = decodeRustPlusAppInfo(sub);
+          else if (rfn === 7) resp.time = decodeRustPlusAppTime(sub);
+          else if (rfn === 8) resp.map = decodeRustPlusAppMap(sub);
+          else if (rfn === 9) resp.teamInfo = decodeRustPlusTeamInfo(sub);
+          else if (rfn === 10) resp.teamChat = decodeRustPlusTeamChat(sub);
+          else if (rfn === 11) resp.entityInfo = decodeRustPlusEntityInfo(sub);
           else if (rfn === 13) resp.markers = decodeRustPlusMapMarkers(sub);
         } else {
           rpos = skipWireField(respBuf, rpos, rwt);
@@ -866,7 +1165,7 @@ function sendRawWsBinary(socket, buf) {
   socket.write(Buffer.concat([header, masked]));
 }
 
-function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
+function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
   return new Promise((resolve, reject) => {
     const ip = String(cfg.ip || '').trim();
     const port = parseInt(String(cfg.port || '28082'), 10) || 28082;
@@ -903,7 +1202,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
         path: `/socket/${encodeURIComponent(serverId)}?v=${Date.now()}`,
         method: 'GET',
         headers,
-        timeout: 6500
+        timeout: timeoutMs - 500
       };
       useTls = true;
       label = `Facepunch Relay (${serverId.slice(0, 8)}...)`;
@@ -919,7 +1218,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
           'Sec-WebSocket-Version': '13',
           'Sec-WebSocket-Key': crypto.randomBytes(16).toString('base64')
         },
-        timeout: 6500
+        timeout: timeoutMs - 500
       };
       useTls = true;
       label = `Facepunch Proxy (${ip}:${port})`;
@@ -935,7 +1234,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
           'Sec-WebSocket-Version': '13',
           'Sec-WebSocket-Key': crypto.randomBytes(16).toString('base64')
         },
-        timeout: 5500
+        timeout: timeoutMs - 1000
       };
       useTls = false;
       label = `${ip}:${port}`;
@@ -946,31 +1245,31 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
     const transport = useTls ? https : http;
     let settled = false;
     let sock = null;
-    const timer = setTimeout(() => {
+    const finish = (err, val) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       try { if (sock) sock.destroy(); } catch (_) {}
-      reject(new Error(`Timed out connecting to ${label}`));
-    }, 7000);
+      if (err) reject(err);
+      else resolve(val);
+    };
+
+    const timer = setTimeout(() => {
+      if (handlers.onTimeout) {
+        const fallbackVal = handlers.onTimeout();
+        if (fallbackVal !== undefined) return finish(null, fallbackVal);
+      }
+      finish(new Error(`Timed out connecting to ${label}`));
+    }, timeoutMs);
 
     const req = transport.request(reqOpts);
-    let infoResult = null;
-    let markersResult = null;
-
     req.on('upgrade', (_res, socket) => {
       sock = socket;
       socket.setNoDelay(true);
       try {
-        sendRawWsBinary(socket, encodeRustPlusRequest(1, playerId, playerToken, 8)); // getInfo
-        sendRawWsBinary(socket, encodeRustPlusRequest(2, playerId, playerToken, 18)); // getMapMarkers
+        handlers.onOpen(socket, { playerId, playerToken, mode, finish });
       } catch (err) {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          socket.destroy();
-          reject(err);
-        }
-        return;
+        return finish(err);
       }
 
       let recvBuf = Buffer.alloc(0);
@@ -1012,11 +1311,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
             return;
           }
           if (opcode === 0x09) {
-            // Ping -> Pong
-            try {
-              const pong = Buffer.from([0x8a, 0x80, 0, 0, 0, 0]);
-              socket.write(pong);
-            } catch (_) {}
+            try { socket.write(Buffer.from([0x8a, 0x80, 0, 0, 0, 0])); } catch (_) {}
             continue;
           }
 
@@ -1038,59 +1333,110 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
 
           if (fullPayload && effectiveOp === 0x02) {
             const resp = decodeRustPlusResponseMessage(fullPayload);
-            if (resp?.error && resp.seq === 2 && !markersResult) {
-              settled = true;
-              clearTimeout(timer);
-              socket.destroy();
-              return reject(new Error(`Rust+ server rejected request (check PlayerToken / pairing): ${resp.error}`));
-            }
-            if (resp?.info) infoResult = resp.info;
-            if (Array.isArray(resp?.markers)) markersResult = resp.markers;
-            if (markersResult !== null) {
-              settled = true;
-              clearTimeout(timer);
-              socket.destroy();
-              return resolve({ info: infoResult, markers: markersResult, mode, usedProxy: mode !== 'direct' });
-            }
+            if (resp) handlers.onResponse(resp, { finish });
           }
         }
       });
 
-      socket.on('error', (err) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          reject(err);
-        }
-      });
+      socket.on('error', (err) => finish(err));
       socket.on('close', () => {
-        if (!settled && markersResult !== null) {
-          settled = true;
-          clearTimeout(timer);
-          resolve({ info: infoResult, markers: markersResult, mode, usedProxy: mode !== 'direct' });
-        } else if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          reject(new Error('Rust+ connection closed before vending markers arrived'));
+        if (handlers.onClose) {
+          const fallbackVal = handlers.onClose();
+          if (fallbackVal !== undefined) return finish(null, fallbackVal);
         }
+        finish(new Error('Rust+ connection closed unexpectedly'));
       });
     });
 
-    req.on('error', (err) => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        reject(err);
-      }
-    });
-    req.on('timeout', () => {
-      req.destroy(new Error('WebSocket handshake timeout'));
-    });
+    req.on('error', (err) => finish(err));
+    req.on('timeout', () => req.destroy(new Error('WebSocket handshake timeout')));
     req.end();
   });
 }
 
-async function fetchRustPlusVendingSnapshot(cfg) {
+let cachedRustPlusMap = null;
+
+function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto') {
+  const serverKey = `${cfg.serverId || cfg.ip || ''}:${cfg.port || '28082'}`;
+  const needMap = !cachedRustPlusMap || cachedRustPlusMap.serverKey !== serverKey || Date.now() - cachedRustPlusMap.updatedAt > 30 * 60 * 1000;
+
+  let infoResult = null;
+  let timeResult = null;
+  let teamInfoResult = null;
+  let teamChatResult = null;
+  let mapResult = null;
+  let markersResult = null;
+  let graceTimer = null;
+
+  const buildSnapshot = () => ({
+    info: infoResult,
+    time: timeResult,
+    teamInfo: teamInfoResult,
+    teamChat: teamChatResult,
+    map: mapResult,
+    markers: markersResult,
+    mode,
+    usedProxy: mode !== 'direct'
+  });
+
+  return withRustPlusSocket(
+    cfg,
+    mode,
+    {
+      onOpen(socket, { playerId, playerToken }) {
+        sendRawWsBinary(socket, encodeRustPlusRequest(1, playerId, playerToken, 8)); // getInfo
+        sendRawWsBinary(socket, encodeRustPlusRequest(2, playerId, playerToken, 18)); // getMapMarkers
+        sendRawWsBinary(socket, encodeRustPlusRequest(3, playerId, playerToken, 9)); // getTime
+        sendRawWsBinary(socket, encodeRustPlusRequest(4, playerId, playerToken, 11)); // getTeamInfo
+        sendRawWsBinary(socket, encodeRustPlusRequest(5, playerId, playerToken, 12)); // getTeamChat
+        if (needMap) {
+          sendRawWsBinary(socket, encodeRustPlusRequest(6, playerId, playerToken, 10)); // getMap
+        }
+      },
+      onResponse(resp, { finish }) {
+        if (resp.error && resp.seq === 2 && !markersResult) {
+          if (graceTimer) clearTimeout(graceTimer);
+          return finish(new Error(`Rust+ server rejected request (check PlayerToken / pairing): ${resp.error}`));
+        }
+        if (resp.info) infoResult = resp.info;
+        if (resp.time) timeResult = resp.time;
+        if (resp.teamInfo) teamInfoResult = resp.teamInfo;
+        if (Array.isArray(resp.teamChat)) teamChatResult = resp.teamChat;
+        if (resp.map) mapResult = resp.map;
+        if (Array.isArray(resp.markers)) markersResult = resp.markers;
+
+        const allDone =
+          markersResult !== null &&
+          infoResult !== null &&
+          timeResult !== null &&
+          teamInfoResult !== null &&
+          (!needMap || mapResult !== null);
+
+        if (allDone) {
+          if (graceTimer) clearTimeout(graceTimer);
+          return finish(null, buildSnapshot());
+        }
+        if (markersResult !== null && !graceTimer) {
+          graceTimer = setTimeout(() => {
+            finish(null, buildSnapshot());
+          }, needMap ? 1200 : 350);
+        }
+      },
+      onTimeout() {
+        if (markersResult !== null) return buildSnapshot();
+        return undefined;
+      },
+      onClose() {
+        if (graceTimer) clearTimeout(graceTimer);
+        if (markersResult !== null) return buildSnapshot();
+        return undefined;
+      }
+    },
+    needMap ? 9500 : 7500
+  );
+}
+
+async function runRustPlusModes(cfg, runner) {
   const attempts = [];
   if (cfg.serverId && cfg.authToken) attempts.push('socket');
   if (cfg.ip && cfg.useProxy) attempts.push('proxy');
@@ -1101,7 +1447,7 @@ async function fetchRustPlusVendingSnapshot(cfg) {
   let lastErr = new Error('No Rust+ server configured');
   for (const mode of attempts) {
     try {
-      return await fetchRustPlusSnapshotAttempt(cfg, mode);
+      return await runner(mode);
     } catch (err) {
       lastErr = err;
     }
@@ -1109,14 +1455,110 @@ async function fetchRustPlusVendingSnapshot(cfg) {
   throw lastErr;
 }
 
+async function fetchRustPlusVendingSnapshot(cfg) {
+  return runRustPlusModes(cfg, (mode) => fetchRustPlusSnapshotAttempt(cfg, mode));
+}
+
+async function sendRustPlusCommand(cfg, fieldNum, innerBytesOrObj = []) {
+  return runRustPlusModes(cfg, (mode) =>
+    withRustPlusSocket(
+      cfg,
+      mode,
+      {
+        onOpen(socket, { playerId, playerToken }) {
+          sendRawWsBinary(socket, encodeRustPlusRequest(1, playerId, playerToken, fieldNum, innerBytesOrObj));
+        },
+        onResponse(resp, { finish }) {
+          if (resp.error) {
+            return finish(new Error(`Rust+ RPC rejected: ${resp.error}`));
+          }
+          return finish(null, resp);
+        }
+      },
+      6500
+    )
+  );
+}
+
 const sentShopStealAlerts = new Set();
+const sentWorldEventAlerts = new Set();
 let rustPlusShopInterval = null;
 let isRustPlusPolling = false;
+
+const RUST_EVENT_MARKER_META = {
+  2: { label: 'Raid Explosion', icon: '💥', color: '#ef4444' },
+  4: { label: 'CH47 Chinook', icon: '✈️', color: '#38bdf8' },
+  5: { label: 'Cargo Ship', icon: '🚢', color: '#06b6d4' },
+  6: { label: 'Locked Crate', icon: '📦', color: '#f59e0b' },
+  8: { label: 'Patrol Helicopter', icon: '🚁', color: '#f43f5e' },
+  9: { label: 'Travelling Vendor', icon: '🚐', color: '#a3e635' }
+};
+
+function formatRustPlusTimeSummary(timeObj) {
+  if (!timeObj || typeof timeObj.time !== 'number') return null;
+  const rawHour = ((timeObj.time % 24) + 24) % 24;
+  const hrs = Math.floor(rawHour);
+  const mins = Math.floor((rawHour - hrs) * 60);
+  const formatted = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  const sunrise = typeof timeObj.sunrise === 'number' && timeObj.sunrise > 0 ? timeObj.sunrise : 7.0;
+  const sunset = typeof timeObj.sunset === 'number' && timeObj.sunset > sunrise ? timeObj.sunset : 19.5;
+  const dayLen = typeof timeObj.dayLengthMinutes === 'number' && timeObj.dayLengthMinutes > 5 ? timeObj.dayLengthMinutes : 45;
+  const isDay = rawHour >= sunrise && rawHour < sunset;
+  let hoursUntil = 0;
+  let nextPhase = 'Night';
+  if (isDay) {
+    hoursUntil = sunset - rawHour;
+    nextPhase = 'Night';
+  } else {
+    hoursUntil = rawHour >= sunset ? 24 - rawHour + sunrise : sunrise - rawHour;
+    nextPhase = 'Day';
+  }
+  const minutesPerGameHour = dayLen / 24;
+  const minutesUntilChange = Math.max(1, Math.round(hoursUntil * minutesPerGameHour));
+  return {
+    time: Number(rawHour.toFixed(2)),
+    sunrise: Number(sunrise.toFixed(2)),
+    sunset: Number(sunset.toFixed(2)),
+    dayLengthMinutes: Math.round(dayLen),
+    formatted,
+    isDay,
+    nextPhase,
+    minutesUntilChange
+  };
+}
 
 function buildDemoVendingSnapshot(mapSize) {
   const s = Math.max(1000, Number(mapSize) || 4250);
   return {
-    info: { name: '[Live Server Demo] Rust Tactical Monthly', mapSize: s, players: 214, maxPlayers: 300 },
+    info: {
+      name: '[Live Server Demo] Rust Tactical Monthly',
+      map: 'Procedural Map',
+      mapSize: s,
+      seed: 1337420,
+      players: 214,
+      maxPlayers: 300,
+      queuedPlayers: 6
+    },
+    time: {
+      dayLengthMinutes: 45,
+      sunrise: 7.2,
+      sunset: 19.6,
+      time: 14.35
+    },
+    teamInfo: {
+      leaderSteamId: '76561198025882443',
+      members: [
+        { steamId: '76561198025882443', name: 'Tang (You)', x: s * 0.52, y: s * 0.48, isOnline: true, isAlive: true },
+        { steamId: '76561198002164049', name: 'Farmer_Max', x: s * 0.58, y: s * 0.54, isOnline: true, isAlive: true },
+        { steamId: '76561197969146424', name: 'Roamer_Kev', x: s * 0.39, y: s * 0.61, isOnline: true, isAlive: false, deathTime: Math.floor(Date.now() / 1000) - 90 }
+      ],
+      mapNotes: [{ type: 1, x: s * 0.53, y: s * 0.47, icon: 2, colourIndex: 3, label: 'MAIN FLANK BASE' }],
+      leaderMapNotes: [{ type: 0, x: s * 0.56, y: s * 0.51, icon: 4, colourIndex: 1, label: 'CHEAP TEAS!' }]
+    },
+    teamChat: [
+      { steamId: '76561198002164049', name: 'Farmer_Max', message: 'Ore tea shop at M14 is stocked! Grabbing 3 before snow run.', color: '#4ade80', time: Math.floor(Date.now() / 1000) - 240 },
+      { steamId: '76561197969146424', name: 'Roamer_Kev', message: 'Cargo just entered near harbor, crate dropping soon.', color: '#38bdf8', time: Math.floor(Date.now() / 1000) - 65 }
+    ],
     markers: [
       {
         id: 9101,
@@ -1152,24 +1594,39 @@ function buildDemoVendingSnapshot(mapSize) {
           { itemId: 1568388703, quantity: 1, currencyId: -1581843485, costPerItem: 250, amountInStock: 12 },
           { itemId: 1545779598, quantity: 1, currencyId: -1581843485, costPerItem: 1200, amountInStock: 3 }
         ]
-      }
+      },
+      { id: 9501, type: 5, x: s * 0.87, y: s * 0.22, name: 'Cargo Ship', rotation: 0.9 },
+      { id: 9502, type: 8, x: s * 0.33, y: s * 0.44, name: 'Patrol Helicopter', rotation: 2.1 },
+      { id: 9503, type: 6, x: s * 0.64, y: s * 0.67, name: 'Locked Crate' },
+      { id: 9504, type: 2, x: s * 0.26, y: s * 0.28, name: 'Explosion' }
     ]
   };
 }
 
 async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
-  const mapSize = Number(snapshot?.info?.mapSize || cfg?.mapSize || 4250);
+  const prevInfo = squadState.rustPlusTelemetry?.serverInfo || {};
+  const mapSize = Number(snapshot?.info?.mapSize || cfg?.mapSize || prevInfo.mapSize || 4250);
+  const serverKey = `${cfg?.serverId || cfg?.ip || 'demo'}:${cfg?.port || '28082'}`;
   const vmMarkers = (snapshot?.markers || []).filter(
     (m) => m.type === 3 && Array.isArray(m.sellOrders) && m.sellOrders.length > 0
   );
 
   const liveShops = [];
+  const vendingPins = [];
   const newSteals = [];
   const nowTs = Date.now();
 
   for (const mk of vmMarkers) {
+    const nx = Math.min(1, Math.max(0, mk.x / mapSize));
+    const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
+    const wx = Number((mk.x - mapSize / 2).toFixed(1));
+    const wy = Number((mk.y - mapSize / 2).toFixed(1));
     const grid = worldGridLabelFromRustPlus(mk.x, mk.y, mapSize);
     const shopName = String(mk.name || '').trim() || `Vending [${grid}]`;
+    const pinOrders = [];
+    let inStockCount = 0;
+    let stealCount = 0;
+
     for (const so of mk.sellOrders) {
       const baseBuy = resolveRustItemName(so.itemId);
       const buyItem = so.itemIsBlueprint ? `${baseBuy} (BP)` : baseBuy;
@@ -1177,10 +1634,28 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
       const payItem = resolveRustItemName(so.currencyId);
       const payQty = Math.max(1, Number(so.costPerItem) || 1);
       const inStock = Math.max(0, Number(so.amountInStock) || 0);
+      if (inStock > 0) inStockCount++;
       const id = `rp-${mk.id}-${so.itemId}-${so.currencyId}`;
+
+      let isSteal = false;
+      if (inStock > 0 && (payItem === 'Sulfur' || payItem === 'Sulfur Ore')) {
+        const lowerName = buyItem.toLowerCase();
+        const rule = BACKEND_STEAL_LIMITS.find((r) => lowerName.includes(r.match));
+        const effectiveSulfur = payItem === 'Sulfur Ore' ? payQty * 0.9 : payQty;
+        if (rule && effectiveSulfur / buyQty <= rule.maxSulfur) {
+          isSteal = true;
+          stealCount++;
+          const stealKey = `${shopName}:${grid}:${buyItem}:${payQty}:${payItem}`;
+          if (!sentShopStealAlerts.has(stealKey)) {
+            sentShopStealAlerts.add(stealKey);
+            newSteals.push({ id, shopName, grid, buyQty, buyItem, payQty, payItem, inStock, why: rule.why });
+          }
+        }
+      }
 
       const entry = {
         id,
+        markerId: String(mk.id),
         liveSource: 'rustplus',
         isDemo,
         shopName,
@@ -1189,6 +1664,10 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
         payQty,
         payItem,
         inStock,
+        wx,
+        wy,
+        nx: Number(nx.toFixed(4)),
+        ny: Number(ny.toFixed(4)),
         isBlueprint: Boolean(so.itemIsBlueprint),
         category: inferShopCategoryFromName(buyItem),
         grid,
@@ -1196,55 +1675,209 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
         notes: `${isDemo ? 'Demo' : 'Live Rust+'} vending "${shopName}" at [${grid}] — ${inStock > 0 ? `${inStock} in stock` : 'SOLD OUT'}.`
       };
       liveShops.push(entry);
+      pinOrders.push({ id, buyQty, buyItem, payQty, payItem, inStock, isSteal });
+    }
 
-      if (inStock > 0 && (payItem === 'Sulfur' || payItem === 'Sulfur Ore')) {
-        const lowerName = buyItem.toLowerCase();
-        const rule = BACKEND_STEAL_LIMITS.find((r) => lowerName.includes(r.match));
-        const effectiveSulfur = payItem === 'Sulfur Ore' ? payQty * 0.9 : payQty;
-        if (rule && effectiveSulfur / buyQty <= rule.maxSulfur) {
-          const stealKey = `${shopName}:${grid}:${buyItem}:${payQty}:${payItem}`;
-          if (!sentShopStealAlerts.has(stealKey)) {
-            sentShopStealAlerts.add(stealKey);
-            newSteals.push({ ...entry, why: rule.why });
-          }
-        }
-      }
+    vendingPins.push({
+      id: `rp-pin-${mk.id}`,
+      markerId: String(mk.id),
+      name: shopName,
+      grid,
+      wx,
+      wy,
+      nx: Number(nx.toFixed(4)),
+      ny: Number(ny.toFixed(4)),
+      inStockCount,
+      totalOrders: pinOrders.length,
+      stealCount,
+      isDemo,
+      orders: pinOrders
+    });
+  }
+
+  // Decode Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Travelling Vendor)
+  const liveEvents = [];
+  const newEvents = [];
+  for (const mk of snapshot?.markers || []) {
+    const meta = RUST_EVENT_MARKER_META[mk.type];
+    if (!meta) continue;
+    const nx = Math.min(1, Math.max(0, mk.x / mapSize));
+    const ny = Math.min(1, Math.max(0, 1 - mk.y / mapSize));
+    const wx = Number((mk.x - mapSize / 2).toFixed(1));
+    const wy = Number((mk.y - mapSize / 2).toFixed(1));
+    const grid = worldGridLabelFromRustPlus(mk.x, mk.y, mapSize);
+    const evt = {
+      id: `${mk.type}-${mk.id}`,
+      markerId: String(mk.id),
+      type: mk.type,
+      label: mk.name || meta.label,
+      icon: meta.icon,
+      color: meta.color,
+      wx,
+      wy,
+      nx: Number(nx.toFixed(4)),
+      ny: Number(ny.toFixed(4)),
+      grid,
+      rotation: Number(mk.rotation || 0),
+      radius: Number(mk.radius || 0),
+      isDemo
+    };
+    liveEvents.push(evt);
+    const evtAlertKey = `${serverKey}:${mk.type}:${mk.id}`;
+    if (!isDemo && [2, 5, 6, 8].includes(mk.type) && !sentWorldEventAlerts.has(evtAlertKey)) {
+      sentWorldEventAlerts.add(evtAlertKey);
+      newEvents.push(evt);
     }
   }
+
+  // Cache AppMap JPEG image in RAM if returned
+  let prevMapMeta = squadState.rustPlusTelemetry?.mapMeta || null;
+  if (snapshot?.map && snapshot.map.jpgImage && snapshot.map.jpgImage.length > 100) {
+    cachedRustPlusMap = {
+      serverKey,
+      buffer: Buffer.from(snapshot.map.jpgImage),
+      width: Number(snapshot.map.width || 1000),
+      height: Number(snapshot.map.height || 1000),
+      oceanMargin: Number(snapshot.map.oceanMargin || 0),
+      mapSize,
+      updatedAt: nowTs
+    };
+    prevMapMeta = {
+      width: cachedRustPlusMap.width,
+      height: cachedRustPlusMap.height,
+      oceanMargin: cachedRustPlusMap.oceanMargin,
+      mapSize,
+      monumentsCount: Array.isArray(snapshot.map.monuments) ? snapshot.map.monuments.length : 0,
+      monuments: (snapshot.map.monuments || []).map((m) => ({
+        token: m.token,
+        wx: Number((m.x - mapSize / 2).toFixed(1)),
+        wy: Number((m.y - mapSize / 2).toFixed(1)),
+        grid: worldGridLabelFromRustPlus(m.x, m.y, mapSize)
+      })),
+      hasImage: true,
+      imageUrl: `/api/shops/rustplus/map-image?v=${nowTs}`
+    };
+  } else if (prevMapMeta) {
+    prevMapMeta = {
+      ...prevMapMeta,
+      hasImage: Boolean(cachedRustPlusMap?.buffer),
+      imageUrl: cachedRustPlusMap?.buffer ? `/api/shops/rustplus/map-image?v=${cachedRustPlusMap.updatedAt}` : ''
+    };
+  }
+
+  // Team Members & Notes
+  let teamMembers = Array.isArray(squadState.rustPlusTelemetry?.teamMembers) ? squadState.rustPlusTelemetry.teamMembers : [];
+  let mapNotes = Array.isArray(squadState.rustPlusTelemetry?.mapNotes) ? squadState.rustPlusTelemetry.mapNotes : [];
+  if (snapshot?.teamInfo && Array.isArray(snapshot.teamInfo.members)) {
+    const leaderId = String(snapshot.teamInfo.leaderSteamId || '0');
+    teamMembers = snapshot.teamInfo.members.map((m) => {
+      const nx = Math.min(1, Math.max(0, m.x / mapSize));
+      const ny = Math.min(1, Math.max(0, 1 - m.y / mapSize));
+      return {
+        steamId: String(m.steamId),
+        name: m.name || 'Teammate',
+        wx: Number((m.x - mapSize / 2).toFixed(1)),
+        wy: Number((m.y - mapSize / 2).toFixed(1)),
+        nx: Number(nx.toFixed(4)),
+        ny: Number(ny.toFixed(4)),
+        grid: worldGridLabelFromRustPlus(m.x, m.y, mapSize),
+        isOnline: Boolean(m.isOnline),
+        isAlive: Boolean(m.isAlive),
+        spawnTime: Number(m.spawnTime || 0),
+        deathTime: Number(m.deathTime || 0),
+        isLeader: String(m.steamId) === leaderId
+      };
+    });
+    const combinedNotes = [...(snapshot.teamInfo.mapNotes || []), ...(snapshot.teamInfo.leaderMapNotes || [])];
+    mapNotes = combinedNotes.map((n) => {
+      const nx = Math.min(1, Math.max(0, n.x / mapSize));
+      const ny = Math.min(1, Math.max(0, 1 - n.y / mapSize));
+      return {
+        type: n.type || 0,
+        icon: n.icon || 0,
+        color: n.colourIndex || 0,
+        label: n.label || '',
+        wx: Number((n.x - mapSize / 2).toFixed(1)),
+        wy: Number((n.y - mapSize / 2).toFixed(1)),
+        nx: Number(nx.toFixed(4)),
+        ny: Number(ny.toFixed(4)),
+        grid: worldGridLabelFromRustPlus(n.x, n.y, mapSize)
+      };
+    });
+  }
+
+  let teamChat = Array.isArray(squadState.rustPlusTelemetry?.teamChat) ? squadState.rustPlusTelemetry.teamChat : [];
+  if (Array.isArray(snapshot?.teamChat)) {
+    teamChat = snapshot.teamChat.slice(-30);
+  }
+
+  let smartDevices = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : [];
+  if (isDemo && smartDevices.length === 0) {
+    smartDevices = [
+      { entityId: '88101', name: 'Base Turrets / Bunker Door', entityType: 'switch', active: true, isDemo: true },
+      { entityId: '88102', name: 'Auto-Smelter Furnaces', entityType: 'switch', active: false, isDemo: true },
+      { entityId: '88103', name: 'SAM Site Perimeter Alarm', entityType: 'alarm', active: false, isDemo: true }
+    ];
+  }
+
+  const timeSummary = snapshot?.time ? formatRustPlusTimeSummary(snapshot.time) : squadState.rustPlusTelemetry?.time || null;
+  const nextServerInfo = {
+    ...prevInfo,
+    ...(snapshot?.info || {}),
+    mapSize,
+    isDemo
+  };
 
   const manualShops = (Array.isArray(squadState.customShops) ? squadState.customShops : []).filter(
     (cs) => cs && cs.liveSource !== 'rustplus'
   );
   squadState.customShops = [...liveShops, ...manualShops];
+  squadState.rustPlusTelemetry = {
+    serverInfo: nextServerInfo,
+    time: timeSummary,
+    mapMeta: prevMapMeta,
+    liveEvents,
+    vendingPins,
+    teamMembers,
+    mapNotes,
+    teamChat,
+    smartDevices
+  };
   squadState.rustPlusShopConfig = {
     ...DEFAULT_STATE.rustPlusShopConfig,
     ...(squadState.rustPlusShopConfig || {}),
     ...(cfg || {}),
     mapSize,
+    ...(nextServerInfo.name ? { serverName: nextServerInfo.name } : {}),
     lastPolledAt: nowTs,
-    lastStatus: `${isDemo ? '🧪 Demo' : '🟢 Live Rust+'} synced ${vmMarkers.length} shops (${liveShops.length} offers)${snapshot?.info?.name ? ` • ${snapshot.info.name}` : ''}`
+    lastStatus: `${isDemo ? '🧪 Demo' : '🟢 Live Rust+'} • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • 🛒 ${vmMarkers.length} shops • ⚡ ${liveEvents.length} events`
   };
   saveState(squadState);
   broadcastState('state_update');
 
-  if (squadState.rustPlusShopConfig.discordAlertSteals && newSteals.length > 0 && !isDemo) {
-    const settings = resolveDiscordSettings();
-    const hasTarget = Boolean(
-      (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
-        (settings.botToken && (settings.channelId || settings.dmUserId))
-    );
-    if (hasTarget) {
+  const settings = resolveDiscordSettings();
+  const hasTarget = Boolean(
+    (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
+      (settings.botToken && (settings.channelId || settings.dmUserId))
+  );
+  if (hasTarget && !isDemo) {
+    if (squadState.rustPlusShopConfig.discordAlertSteals && newSteals.length > 0) {
       const topList = newSteals
         .slice(0, 5)
-        .map(
-          (s) =>
-            `• **${s.buyQty}× ${s.buyItem}** for **${s.payQty} ${s.payItem}** at **[${s.grid}]** ("${s.shopName}" • ${s.inStock} stock)`
-        )
+        .map((s) => `• **${s.buyQty}× ${s.buyItem}** for **${s.payQty} ${s.payItem}** at **[${s.grid}]** ("${s.shopName}" • ${s.inStock} stock)`)
         .join('\n');
       sendDiscordNotification({
         title: `🔥 S-Tier Player Shop Steal Live on Map!`,
         description: `${topList}\n\nOpen **🛒 Shops & Trades** to reserve via Marketplace Drone.`,
         color: 0xa855f7
+      }).catch(() => {});
+    }
+    if (squadState.rustPlusShopConfig.discordAlertEvents && newEvents.length > 0) {
+      const evtLines = newEvents.slice(0, 4).map((e) => `• ${e.icon} **${e.label}** spotted at **[${e.grid}]**`).join('\n');
+      sendDiscordNotification({
+        title: `📡 Live Rust+ World Event Alert`,
+        description: `${evtLines}${nextServerInfo.name ? `\n\nServer: **${nextServerInfo.name}**` : ''}`,
+        color: 0x38bdf8
       }).catch(() => {});
     }
   }
@@ -1253,6 +1886,8 @@ async function applyVendingSnapshotToState(snapshot, cfg, isDemo = false) {
     ok: true,
     shopsCount: vmMarkers.length,
     ordersCount: liveShops.length,
+    eventsCount: liveEvents.length,
+    teamCount: teamMembers.length,
     stealsCount: newSteals.length,
     lastStatus: squadState.rustPlusShopConfig.lastStatus
   };
@@ -1278,7 +1913,7 @@ function configureRustPlusShopPoller() {
       } finally {
         isRustPlusPolling = false;
       }
-    }, 20000);
+    }, 15000);
   }
 }
 
@@ -1622,6 +2257,9 @@ function extractServerPairingFromHistoryItem(item, fallbackSteamId = '') {
         key: cleanSid,
         serverName: name,
         type: String(obj.type || (obj.entityId ? 'entity' : 'server')),
+        entityId: obj.entityId ? String(obj.entityId) : '',
+        entityName: String(obj.entityName || obj.name || item.data?.title || 'Smart Device'),
+        entityType: obj.entityType !== undefined ? String(obj.entityType) : '',
         ip: String(ip || ''),
         port,
         playerId: pid,
@@ -1735,12 +2373,33 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
     }
   }
 
+  const smartDevices = Array.isArray(squadState.rustPlusTelemetry?.smartDevices)
+    ? [...squadState.rustPlusTelemetry.smartDevices]
+    : [];
+
   for (const item of sorted) {
     const nid = Number(item.notificationId || item.id || 0);
     if (nid > maxNid) maxNid = nid;
 
     const srv = extractServerPairingFromHistoryItem(item, jwtSteamId);
     if (!srv) continue;
+
+    if (srv.type === 'entity' && srv.entityId) {
+      const idx = smartDevices.findIndex((d) => String(d.entityId) === String(srv.entityId));
+      const cleanDev = {
+        entityId: String(srv.entityId),
+        name: srv.entityName || srv.serverName || `Entity #${srv.entityId}`,
+        entityType: srv.entityType === '2' || /alarm/i.test(srv.entityName) ? 'alarm' : srv.entityType === '3' ? 'storage' : 'switch',
+        serverId: srv.serverId || '',
+        ip: srv.ip || '',
+        port: srv.port || '28082',
+        active: idx >= 0 ? Boolean(smartDevices[idx].active) : false,
+        pairedAt: Date.now()
+      };
+      if (idx >= 0) smartDevices[idx] = { ...smartDevices[idx], ...cleanDev };
+      else smartDevices.unshift(cleanDev);
+      continue;
+    }
 
     const isNewOrUpdated = upsertServer(srv);
     serversFound++;
@@ -1750,6 +2409,12 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
       }
     }
   }
+
+  squadState.rustPlusTelemetry = {
+    ...DEFAULT_STATE.rustPlusTelemetry,
+    ...(squadState.rustPlusTelemetry || {}),
+    smartDevices
+  };
 
   const active = newestServer || (existing.length > 0 ? existing[0] : null);
   const statusMsg = active
@@ -2301,12 +2966,118 @@ const server = http.createServer(async (req, res) => {
         playerToken: String(body.playerToken ?? squadState.rustPlusShopConfig?.playerToken ?? '').trim(),
         useProxy: Boolean(body.useProxy),
         autoPoll: Boolean(body.autoPoll),
-        discordAlertSteals: body.discordAlertSteals !== false
+        discordAlertSteals: body.discordAlertSteals !== false,
+        discordAlertEvents: body.discordAlertEvents !== false
       };
       configureRustPlusShopPoller();
       saveState(squadState);
       broadcastState('state_update');
       return sendJson(res, 200, { ok: true, rustPlusShopConfig: squadState.rustPlusShopConfig });
+    }
+
+    if (pathname === '/api/shops/rustplus/map-image' && req.method === 'GET') {
+      if (!cachedRustPlusMap || !cachedRustPlusMap.buffer) {
+        return sendJson(res, 404, { error: 'No Rust+ map image cached yet — connect or poll live server first.' });
+      }
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': cachedRustPlusMap.buffer.length,
+        'Cache-Control': 'public, max-age=120',
+        'Access-Control-Allow-Origin': '*'
+      });
+      return res.end(cachedRustPlusMap.buffer);
+    }
+
+    if (pathname === '/api/shops/rustplus/team-chat' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      const message = String(body.message || '').trim().slice(0, 240);
+      if (!message) return sendJson(res, 400, { error: 'Enter a message to send to team chat.' });
+
+      const cfg = squadState.rustPlusShopConfig || {};
+      const isDemo = Boolean(squadState.rustPlusTelemetry?.serverInfo?.isDemo);
+      try {
+        if (!isDemo && (cfg.ip || cfg.serverId) && cfg.playerId && cfg.playerToken) {
+          await sendRustPlusCommand(cfg, 13, encodeRustPlusSendMessage(message));
+        }
+        const prevChat = Array.isArray(squadState.rustPlusTelemetry?.teamChat) ? [...squadState.rustPlusTelemetry.teamChat] : [];
+        prevChat.push({
+          steamId: cfg.steamId || cfg.playerId || '0',
+          name: squadState.squadName || 'You (Companion)',
+          message,
+          color: '#fde047',
+          time: Math.floor(Date.now() / 1000)
+        });
+        squadState.rustPlusTelemetry = {
+          ...DEFAULT_STATE.rustPlusTelemetry,
+          ...(squadState.rustPlusTelemetry || {}),
+          teamChat: prevChat.slice(-30)
+        };
+        saveState(squadState);
+        broadcastState('state_update');
+        return sendJson(res, 200, { ok: true, teamChat: squadState.rustPlusTelemetry.teamChat });
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    if (pathname === '/api/shops/rustplus/smart-switch' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      const entityId = parseInt(String(body.entityId || '0'), 10);
+      if (!entityId) return sendJson(res, 400, { error: 'Valid Smart Switch Entity ID required.' });
+      const nextActive = Boolean(body.active);
+      const cfg = squadState.rustPlusShopConfig || {};
+      const list = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? [...squadState.rustPlusTelemetry.smartDevices] : [];
+      const dev = list.find((d) => String(d.entityId) === String(entityId));
+      const isDemo = Boolean(dev?.isDemo || squadState.rustPlusTelemetry?.serverInfo?.isDemo);
+
+      try {
+        if (!isDemo && (cfg.ip || cfg.serverId) && cfg.playerId && cfg.playerToken) {
+          await sendRustPlusCommand(cfg, 15, { entityId, bytes: [0x08, nextActive ? 0x01 : 0x00] });
+        }
+        if (dev) {
+          dev.active = nextActive;
+        } else {
+          list.unshift({ entityId: String(entityId), name: `Smart Switch #${entityId}`, entityType: 'switch', active: nextActive, pairedAt: Date.now() });
+        }
+        squadState.rustPlusTelemetry = {
+          ...DEFAULT_STATE.rustPlusTelemetry,
+          ...(squadState.rustPlusTelemetry || {}),
+          smartDevices: list
+        };
+        saveState(squadState);
+        broadcastState('state_update');
+        return sendJson(res, 200, { ok: true, smartDevices: list });
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+
+    if (pathname === '/api/shops/rustplus/smart-device' && req.method === 'POST') {
+      if (!checkPin(req, res)) return;
+      const body = await readJsonBody(req);
+      const action = String(body.action || 'add');
+      const entityId = String(body.entityId || '').replace(/[^\d]/g, '');
+      const list = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? [...squadState.rustPlusTelemetry.smartDevices] : [];
+      if (action === 'remove') {
+        const nextList = list.filter((d) => String(d.entityId) !== entityId);
+        squadState.rustPlusTelemetry = { ...DEFAULT_STATE.rustPlusTelemetry, ...(squadState.rustPlusTelemetry || {}), smartDevices: nextList };
+        saveState(squadState);
+        broadcastState('state_update');
+        return sendJson(res, 200, { ok: true, smartDevices: nextList });
+      }
+      if (!entityId) return sendJson(res, 400, { error: 'Enter numeric Entity ID (from Rust+ pairing or smart switch).' });
+      const name = String(body.name || '').trim() || `Smart Switch #${entityId}`;
+      const entityType = body.entityType === 'alarm' ? 'alarm' : 'switch';
+      const idx = list.findIndex((d) => String(d.entityId) === entityId);
+      const entry = { entityId, name, entityType, active: idx >= 0 ? Boolean(list[idx].active) : false, pairedAt: Date.now() };
+      if (idx >= 0) list[idx] = { ...list[idx], ...entry };
+      else list.unshift(entry);
+      squadState.rustPlusTelemetry = { ...DEFAULT_STATE.rustPlusTelemetry, ...(squadState.rustPlusTelemetry || {}), smartDevices: list };
+      saveState(squadState);
+      broadcastState('state_update');
+      return sendJson(res, 200, { ok: true, smartDevices: list });
     }
 
     if (pathname === '/api/shops/rustplus/poll' && req.method === 'POST') {
@@ -2323,7 +3094,8 @@ const server = http.createServer(async (req, res) => {
         ...(body.playerToken !== undefined ? { playerToken: String(body.playerToken).trim() } : {}),
         ...(body.useProxy !== undefined ? { useProxy: Boolean(body.useProxy) } : {}),
         ...(body.autoPoll !== undefined ? { autoPoll: Boolean(body.autoPoll) } : {}),
-        ...(body.discordAlertSteals !== undefined ? { discordAlertSteals: Boolean(body.discordAlertSteals) } : {})
+        ...(body.discordAlertSteals !== undefined ? { discordAlertSteals: Boolean(body.discordAlertSteals) } : {}),
+        ...(body.discordAlertEvents !== undefined ? { discordAlertEvents: Boolean(body.discordAlertEvents) } : {})
       };
       try {
         const snapshot = isDemo
