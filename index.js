@@ -1190,6 +1190,8 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
       const headers = {
         Connection: 'Upgrade',
         Upgrade: 'websocket',
+        Origin: 'https://app.playrust.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
         'Sec-WebSocket-Version': '13',
         'Sec-WebSocket-Key': crypto.randomBytes(16).toString('base64')
       };
@@ -1199,7 +1201,7 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
       reqOpts = {
         hostname: 'companion-rust.facepunch.com',
         port: 443,
-        path: `/socket/${encodeURIComponent(serverId)}?v=${Date.now()}`,
+        path: `/socket/${encodeURIComponent(serverId)}?v=0`,
         method: 'GET',
         headers,
         timeout: timeoutMs - 500
@@ -1215,6 +1217,7 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
         headers: {
           Connection: 'Upgrade',
           Upgrade: 'websocket',
+          Origin: 'https://app.playrust.com',
           'Sec-WebSocket-Version': '13',
           'Sec-WebSocket-Key': crypto.randomBytes(16).toString('base64')
         },
@@ -1348,6 +1351,25 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
       });
     });
 
+    req.on('response', (httpRes) => {
+      let errBody = '';
+      httpRes.on('data', (c) => {
+        if (errBody.length < 300) errBody += c;
+      });
+      httpRes.on('end', () => {
+        const sc = httpRes.statusCode || 0;
+        if (sc === 401 || sc === 403) {
+          finish(
+            new Error(
+              `${label} returned HTTP ${sc} (session expired or forbidden — re-sign via Step 1: Steam Popup). ${errBody.slice(0, 120)}`
+            )
+          );
+        } else {
+          finish(new Error(`${label} rejected WebSocket (HTTP ${sc}): ${errBody.slice(0, 120)}`));
+        }
+      });
+    });
+
     req.on('error', (err) => finish(err));
     req.on('timeout', () => req.destroy(new Error('WebSocket handshake timeout')));
     req.end();
@@ -1357,12 +1379,7 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
 let cachedRustPlusMap = null;
 
 function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
-  const serverKey = `${cfg.serverId || cfg.ip || ''}:${cfg.port || '28082'}`;
-  const needMap =
-    Boolean(forceMap) ||
-    !cachedRustPlusMap ||
-    cachedRustPlusMap.serverKey !== serverKey ||
-    Date.now() - cachedRustPlusMap.updatedAt > 30 * 60 * 1000;
+  const needMap = Boolean(forceMap);
 
   let infoResult = null;
   let timeResult = null;
@@ -1822,15 +1839,26 @@ function configureRustPlusShopPoller() {
       isRustPlusPolling = true;
       try {
         const snap = await fetchRustPlusVendingSnapshot(squadState.rustPlusShopConfig);
-        await applyVendingSnapshotToState(snap, squadState.rustPlusShopConfig, false);
+        await applyVendingSnapshotToState(snap, squadState.rustPlusShopConfig);
       } catch (err) {
-        squadState.rustPlusShopConfig.lastStatus = `⚠️ Poll error: ${err.message}`;
+        const msg = String(err.message || '');
+        const isAuthDenied = /HTTP 401|HTTP 403|Forbidden/i.test(msg);
+        if (isAuthDenied) {
+          squadState.rustPlusShopConfig.autoPoll = false;
+          if (rustPlusShopInterval) {
+            clearInterval(rustPlusShopInterval);
+            rustPlusShopInterval = null;
+          }
+          squadState.rustPlusShopConfig.lastStatus = `⚠️ ${msg}`;
+        } else {
+          squadState.rustPlusShopConfig.lastStatus = `⚠️ Poll error: ${msg}`;
+        }
         saveState(squadState);
         broadcastState('state_update');
       } finally {
         isRustPlusPolling = false;
       }
-    }, 15000);
+    }, 20000);
   }
 }
 
@@ -1843,6 +1871,7 @@ function postJsonHttps(urlStr, bodyObj, headers = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
     const payload = JSON.stringify(bodyObj || {});
+    const isFacepunch = parsed.hostname.endsWith('facepunch.com');
     const req = https.request(
       {
         hostname: parsed.hostname,
@@ -1852,7 +1881,13 @@ function postJsonHttps(urlStr, bodyObj, headers = {}) {
           'Content-Type': 'application/json',
           Accept: 'application/json',
           'Content-Length': Buffer.byteLength(payload),
-          'User-Agent': 'RustTacticalCompanion/2.2',
+          ...(isFacepunch
+            ? {
+                Origin: 'https://app.playrust.com',
+                Referer: 'https://app.playrust.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+              }
+            : { 'User-Agent': 'RustTacticalCompanion/2.2' }),
           ...headers
         },
         timeout: 12000
@@ -2238,14 +2273,25 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
   const cfg = squadState.rustPlusShopConfig || { ...DEFAULT_STATE.rustPlusShopConfig };
   const jwtSteamId = cfg.steamId || extractSteamIdFromJwt(token);
 
-  const [res, syncServers] = await Promise.all([
-    postJsonHttps(
-      'https://companion-rust.facepunch.com/api/history/read',
-      { AuthToken: token },
-      { Authorization: `Bearer ${token}` }
-    ),
-    fetchSyncDataServersFromFacepunch(token, jwtSteamId)
-  ]);
+  let res = null;
+  let syncServers = [];
+  try {
+    [res, syncServers] = await Promise.all([
+      postJsonHttps(
+        'https://companion-rust.facepunch.com/api/history/read',
+        { AuthToken: token },
+        { Authorization: `Bearer ${token}` }
+      ),
+      fetchSyncDataServersFromFacepunch(token, jwtSteamId)
+    ]);
+  } catch (err) {
+    if (/401|403|Forbidden/i.test(String(err.message || ''))) {
+      throw new Error(
+        'Facepunch Cloud returned HTTP 403 Forbidden (Steam session expired or rate-limited). Click "Step 1: Sign In with Steam (Popup)", copy the #code= URL, and click "Step 2: Auto-Paste & Connect".'
+      );
+    }
+    throw err;
+  }
 
   const notifications = Array.isArray(res?.entries)
     ? res.entries
@@ -2365,7 +2411,7 @@ async function syncPairedServersFromFacepunchCloud(authToken, isBackground = fal
     configureRustPlusShopPoller();
     try {
       const snap = await fetchRustPlusVendingSnapshot(squadState.rustPlusShopConfig);
-      await applyVendingSnapshotToState(snap, squadState.rustPlusShopConfig, false);
+      await applyVendingSnapshotToState(snap, squadState.rustPlusShopConfig);
     } catch (pollErr) {
       squadState.rustPlusShopConfig.lastStatus = `✅ Paired "${active.serverName}" — server poll wait: ${pollErr.message}`;
       saveState(squadState);
@@ -2388,10 +2434,31 @@ function configureRustPlusCloudSyncPoller() {
     clearInterval(rustPlusCloudSyncInterval);
     rustPlusCloudSyncInterval = null;
   }
-  if (squadState.rustPlusShopConfig?.authToken) {
-    rustPlusCloudSyncInterval = setInterval(() => {
-      syncPairedServersFromFacepunchCloud(squadState.rustPlusShopConfig.authToken, true).catch(() => {});
-    }, 4000);
+  const cfg = squadState.rustPlusShopConfig || {};
+  // Only poll Facepunch Cloud while waiting for first server pairing (stop immediately once paired or on 401/403)
+  if (cfg.authToken && (!Array.isArray(cfg.pairedServers) || cfg.pairedServers.length === 0)) {
+    let attempts = 0;
+    rustPlusCloudSyncInterval = setInterval(async () => {
+      attempts++;
+      const cur = squadState.rustPlusShopConfig || {};
+      if (!cur.authToken || (Array.isArray(cur.pairedServers) && cur.pairedServers.length > 0) || attempts > 18) {
+        clearInterval(rustPlusCloudSyncInterval);
+        rustPlusCloudSyncInterval = null;
+        return;
+      }
+      try {
+        await syncPairedServersFromFacepunchCloud(cur.authToken, true);
+        if (Array.isArray(squadState.rustPlusShopConfig?.pairedServers) && squadState.rustPlusShopConfig.pairedServers.length > 0) {
+          clearInterval(rustPlusCloudSyncInterval);
+          rustPlusCloudSyncInterval = null;
+        }
+      } catch (err) {
+        if (/401|403|Forbidden/i.test(String(err.message || ''))) {
+          clearInterval(rustPlusCloudSyncInterval);
+          rustPlusCloudSyncInterval = null;
+        }
+      }
+    }, 10000);
   }
 }
 
@@ -2769,7 +2836,7 @@ const server = http.createServer(async (req, res) => {
             autoPoll: true
           };
           const snap = await fetchRustPlusVendingSnapshot(nextCfg);
-          const result = await applyVendingSnapshotToState(snap, nextCfg, false);
+          const result = await applyVendingSnapshotToState(snap, nextCfg);
           configureRustPlusShopPoller();
           return sendJson(res, 200, {
             ok: true,

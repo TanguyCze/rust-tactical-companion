@@ -8308,6 +8308,9 @@
     return null;
   }
 
+  let bfAutoLoadedLiveSeedKey = '';
+  let bfExternalLoadSeedFn = null;
+
   function initBaseFinderModule() {
     const analyzeBtn = document.getElementById('bfAnalyzeBtn');
     const urlInput = document.getElementById('bfMapUrlInput');
@@ -8357,14 +8360,14 @@
       });
     }
 
-    async function runAnalyze() {
+    async function runAnalyze({ silent = false } = {}) {
       const url = urlInput?.value.trim();
       if (!url) {
-        alert('Paste a RustMaps.com URL (e.g. https://rustmaps.com/map/4250_1337420) or size_seed first!');
+        if (!silent) alert('Paste a RustMaps.com URL (e.g. https://rustmaps.com/map/4250_1337420) or size_seed first!');
         return;
       }
       if (window.location.protocol === 'file:') {
-        alert('Backend server required to fetch RustMaps data.');
+        if (!silent) alert('Backend server required to fetch RustMaps data.');
         return;
       }
 
@@ -8431,19 +8434,26 @@
 
         await Promise.all([baseImgPromise, ...hmPromises]);
         rerunBaseFinderScoring();
+        renderShopLiveMap();
         if (statusEl) {
           statusEl.textContent = `✓ Analysis complete for ${data.size}_${data.seed}! Top spot: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
         }
       } catch (err) {
         if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
-        alert(err.message);
+        if (!silent) alert(err.message);
       } finally {
         analyzeBtn.textContent = oldText;
         analyzeBtn.disabled = false;
       }
     }
 
-    analyzeBtn?.addEventListener('click', runAnalyze);
+    bfExternalLoadSeedFn = (sizeSeed) => {
+      if (!sizeSeed) return;
+      if (urlInput) urlInput.value = sizeSeed;
+      return runAnalyze({ silent: true });
+    };
+
+    analyzeBtn?.addEventListener('click', () => runAnalyze());
     urlInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') runAnalyze();
     });
@@ -9060,9 +9070,17 @@
     const imgTopLeft = toPx(-mapSize / 2, mapSize / 2);
     const imgSizePx = mapSize * scale;
 
-    // Load live Rust+ AppMap JPG if available, else fall back to Base Finder image
+    // Auto-load clean RustMaps base image from Base Finder whenever Rust+ gives a new server seed
+    const liveSeedKey = info?.mapSize && info?.seed ? `${info.mapSize}_${info.seed}` : '';
+    const bfSeedKey = bfMapData?.size && bfMapData?.seed ? `${bfMapData.size}_${bfMapData.seed}` : '';
+    if (liveSeedKey && bfSeedKey !== liveSeedKey && bfAutoLoadedLiveSeedKey !== liveSeedKey && bfExternalLoadSeedFn) {
+      bfAutoLoadedLiveSeedKey = liveSeedKey;
+      setTimeout(() => bfExternalLoadSeedFn(liveSeedKey), 50);
+    }
+
+    // Prefer Base Finder's crisp RustMaps image first; fall back to Rust+ AppMap JPG only if unavailable
     const rpImgUrl = tel.mapMeta?.imageUrl || '';
-    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl) {
+    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl && !bfLoadedImage) {
       cachedShopMapImgUrl = rpImgUrl;
       const im = new Image();
       im.onload = () => {
@@ -9072,9 +9090,10 @@
       im.src = rpImgUrl;
     }
 
-    const activeImg = cachedShopMapImg || bfLoadedImage;
+    const bfReady = Boolean(bfLoadedImage && bfLoadedImage.complete && bfLoadedImage.naturalWidth > 0);
+    const activeImg = bfReady ? bfLoadedImage : cachedShopMapImg;
     if (activeImg && activeImg.complete && activeImg.naturalWidth > 0) {
-      if (cachedShopMapImg && tel.mapMeta && tel.mapMeta.width > 0) {
+      if (activeImg === cachedShopMapImg && tel.mapMeta && tel.mapMeta.width > 0) {
         const mw = tel.mapMeta.width;
         const mh = tel.mapMeta.height || mw;
         const margin = Number(tel.mapMeta.oceanMargin || 0);
@@ -9093,7 +9112,7 @@
         ctx.drawImage(activeImg, imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
       }
     } else {
-      // Crisp procedural landmass placeholder so Demo & Pre-JPG states still look tactical
+      // Crisp landmass placeholder while Base Finder clean map loads
       ctx.save();
       ctx.fillStyle = '#0f3644';
       ctx.fillRect(imgTopLeft.px, imgTopLeft.py, imgSizePx, imgSizePx);
