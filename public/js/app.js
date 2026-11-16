@@ -60,6 +60,11 @@
     port: '28082',
     playerId: '',
     playerToken: '',
+    serverName: '',
+    authToken: '',
+    steamId: '',
+    pairedServers: [],
+    lastHistoryNotificationId: 0,
     useProxy: false,
     autoPoll: false,
     discordAlertSteals: true,
@@ -9765,11 +9770,219 @@
           saveLocalFallback();
         }
         if (statusEl) statusEl.textContent = data.lastStatus || `✅ Synced ${data.ordersCount || 0} live orders across ${data.shopsCount || 0} shops.`;
+        syncRustPlusShopUiFromState();
         renderShopsModule();
       } catch (err) {
         if (statusEl) statusEl.textContent = `❌ ${err.message}`;
       }
     };
+
+    // Steam Login Popup + Facepunch Cloud Auto-Exchange & Server Sync
+    let awaitingSteamClipboardCode = false;
+    let lastExchangedShopAuthInput = '';
+
+    const openSteamShopPopup = (launchWindow = true) => {
+      const drawer = document.getElementById('liveShopTrackerDrawer');
+      if (drawer) drawer.open = true;
+      document.getElementById('rpPopupConnectSection')?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      awaitingSteamClipboardCode = true;
+      const statusEl = document.getElementById('rpShopStatusText');
+      if (statusEl) {
+        statusEl.textContent = '🌐 Steam popup opened — sign in with Steam, copy the final URL ending with #code=... (Ctrl+L then Ctrl+C), and click back here!';
+      }
+      if (!launchWindow) return;
+      const staticCallback = 'https://app.playrust.com/assets/yandex-browser-manifest.json';
+      const loginUrl = isServerConnected
+        ? '/api/rustplus/login'
+        : `https://companion-rust.facepunch.com/login-direct?returnUrl=${encodeURIComponent(staticCallback)}`;
+      try {
+        const w = 560;
+        const h = 720;
+        const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+        const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
+        window.open(loginUrl, 'RustPlusSteamLogin', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+      } catch (_) {}
+    };
+
+    const submitFacepunchShopAuth = async (rawInput, { simulate = false, isSilentAuto = false } = {}) => {
+      const tokenInput = String(rawInput || '').trim();
+      const statusEl = document.getElementById('rpShopStatusText');
+      if (!simulate && !tokenInput) {
+        if (!isSilentAuto && statusEl) {
+          statusEl.textContent = '⚠️ First click Step 1: Sign In with Steam (Popup), copy the URL ending with #code=..., then click Step 2.';
+        }
+        return false;
+      }
+      if (!simulate && isSilentAuto && tokenInput === lastExchangedShopAuthInput) {
+        return false;
+      }
+      if (!simulate) lastExchangedShopAuthInput = tokenInput;
+      awaitingSteamClipboardCode = false;
+
+      const codeInp = document.getElementById('rpAuthCodeInput');
+      if (codeInp && tokenInput) codeInp.value = tokenInput;
+      if (statusEl) {
+        statusEl.textContent = simulate
+          ? '⏳ Running Steam Popup OAuth Demo & syncing Facepunch Cloud servers...'
+          : '⏳ Exchanging Steam OAuth code with Facepunch Cloud & pulling paired servers...';
+      }
+
+      try {
+        const resp = await fetch('/api/shops/rustplus/auth-exchange', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
+          },
+          body: JSON.stringify({ tokenInput, simulate })
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        if (data.state) {
+          appState = {
+            ...appState,
+            ...data.state,
+            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
+            rustPlusShopConfig: {
+              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+              ...(appState.rustPlusShopConfig || {}),
+              ...(data.state.rustPlusShopConfig || {})
+            }
+          };
+          saveLocalFallback();
+        } else if (Array.isArray(data.pairedServers)) {
+          appState.rustPlusShopConfig = {
+            ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+            ...(appState.rustPlusShopConfig || {}),
+            ...(data.activeServer || {}),
+            pairedServers: data.pairedServers,
+            lastStatus: data.lastStatus || ''
+          };
+          saveLocalFallback();
+        }
+        syncRustPlusShopUiFromState();
+        renderShopsModule();
+        if (statusEl) {
+          statusEl.textContent = data.lastStatus || `✅ Connected via Facepunch Cloud! Found ${(data.pairedServers || []).length} paired server(s).`;
+        }
+        return true;
+      } catch (err) {
+        if (!isSilentAuto && statusEl) statusEl.textContent = `❌ ${err.message}`;
+        return false;
+      }
+    };
+
+    document.getElementById('openRustPlusPopupModalBtn')?.addEventListener('click', () => openSteamShopPopup(true));
+    document.getElementById('rpPopupSteamLoginBtn')?.addEventListener('click', () => openSteamShopPopup(true));
+    document.getElementById('rpDemoCloudAuthBtn')?.addEventListener('click', () => submitFacepunchShopAuth('', { simulate: true }));
+
+    document.getElementById('rpPasteClipboardBtn')?.addEventListener('click', async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const clipText = ((await navigator.clipboard.readText()) || '').trim();
+          if (clipText) {
+            return await submitFacepunchShopAuth(clipText, { isSilentAuto: false });
+          }
+        }
+      } catch (_) {}
+      const typed = document.getElementById('rpAuthCodeInput')?.value.trim() || '';
+      if (typed) {
+        await submitFacepunchShopAuth(typed, { isSilentAuto: false });
+      } else {
+        const manual = window.prompt?.('Paste the popup URL ending with #code=... from the Steam login window:');
+        if (manual && manual.trim()) {
+          await submitFacepunchShopAuth(manual.trim(), { isSilentAuto: false });
+        }
+      }
+    });
+
+    document.getElementById('rpAuthExchangeBtn')?.addEventListener('click', () => {
+      const val = document.getElementById('rpAuthCodeInput')?.value.trim() || '';
+      submitFacepunchShopAuth(val, { isSilentAuto: false });
+    });
+
+    document.getElementById('rpAuthCodeInput')?.addEventListener('paste', () => {
+      setTimeout(() => {
+        const val = document.getElementById('rpAuthCodeInput')?.value.trim() || '';
+        if (val && (val.includes('code=') || val.includes('playerToken') || val.length > 20)) {
+          submitFacepunchShopAuth(val, { isSilentAuto: false });
+        }
+      }, 60);
+    });
+
+    window.addEventListener('focus', async () => {
+      if (!awaitingSteamClipboardCode) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const clipText = ((await navigator.clipboard.readText()) || '').trim();
+          if (
+            clipText &&
+            clipText !== lastExchangedShopAuthInput &&
+            (clipText.includes('#code=') || clipText.includes('?code=') || clipText.includes('rustplus_auth_token'))
+          ) {
+            await submitFacepunchShopAuth(clipText, { isSilentAuto: true });
+          }
+        }
+      } catch (_) {}
+    });
+
+    document.getElementById('rpSyncCloudBtn')?.addEventListener('click', async () => {
+      const statusEl = document.getElementById('rpShopStatusText');
+      if (statusEl) statusEl.textContent = '⏳ Checking Facepunch Cloud for new "Pair with Server" clicks...';
+      try {
+        const resp = await fetch('/api/shops/rustplus/cloud-sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {})
+          },
+          body: '{}'
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || `HTTP ${resp.status}`);
+        if (data.state) {
+          appState = {
+            ...appState,
+            ...data.state,
+            customShops: Array.isArray(data.state.customShops) ? data.state.customShops : appState.customShops,
+            rustPlusShopConfig: {
+              ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+              ...(appState.rustPlusShopConfig || {}),
+              ...(data.state.rustPlusShopConfig || {})
+            }
+          };
+          saveLocalFallback();
+        }
+        syncRustPlusShopUiFromState();
+        renderShopsModule();
+        if (statusEl) {
+          statusEl.textContent = `🔄 Cloud sync complete: ${(data.pairedServers || []).length} paired server(s) loaded.`;
+        }
+      } catch (err) {
+        if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+      }
+    });
+
+    document.getElementById('rpPairedServerSelect')?.addEventListener('change', (e) => {
+      const key = e.target.value;
+      if (!key) return;
+      const servers = appState.rustPlusShopConfig?.pairedServers || [];
+      const srv = servers.find((s) => `${s.ip}:${s.port}` === key);
+      if (!srv) return;
+      appState.rustPlusShopConfig = {
+        ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+        ...(appState.rustPlusShopConfig || {}),
+        ip: srv.ip,
+        port: srv.port,
+        playerId: srv.playerId,
+        playerToken: srv.playerToken,
+        serverName: srv.serverName
+      };
+      syncRustPlusShopUiFromState();
+      triggerRustPlusShopPoll(false);
+    });
 
     document.getElementById('rpShopPollNowBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(false));
     document.getElementById('rpShopSimulateBtn')?.addEventListener('click', () => triggerRustPlusShopPoll(true));
@@ -9826,6 +10039,22 @@
     setIfIdle('rpShopPortInput', cfg.port || '28082');
     setIfIdle('rpShopPlayerIdInput', cfg.playerId || '');
     setIfIdle('rpShopTokenInput', cfg.playerToken || '');
+    const srvSel = document.getElementById('rpPairedServerSelect');
+    if (srvSel) {
+      const paired = Array.isArray(cfg.pairedServers) ? cfg.pairedServers : [];
+      const currentVal = cfg.ip ? `${cfg.ip}:${cfg.port || '28082'}` : '';
+      if (paired.length === 0) {
+        srvSel.innerHTML = `<option value="">🌐 Paired Servers (Sign in above to auto-load)...</option>`;
+      } else {
+        srvSel.innerHTML = paired
+          .map((s) => {
+            const val = `${s.ip}:${s.port || '28082'}`;
+            const selAttr = val === currentVal ? ' selected' : '';
+            return `<option value="${escapeHtml(val)}"${selAttr}>🛰️ ${escapeHtml(s.serverName || val)} (${escapeHtml(val)})</option>`;
+          })
+          .join('');
+      }
+    }
     const autoCb = document.getElementById('rpShopAutoPollCb');
     if (autoCb) autoCb.checked = Boolean(cfg.autoPoll);
     const alertCb = document.getElementById('rpShopDiscordStealCb');

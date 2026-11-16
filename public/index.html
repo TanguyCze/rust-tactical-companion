@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116g" />
+  <link rel="stylesheet" href="css/styles.css?v=20261116h" />
 </head>
 <body>
 
@@ -766,7 +766,10 @@
             <div class="panel-title">🛒 In-Game Player Shops, NPC Vendors &amp; Best-to-Buy Guide</div>
             <div class="panel-subtitle">Search Player Vending Machine meta deals &amp; live Monument NPC trades — filter by shop source, category, payment currency, or ROI rank</div>
           </div>
-          <span id="shopCountBadge" class="target-tier-tag">76 TRADES</span>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button id="openRustPlusPopupModalBtn" type="button" class="btn btn-sm btn-primary" style="background:#2563eb; border-color:#60a5fa;">🚀 Auto-Connect Rust+ (Popup)</button>
+            <span id="shopCountBadge" class="target-tier-tag">76 TRADES</span>
+          </div>
         </div>
 
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
@@ -926,21 +929,48 @@
                   </div>
                 </div>
 
-                <!-- Method 2: Direct Rust+ WebSocket Vending Machine Poller -->
-                <div style="padding:10px; border-radius:6px; background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.35);">
-                  <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:#d8b4fe; margin-bottom:6px;">
-                    🔌 REAL-TIME RUST+ SERVER VENDING POLLER (ALL MAP SHOPS + LIVE STOCK)
+                <!-- Method 2: Steam Popup Auto-Connect & Direct Rust+ WebSocket Poller -->
+                <div id="rpPopupConnectSection" style="padding:10px; border-radius:6px; background:rgba(37,99,235,0.1); border:1px solid rgba(96,165,250,0.45);">
+                  <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:#93c5fd; margin-bottom:6px;">
+                    🚀 AUTO-CONNECT RUST+ VIA STEAM LOGIN POPUP (NO MANUAL KEYS!)
                   </div>
-                  <input id="rpShopJsonPasteInput" type="text" class="input" style="width:100%; font-size:11.5px; margin-bottom:6px;" placeholder='Optional: Paste rustplus.config.json snippet ({"ip":"...","port":28082,"playerId":"...","playerToken":...})' />
-                  <div style="display:grid; grid-template-columns:2fr 1fr; gap:6px; margin-bottom:6px;">
-                    <input id="rpShopIpInput" type="text" class="input" placeholder="Server IP (e.g. 185.x.x.x)" />
-                    <input id="rpShopPortInput" type="text" class="input" value="28082" placeholder="App Port (28082)" />
+                  <div style="font-size:11.5px; color:var(--text-main); line-height:1.45; margin-bottom:8px;">
+                    <strong>1.</strong> Click <strong>Sign In with Steam (Popup)</strong> below &amp; log into Steam.<br/>
+                    <strong>2.</strong> Copy the final popup URL ending with <code>#code=...</code> (<code>Ctrl+L</code> → <code>Ctrl+C</code>) and click back here — it <strong>auto-connects &amp; syncs your paired servers automatically</strong>!
                   </div>
-                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
-                    <input id="rpShopPlayerIdInput" type="text" class="input" placeholder="SteamID64 (playerId)" />
-                    <input id="rpShopTokenInput" type="password" class="input" placeholder="Rust+ PlayerToken" />
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                    <button id="rpPopupSteamLoginBtn" type="button" class="btn btn-primary btn-sm" style="background:#2563eb; border-color:#60a5fa;">🚀 Step 1: Sign In with Steam (Popup)</button>
+                    <button id="rpPasteClipboardBtn" type="button" class="btn btn-primary btn-sm" style="background:#16a34a; border-color:#4ade80;">📋 Step 2: Auto-Paste &amp; Connect</button>
+                    <button id="rpSyncCloudBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;">🔄 Sync In-Game Pairings</button>
+                    <button id="rpDemoCloudAuthBtn" type="button" class="btn btn-sm" style="border-color:#a855f7; color:#e9d5ff;">🧪 Test Popup Auto-Connect</button>
                   </div>
-                  <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px;">
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                    <input id="rpAuthCodeInput" type="text" class="input" style="flex:1; min-width:190px; font-family:var(--font-mono); font-size:11px;" placeholder="Or paste #code=... popup URL / token here to auto-connect..." />
+                    <button id="rpAuthExchangeBtn" type="button" class="btn btn-sm btn-primary">⚡ Exchange</button>
+                  </div>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+                    <select id="rpPairedServerSelect" class="select" style="flex:1; min-width:200px; font-size:12px;">
+                      <option value="">🌐 Paired Servers (Sign in above to auto-load)...</option>
+                    </select>
+                    <button id="rpShopSimulateBtn" type="button" class="btn btn-sm" style="border-color:#a855f7; color:#e9d5ff;">🧪 Demo Shops</button>
+                    <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm">🗑️ Clear Live</button>
+                  </div>
+                  <details style="margin-bottom:8px;">
+                    <summary style="cursor:pointer; font-size:11px; color:var(--text-secondary);">⚙️ Manual IP / Port / Token Fields (auto-filled by Popup above)</summary>
+                    <div style="margin-top:6px;">
+                      <input id="rpShopJsonPasteInput" type="text" class="input" style="width:100%; font-size:11.5px; margin-bottom:6px;" placeholder='Optional: Paste rustplus.config.json snippet ({"ip":"...","port":28082,"playerId":"...","playerToken":...})' />
+                      <div style="display:grid; grid-template-columns:2fr 1fr; gap:6px; margin-bottom:6px;">
+                        <input id="rpShopIpInput" type="text" class="input" placeholder="Server IP (e.g. 185.x.x.x)" />
+                        <input id="rpShopPortInput" type="text" class="input" value="28082" placeholder="App Port (28082)" />
+                      </div>
+                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px;">
+                        <input id="rpShopPlayerIdInput" type="text" class="input" placeholder="SteamID64 (playerId)" />
+                        <input id="rpShopTokenInput" type="password" class="input" placeholder="Rust+ PlayerToken" />
+                      </div>
+                      <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔌 Connect &amp; Poll Live</button>
+                    </div>
+                  </details>
+                  <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px;">
                     <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
                       <input id="rpShopAutoPollCb" type="checkbox" />
                       <span>🔄 Auto-poll live shops every 20s &amp; update stock counts</span>
@@ -950,13 +980,8 @@
                       <span>📣 Alert Discord Bot / Webhook when an S-Tier Steal is in stock</span>
                     </label>
                   </div>
-                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-                    <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔌 Connect &amp; Poll Live</button>
-                    <button id="rpShopSimulateBtn" type="button" class="btn btn-sm" style="border-color:#a855f7; color:#e9d5ff;">🧪 Demo Live Server Feed</button>
-                    <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm">🗑️ Clear Live</button>
-                  </div>
                   <div id="rpShopStatusText" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
-                    Not connected yet — test with Demo Live Server Feed or paste Rust+ server credentials above.
+                    Ready — click Step 1: Sign In with Steam (Popup) or Test Popup Auto-Connect.
                   </div>
                 </div>
               </div>
@@ -1215,7 +1240,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116g"></script>
-  <script src="js/app.js?v=20261116g"></script>
+  <script src="js/data.js?v=20261116h"></script>
+  <script src="js/app.js?v=20261116h"></script>
 </body>
 </html>
