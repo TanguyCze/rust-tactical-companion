@@ -116,6 +116,7 @@
     discordWebhookUrl: '',
     discordConfig: { ...DEFAULT_DISCORD_CONFIG },
     customShops: [],
+    shopWatchlist: [],
     rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG },
     rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY },
     savedClones: [
@@ -192,11 +193,17 @@
 
   let lastSyncedStateJson = '';
 
-  async function syncStateToServer() {
+  async function syncStateToServer(includeRustPlus = false) {
     saveLocalFallback();
     if (!isServerConnected) return;
     try {
-      const payloadJson = JSON.stringify(appState);
+      const payloadObj = includeRustPlus
+        ? { ...appState, _syncRustPlus: true }
+        : (() => {
+            const { rustPlusTelemetry: _rt, rustPlusShopConfig: _rc, ...rest } = appState;
+            return rest;
+          })();
+      const payloadJson = JSON.stringify(payloadObj);
       lastSyncedStateJson = payloadJson;
       const res = await fetch('/api/state', {
         method: 'POST',
@@ -241,7 +248,8 @@
               discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
               rustPlusShopConfig: { ...DEFAULT_RUSTPLUS_SHOP_CONFIG, ...(appState.rustPlusShopConfig || {}), ...(msg.state.rustPlusShopConfig || {}) },
               rustPlusTelemetry: { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), ...(msg.state.rustPlusTelemetry || {}) },
-              customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || [])
+              customShops: Array.isArray(msg.state.customShops) ? msg.state.customShops : (appState.customShops || []),
+              shopWatchlist: Array.isArray(msg.state.shopWatchlist) ? msg.state.shopWatchlist : (appState.shopWatchlist || [])
             };
             saveLocalFallback();
             if (firstHydrate) {
@@ -8744,6 +8752,7 @@
   }
 
   const RUSTPLUS_NOTE_COLORS = ['#eab308', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#06b6d4'];
+  const RUSTPLUS_NOTE_ICONS = ['📌', '💲', '🏠', '🪂', '🎯', '🛡️', '💀', '😴', '🛌', '🔫', '🪨', '📦'];
 
   function drawRustPlusOverlayOnCanvas(ctx, {
     toPx,
@@ -8768,22 +8777,24 @@
         if (!Number.isFinite(n.wx) || !Number.isFinite(n.wy)) return;
         const { px, py } = toPx(n.wx, n.wy);
         const isDeath = Number(n.type) === 0;
-        const color = isDeath ? '#ef4444' : (RUSTPLUS_NOTE_COLORS[Number(n.colourIndex) || 0] || '#eab308');
+        const cIdx = Number(n.colourIndex ?? n.color ?? 0) || 0;
+        const color = isDeath ? '#ef4444' : (RUSTPLUS_NOTE_COLORS[cIdx] || '#eab308');
+        const noteIcon = isDeath ? '✕' : (RUSTPLUS_NOTE_ICONS[Number(n.icon) || 0] || '');
         const grid = bfWorldToGrid(n.wx, n.wy, mapSize);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(px, py, isDeath ? 7 : 6, 0, Math.PI * 2);
+        ctx.arc(px, py, isDeath ? 7.5 : 7, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
-        ctx.lineWidth = 1.6;
-        ctx.strokeStyle = '#090b0e';
+        ctx.lineWidth = n.isLeader ? 2 : 1.5;
+        ctx.strokeStyle = n.isLeader ? '#fef08a' : '#090b0e';
         ctx.stroke();
-        if (isDeath) {
-          ctx.font = '700 9px "Inter", sans-serif';
+        if (isDeath || (noteIcon && Number(n.icon) > 0)) {
+          ctx.font = '700 8.5px "Inter", sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillStyle = '#ffffff';
-          ctx.fillText('✕', px, py + 0.5);
+          ctx.fillText(noteIcon, px, py + 0.5);
         }
         if (n.label) {
           ctx.font = '700 9.5px "Inter", sans-serif';
@@ -8791,9 +8802,10 @@
           ctx.textBaseline = 'alphabetic';
           ctx.strokeStyle = 'rgba(0,0,0,0.92)';
           ctx.lineWidth = 3;
-          ctx.strokeText(n.label, px, py - 9);
+          const lblText = `${n.isLeader ? '👑 ' : ''}${n.label}`;
+          ctx.strokeText(lblText, px, py - 10);
           ctx.fillStyle = '#fef3c7';
-          ctx.fillText(n.label, px, py - 9);
+          ctx.fillText(lblText, px, py - 10);
         }
         ctx.restore();
         const distLine = formatPlayerDistanceBearing(n.wx, n.wy, myMember);
@@ -8803,10 +8815,10 @@
           r: 8,
           wx: n.wx,
           wy: n.wy,
-          title: `${isDeath ? '💀 Death Marker' : '📌 Map Note'}${n.label ? `: ${n.label}` : ''} [${grid}]`,
+          title: `${isDeath ? '💀 Death Marker' : n.isLeader ? '👑 Leader Map Note' : '📌 Map Note'}${n.label ? `: ${n.label}` : ''} [${grid}]`,
           color,
           lines: [
-            isDeath ? 'Last death location' : 'In-game team map marker',
+            isDeath ? 'Last death location' : n.isLeader ? 'Team leader map marker' : 'Personal / team map marker',
             ...(distLine ? [distLine] : [])
           ]
         });
@@ -8877,24 +8889,34 @@
       });
     }
 
-    // C. Live Vending Machines (Color-coded: Gold Star = S-Tier Steal, Green = In Stock, Grey = Sold Out)
+    // C. Live Vending Machines (Color-coded: Gold Star = S-Tier Steal, Green = In Stock, Grey = Sold Out, Cyan ◎ = Search Match)
     if (showVending && Array.isArray(tel.vendingPins)) {
+      const hasHighlightSet = highlightedIds instanceof Set;
       tel.vendingPins.forEach((vp) => {
-        const { px, py } = toPx(vp.wx, vp.wy);
         const isSel = selectedShopPinId && String(vp.markerId) === String(selectedShopPinId);
         const hasSteal = (vp.stealCount || 0) > 0;
         const hasStock = (vp.inStockCount || 0) > 0;
+        if (!isSel) {
+          if (stealsOnly && !hasSteal) return;
+          if (inStockOnly && !hasStock) return;
+        }
+        const isMatch = hasHighlightSet ? highlightedIds.has(String(vp.markerId)) : false;
+        const hasWatchHit = (vp.orders || []).some((o) => o.watchlistMatch);
+        const { px, py } = toPx(vp.wx, vp.wy);
         const fill = hasSteal ? '#eab308' : hasStock ? '#22c55e' : '#64748b';
-        const ring = isSel ? '#38bdf8' : hasSteal ? '#c084fc' : hasStock ? '#4ade80' : '#475569';
-        const r = isSel ? 12 : hasSteal ? 10.5 : 8.5;
+        const ring = isSel ? '#38bdf8' : hasWatchHit ? '#4ade80' : isMatch ? '#38bdf8' : hasSteal ? '#c084fc' : hasStock ? '#4ade80' : '#475569';
+        const r = isSel ? 12 : hasSteal || hasWatchHit || isMatch ? 10.5 : 8.5;
 
         ctx.save();
-        if (hasSteal || isSel) {
+        if (hasHighlightSet && !isMatch && !isSel) {
+          ctx.globalAlpha = 0.34;
+        }
+        if (hasSteal || isSel || isMatch || hasWatchHit) {
           ctx.beginPath();
-          ctx.arc(px, py, r + 5, 0, Math.PI * 2);
-          ctx.fillStyle = isSel ? 'rgba(56,189,248,0.28)' : 'rgba(168,85,247,0.25)';
+          ctx.arc(px, py, r + 5.5, 0, Math.PI * 2);
+          ctx.fillStyle = isSel || isMatch ? 'rgba(56,189,248,0.28)' : hasWatchHit ? 'rgba(34,197,94,0.28)' : 'rgba(168,85,247,0.25)';
           ctx.fill();
-          ctx.lineWidth = isSel ? 2.4 : 1.6;
+          ctx.lineWidth = isSel || isMatch ? 2.4 : 1.7;
           ctx.strokeStyle = ring;
           ctx.stroke();
         }
@@ -8910,7 +8932,7 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = hasSteal ? '#090b0e' : '#ffffff';
-        ctx.fillText(hasSteal ? '★' : '🛒', px, py + 0.5);
+        ctx.fillText(hasWatchHit ? '🎯' : hasSteal ? '★' : '🛒', px, py + 0.5);
 
         ctx.textBaseline = 'alphabetic';
         ctx.font = '700 9.5px "JetBrains Mono", monospace';
@@ -8918,14 +8940,16 @@
         ctx.lineWidth = 3;
         const tag = `[${vp.grid}] ${vp.name.slice(0, 18)}`;
         ctx.strokeText(tag, px, py - (r + 5));
-        ctx.fillStyle = hasSteal ? '#fde047' : hasStock ? '#bbf7d0' : '#94a3b8';
+        ctx.fillStyle = isMatch ? '#7dd3fc' : hasWatchHit ? '#4ade80' : hasSteal ? '#fde047' : hasStock ? '#bbf7d0' : '#94a3b8';
         ctx.fillText(tag, px, py - (r + 5));
         ctx.restore();
 
+        const distLine = formatPlayerDistanceBearing(vp.wx, vp.wy, myMember);
         const orderLines = (vp.orders || []).slice(0, 5).map((o) => {
           const stLbl = o.inStock > 0 ? `${o.inStock} left` : 'SOLD OUT';
-          return `${o.isSteal ? '🔥 ' : '• '}${o.buyQty}× ${o.buyItem} ⇄ ${o.payQty} ${o.payItem} (${stLbl})`;
+          return `${o.watchlistMatch ? '🎯 ' : o.isSteal ? '🔥 ' : '• '}${o.buyQty}× ${o.buyItem} ⇄ ${o.payQty} ${o.payItem} (${stLbl})`;
         });
+        if (distLine) orderLines.push(distLine);
         if (!orderLines.length) orderLines.push('Click to filter trades in list');
         else orderLines.push('Click pin → Filter list to this shop');
 
@@ -9038,6 +9062,76 @@
       }
     }
 
+    // Live Alert Banner (Triggered Smart Alarm or Watchlist Match)
+    const alertBannerEl = document.getElementById('shopLiveAlertBanner');
+    if (alertBannerEl) {
+      const triggeredAlarms = (tel.smartDevices || []).filter((d) => d.entityType === 'alarm' && d.active);
+      const watchMatches = (tel.vendingPins || []).flatMap((vp) =>
+        (vp.orders || [])
+          .filter((o) => o.watchlistMatch && o.inStock > 0)
+          .map((o) => ({ shop: vp.name, grid: vp.grid, wx: vp.wx, wy: vp.wy, markerId: vp.markerId, o }))
+      );
+      if (triggeredAlarms.length || watchMatches.length) {
+        const parts = [];
+        if (triggeredAlarms.length) {
+          parts.push(
+            `<div style="padding:7px 10px; border-radius:6px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; color:#fecaca; font-size:12px; font-weight:700;">🚨 RAID ALARM TRIGGERED: ${triggeredAlarms.map((a) => escapeHtml(a.name)).join(', ')}</div>`
+          );
+        }
+        if (watchMatches.length) {
+          const pills = watchMatches
+            .slice(0, 4)
+            .map(
+              (m) =>
+                `<button type="button" class="filter-pill shop-alert-focus-btn" data-wx="${m.wx}" data-wy="${m.wy}" data-mid="${escapeHtml(m.markerId)}" style="border-color:#4ade80; color:#bbf7d0;">🎯 ${escapeHtml(m.o.buyQty + '× ' + m.o.buyItem)} @ ${escapeHtml(m.o.payQty + ' ' + m.o.payItem)} [${escapeHtml(m.grid)}]</button>`
+            )
+            .join('');
+          parts.push(
+            `<div style="padding:6px 10px; border-radius:6px; background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.45); display:flex; gap:6px; align-items:center; flex-wrap:wrap;"><span style="font-size:11.5px; font-weight:700; color:#4ade80;">🎯 Watchlist In Stock:</span>${pills}</div>`
+          );
+        }
+        alertBannerEl.style.display = 'flex';
+        alertBannerEl.style.flexDirection = 'column';
+        alertBannerEl.style.gap = '6px';
+        alertBannerEl.innerHTML = parts.join('');
+        alertBannerEl.querySelectorAll('.shop-alert-focus-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            focusShopOnLiveMap(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, btn.getAttribute('data-mid') || '');
+          });
+        });
+      } else {
+        alertBannerEl.style.display = 'none';
+      }
+    }
+
+    // Live Squad GPS Roster Pills (Click teammate to pan map to them)
+    const teamStripEl = document.getElementById('shopLiveTeamStrip');
+    if (teamStripEl) {
+      const members = Array.isArray(tel.teamMembers) ? tel.teamMembers : [];
+      const me = findMyRustPlusTeamMember(tel);
+      if (members.length > 0) {
+        teamStripEl.style.display = 'flex';
+        teamStripEl.innerHTML = members
+          .map((tm) => {
+            const isMe = me && String(tm.steamId) === String(me.steamId);
+            const dot = !tm.isAlive ? '💀' : tm.isOnline ? '🟢' : '⚫';
+            const bCol = isMe ? '#22d3ee' : !tm.isAlive ? '#ef4444' : tm.isOnline ? '#4ade80' : '#475569';
+            return `<button type="button" class="filter-pill shop-team-pill" data-wx="${tm.wx}" data-wy="${tm.wy}" style="border-color:${bCol}; color:${isMe ? '#a5f3fc' : '#e2e8f0'};">${dot} ${isMe ? 'YOU' : escapeHtml(tm.name)} [${escapeHtml(tm.grid)}]</button>`;
+          })
+          .join('');
+        teamStripEl.querySelectorAll('.shop-team-pill').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            shopMapPanX = parseFloat(btn.getAttribute('data-wx')) || 0;
+            shopMapPanY = parseFloat(btn.getAttribute('data-wy')) || 0;
+            shopMapZoom = Math.max(shopMapZoom, 1.9);
+            renderShopLiveMap();
+          });
+        });
+      } else {
+        teamStripEl.style.display = 'none';
+      }
+    }
+
     if (eventsStrip) {
       const evts = tel.liveEvents || [];
       eventsStrip.innerHTML = evts.length
@@ -9104,14 +9198,16 @@
     // Auto-load clean RustMaps base image from Base Finder whenever Rust+ gives a new server seed
     const liveSeedKey = info?.mapSize && info?.seed ? `${info.mapSize}_${info.seed}` : '';
     const bfSeedKey = bfMapData?.size && bfMapData?.seed ? `${bfMapData.size}_${bfMapData.seed}` : '';
+    const bfSameSeed = !liveSeedKey || !bfSeedKey || bfSeedKey === liveSeedKey;
     if (liveSeedKey && bfSeedKey !== liveSeedKey && bfAutoLoadedLiveSeedKey !== liveSeedKey && bfExternalLoadSeedFn) {
       bfAutoLoadedLiveSeedKey = liveSeedKey;
       setTimeout(() => bfExternalLoadSeedFn(liveSeedKey), 50);
     }
 
-    // Prefer Base Finder's crisp RustMaps image first; fall back to Rust+ AppMap JPG only if unavailable
+    // Prefer Base Finder's crisp RustMaps image when matching current server seed; fall back to Rust+ AppMap JPG
+    const bfReady = Boolean(bfSameSeed && bfLoadedImage && bfLoadedImage.complete && bfLoadedImage.naturalWidth > 0);
     const rpImgUrl = tel.mapMeta?.imageUrl || '';
-    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl && !bfLoadedImage) {
+    if (rpImgUrl && rpImgUrl !== cachedShopMapImgUrl && !bfReady) {
       cachedShopMapImgUrl = rpImgUrl;
       const im = new Image();
       im.onload = () => {
@@ -9121,7 +9217,6 @@
       im.src = rpImgUrl;
     }
 
-    const bfReady = Boolean(bfLoadedImage && bfLoadedImage.complete && bfLoadedImage.naturalWidth > 0);
     const activeImg = bfReady ? bfLoadedImage : cachedShopMapImg;
     if (activeImg && activeImg.complete && activeImg.naturalWidth > 0) {
       if (activeImg === cachedShopMapImg && tel.mapMeta && tel.mapMeta.width > 0) {
@@ -9183,9 +9278,9 @@
     }
     ctx.restore();
 
-    // Base Finder Clean Monument Pins Layer (Toggleable)
+    // Base Finder Clean Monument Pins Layer (only use Base Finder monuments when seed matches live server)
     if (document.getElementById('shopMapShowMonumentsCb')?.checked !== false) {
-      const useBfMons = Boolean(bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0);
+      const useBfMons = Boolean(bfSameSeed && bfMapData && Array.isArray(bfMapData.monuments) && bfMapData.monuments.length > 0);
       const mons = useBfMons
         ? bfMapData.monuments.map((m) => {
           const vis = bfGetMonumentVisual(m, '');
@@ -9247,14 +9342,32 @@
     document.getElementById('shopLiveMapCard')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
   }
 
+  function formatTcUpkeepRemaining(protectionExpirySec, hasProtection) {
+    if (!hasProtection && !protectionExpirySec) return '⚠️ No TC Upkeep';
+    const remSec = Number(protectionExpirySec || 0) - Math.floor(Date.now() / 1000);
+    if (remSec <= 0) return '🚨 DECAYING (0m left)';
+    const d = Math.floor(remSec / 86400);
+    const h = Math.floor((remSec % 86400) / 3600);
+    const m = Math.floor((remSec % 3600) / 60);
+    if (d > 0) return `⏳ Upkeep: ${d}d ${h}h`;
+    if (h > 0) return `⏳ Upkeep: ${h}h ${m}m`;
+    return `⚠️ Upkeep: ${m}m left!`;
+  }
+
+  function rustItemIconHtml(shortname, alt = '', size = 18) {
+    if (!shortname) return '';
+    return `<img src="https://files.facepunch.com/rust/item/${escapeHtml(shortname)}_256.png" alt="${escapeHtml(alt)}" width="${size}" height="${size}" loading="lazy" style="width:${size}px; height:${size}px; object-fit:contain; vertical-align:middle; border-radius:3px;" onerror="this.style.display='none'" />`;
+  }
+
   function renderRustPlusHeaderAndWidgets() {
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
     const pill = document.getElementById('hudRustPlusPill');
     const info = tel.serverInfo;
     const time = tel.time;
+    const activeAlarms = (tel.smartDevices || []).filter((d) => d.entityType === 'alarm' && d.active);
 
     if (pill) {
-      if (!info && (!tel.vendingPins || tel.vendingPins.length === 0)) {
+      if (!info && (!tel.vendingPins || tel.vendingPins.length === 0) && activeAlarms.length === 0) {
         pill.style.display = 'none';
       } else {
         pill.style.display = 'inline-flex';
@@ -9262,7 +9375,9 @@
         const pop = info?.players !== undefined ? `👥 ${info.players}/${info.maxPlayers || '?'}` : '';
         const shops = (tel.vendingPins || []).length ? `🛒 ${tel.vendingPins.length}` : '';
         const evts = (tel.liveEvents || []).length ? `⚡ ${tel.liveEvents.length}` : '';
-        pill.textContent = [`🟢 ${String(info?.name || 'Rust+').slice(0, 22)}`, pop, phase, shops, evts]
+        const alarmPrefix = activeAlarms.length ? `🚨 ALARM (${activeAlarms.length})` : `🟢 ${String(info?.name || 'Rust+').slice(0, 22)}`;
+        pill.style.borderColor = activeAlarms.length ? '#ef4444' : '';
+        pill.textContent = [alarmPrefix, pop, phase, shops, evts]
           .filter(Boolean)
           .join(' • ');
       }
@@ -9279,45 +9394,88 @@
       }
     }
 
-    // Team Chat list
+    // Team Chat list + message count badge
     const chatList = document.getElementById('rpTeamChatList');
+    const chatBadge = document.getElementById('rpTeamChatCountBadge');
+    const msgs = Array.isArray(tel.teamChat) ? tel.teamChat : [];
+    if (chatBadge) chatBadge.textContent = msgs.length ? `${msgs.length} msgs` : '';
     if (chatList) {
-      const msgs = Array.isArray(tel.teamChat) ? tel.teamChat : [];
       chatList.innerHTML = msgs.length
         ? msgs
-            .map(
-              (m) =>
-                `<div><strong style="color:${escapeHtml(m.color || '#4ade80')};">${escapeHtml(m.name || 'Teammate')}:</strong> <span style="color:#e2e8f0;">${escapeHtml(m.message || '')}</span></div>`
-            )
+            .map((m) => {
+              const dt = m.time ? new Date(Number(m.time) * 1000) : null;
+              const hhmm = dt && !Number.isNaN(dt.getTime())
+                ? `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`
+                : '';
+              return `<div>${hhmm ? `<span style="color:#64748b; font-family:var(--font-mono); font-size:10px; margin-right:4px;">[${hhmm}]</span>` : ''}<strong style="color:${escapeHtml(m.color || '#4ade80')};">${escapeHtml(m.name || 'Teammate')}:</strong> <span style="color:#e2e8f0;">${escapeHtml(m.message || '')}</span></div>`;
+            })
             .join('')
         : `<span style="color:var(--text-muted);">No recent in-game team messages yet.</span>`;
       chatList.scrollTop = chatList.scrollHeight;
     }
 
-    // Smart Switches & Raid Alarms list
+    // Smart Switches, Raid Alarms & Storage Monitors (TC Upkeep + Loot)
     const devList = document.getElementById('rpSmartDevicesList');
+    const devBadge = document.getElementById('rpSmartDevicesBadge');
+    const devs = Array.isArray(tel.smartDevices) ? tel.smartDevices : [];
+    if (devBadge) {
+      if (devs.length) {
+        const onCnt = devs.filter((d) => d.entityType === 'switch' && d.active).length;
+        const stCnt = devs.filter((d) => d.entityType === 'storage').length;
+        devBadge.textContent = activeAlarms.length
+          ? `🚨 ${activeAlarms.length} TRIGGERED`
+          : `${devs.length} linked${onCnt ? ` (${onCnt} ON)` : ''}${stCnt ? ` • ${stCnt} TC/Box` : ''}`;
+      } else {
+        devBadge.textContent = '';
+      }
+    }
     if (devList) {
-      const devs = Array.isArray(tel.smartDevices) ? tel.smartDevices : [];
       devList.innerHTML = devs.length
         ? devs
             .map((d) => {
               const isAlarm = d.entityType === 'alarm';
-              const statusTxt = isAlarm ? '🚨 ARMED ALARM' : d.active ? '🟢 ON' : '⚫ OFF';
+              const isStorage = d.entityType === 'storage';
+              const isTriggered = isAlarm && d.active;
+              const icon = isAlarm ? '🚨' : isStorage ? '📦' : '⚡';
+              const statusTxt = isTriggered
+                ? '<span style="color:#f87171; font-weight:800;">🚨 RAID ALARM TRIGGERED!</span>'
+                : isAlarm
+                  ? '<span style="color:#4ade80;">🛡️ ARMED &amp; QUIET</span>'
+                  : isStorage
+                    ? escapeHtml(formatTcUpkeepRemaining(d.protectionExpiry, d.hasProtection))
+                    : d.active
+                      ? '<span style="color:#4ade80;">🟢 ON</span>'
+                      : '<span style="color:#94a3b8;">⚫ OFF</span>';
+              const storageItemsHtml = isStorage && Array.isArray(d.items) && d.items.length
+                ? `<div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:5px;">${d.items
+                    .slice(0, 8)
+                    .map(
+                      (it) =>
+                        `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(30,41,59,0.9); border:1px solid rgba(148,163,184,0.25); color:#e2e8f0;">${rustItemIconHtml(it.shortname, it.name, 14)}<strong>${Number(it.quantity).toLocaleString()}</strong> ${escapeHtml(it.name)}</span>`
+                    )
+                    .join('')}</div>`
+                : isStorage
+                  ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px;">Click 🔄 to read live TC upkeep &amp; contents.</div>`
+                  : '';
               return `
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; border-radius:4px; background:rgba(15,23,42,0.7); border:1px solid var(--border-subtle);">
-                  <div>
-                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">${isAlarm ? '🚨' : '⚡'} ${escapeHtml(d.name)}</div>
-                    <div style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">ID: ${escapeHtml(d.entityId)} • ${statusTxt}</div>
+                <div style="display:flex; flex-direction:column; padding:7px 9px; border-radius:5px; background:${isTriggered ? 'rgba(239,68,68,0.16)' : 'rgba(15,23,42,0.7)'}; border:1px solid ${isTriggered ? '#ef4444' : 'var(--border-subtle)'};">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div>
+                      <div style="font-size:12px; font-weight:700; color:#f8fafc;">${icon} ${escapeHtml(d.name)}</div>
+                      <div style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">ID: ${escapeHtml(d.entityId)} • ${statusTxt}</div>
+                    </div>
+                    <div style="display:flex; gap:4px;">
+                      ${!isAlarm && !isStorage ? `<button type="button" class="btn btn-sm rp-switch-toggle-btn" data-eid="${escapeHtml(d.entityId)}" data-next="${d.active ? '0' : '1'}" style="border-color:${d.active ? '#ef4444' : '#4ade80'}; color:${d.active ? '#fca5a5' : '#bbf7d0'};">${d.active ? 'Turn OFF' : 'Turn ON'}</button>` : ''}
+                      <button type="button" class="btn btn-sm rp-dev-refresh-btn" data-eid="${escapeHtml(d.entityId)}" title="Poll live device state" style="padding:2px 6px;">🔄</button>
+                      <button type="button" class="btn btn-sm rp-switch-del-btn" data-eid="${escapeHtml(d.entityId)}" style="padding:2px 6px;">✕</button>
+                    </div>
                   </div>
-                  <div style="display:flex; gap:5px;">
-                    ${!isAlarm ? `<button type="button" class="btn btn-sm rp-switch-toggle-btn" data-eid="${escapeHtml(d.entityId)}" data-next="${d.active ? '0' : '1'}" style="border-color:${d.active ? '#ef4444' : '#4ade80'}; color:${d.active ? '#fca5a5' : '#bbf7d0'};">${d.active ? 'Turn OFF' : 'Turn ON'}</button>` : ''}
-                    <button type="button" class="btn btn-sm rp-switch-del-btn" data-eid="${escapeHtml(d.entityId)}" style="padding:2px 6px;">✕</button>
-                  </div>
+                  ${storageItemsHtml}
                 </div>
               `;
             })
             .join('')
-        : `<span style="font-size:11px; color:var(--text-muted);">Pair a Smart Switch/Alarm in Rust (ESC → Rust+ → Pair) or add an Entity ID below.</span>`;
+        : `<span style="font-size:11px; color:var(--text-muted);">Pair a Smart Switch/Alarm/Storage Monitor in Rust (ESC → Rust+ → Pair) or add an Entity ID below.</span>`;
 
       devList.querySelectorAll('.rp-switch-toggle-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
@@ -9329,6 +9487,29 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
               body: JSON.stringify({ entityId: eid, active: next })
+            });
+            const data = await resp.json();
+            if (resp.ok && Array.isArray(data.smartDevices)) {
+              appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+              renderRustPlusHeaderAndWidgets();
+            } else if (data.error) {
+              alert(data.error);
+            }
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      devList.querySelectorAll('.rp-dev-refresh-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const eid = btn.getAttribute('data-eid');
+          btn.disabled = true;
+          try {
+            const resp = await fetch('/api/shops/rustplus/smart-device', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+              body: JSON.stringify({ action: 'refresh', entityId: eid })
             });
             const data = await resp.json();
             if (resp.ok && Array.isArray(data.smartDevices)) {
@@ -9545,6 +9726,10 @@
         shopName: shopLabel,
         inStock: typeof cs.inStock === 'number' ? cs.inStock : undefined,
         isBlueprint: Boolean(cs.isBlueprint),
+        buyShort: cs.buyShort || '',
+        payShort: cs.payShort || '',
+        stockDelta: cs.stockDelta || '',
+        watchlistMatch: Boolean(cs.watchlistMatch),
         shopType: 'player',
         monument: isLive ? 'Live Server Shop' : 'My Server Shop',
         monumentId: 'custom',
@@ -9781,12 +9966,79 @@
     `;
   }
 
+  function renderShopWatchlistPills(allTrades) {
+    const container = document.getElementById('shopWatchlistPills');
+    if (!container) return;
+    const list = Array.isArray(appState.shopWatchlist) ? appState.shopWatchlist : [];
+    const liveTrades = (allTrades || []).filter((t) => t.liveSource && typeof t.inStock === 'number' && t.inStock > 0);
+    if (list.length === 0) {
+      container.innerHTML = `<span style="font-size:11px; color:var(--text-muted);">Quick watch:</span>` +
+        ['Pure Ore Tea', 'Diesel', 'Garage Door', 'Auto Turret']
+          .map((q) => `<button type="button" class="filter-pill shop-watch-preset-btn" data-wq="${escapeHtml(q)}" style="font-size:10.5px;">+ ${escapeHtml(q)}</button>`)
+          .join('');
+      container.querySelectorAll('.shop-watch-preset-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+          const q = b.getAttribute('data-wq') || '';
+          if (!q) return;
+          appState.shopWatchlist = [...(appState.shopWatchlist || []), { id: 'wl-' + Date.now(), query: q, maxPrice: 0 }];
+          syncStateToServer();
+          renderShopsModule();
+        });
+      });
+      return;
+    }
+    container.innerHTML = list
+      .map((wl) => {
+        const qLower = String(wl.query || '').toLowerCase();
+        const maxP = Number(wl.maxPrice) || 0;
+        const hits = liveTrades.filter(
+          (t) => String(t.buyItem || '').toLowerCase().includes(qLower) && (!maxP || t.payQty <= maxP)
+        );
+        const hitStr = hits.length ? ` • ${hits.length} live` : '';
+        return `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:99px; font-size:11px; background:${hits.length ? 'rgba(34,197,94,0.2)' : 'rgba(30,41,59,0.75)'}; border:1px solid ${hits.length ? '#4ade80' : 'var(--border-subtle)'}; color:${hits.length ? '#bbf7d0' : '#cbd5e1'}; cursor:pointer;" class="shop-watch-filter-chip" data-wq="${escapeHtml(wl.query)}">🎯 ${escapeHtml(wl.query)}${maxP ? ` ≤${maxP}` : ''}${hitStr}<button type="button" class="shop-watch-del-btn" data-wid="${escapeHtml(wl.id)}" style="background:none; border:none; color:#fca5a5; cursor:pointer; padding:0 2px; font-size:11px;" title="Remove watch">✕</button></span>`;
+      })
+      .join('');
+    container.querySelectorAll('.shop-watch-filter-chip').forEach((chip) => {
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.shop-watch-del-btn')) return;
+        const q = chip.getAttribute('data-wq') || '';
+        const sEl = document.getElementById('shopSearchInput');
+        if (sEl) sEl.value = q;
+        shopSearchQuery = q;
+        renderShopsModule();
+      });
+    });
+    container.querySelectorAll('.shop-watch-del-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wid = btn.getAttribute('data-wid');
+        appState.shopWatchlist = (appState.shopWatchlist || []).filter((w) => w.id !== wid);
+        syncStateToServer();
+        renderShopsModule();
+      });
+    });
+  }
+
+  function matchesClientWatchlist(trade) {
+    if (!trade || (typeof trade.inStock === 'number' && trade.inStock <= 0)) return false;
+    if (trade.watchlistMatch) return true;
+    const list = Array.isArray(appState.shopWatchlist) ? appState.shopWatchlist : [];
+    const nameL = String(trade.buyItem || '').toLowerCase();
+    return list.some((wl) => {
+      const q = String(wl?.query || '').trim().toLowerCase();
+      if (!q || !nameL.includes(q)) return false;
+      const maxP = Number(wl.maxPrice) || 0;
+      return !maxP || trade.payQty <= maxP;
+    });
+  }
+
   function renderShopsModule() {
     const listEl = document.getElementById('shopTradesList');
     const badgeEl = document.getElementById('shopCountBadge');
     if (!listEl) return;
 
     const allTrades = getAllNormalizedShopTrades();
+    renderShopWatchlistPills(allTrades);
     const tokens = shopSearchQuery
       .toLowerCase()
       .split(/\s+/)
@@ -9923,6 +10175,11 @@
           const isAct = t.id === selectedShopTradeId;
           const locBadge = resolveShopGridBadge(t);
           const verdict = t.isCustom || t.shopType === 'player' ? evaluateShopPriceVerdict(t) : null;
+          const isWatchHit = matchesClientWatchlist(t);
+          const myMember = findMyRustPlusTeamMember(appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY);
+          const distStr = typeof t.wx === 'number' && typeof t.wy === 'number'
+            ? formatPlayerDistanceBearing(t.wx, t.wy, myMember).replace('📏 ', '')
+            : '';
           const typePill = t.liveSource
             ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45); font-weight:700;">📡 LIVE</span>`
             : t.isCustom
@@ -9930,6 +10187,16 @@
               : t.shopType === 'player'
                 ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(168,85,247,0.16); color:#d8b4fe;">👤 Player Shop</span>`
                 : `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.14); color:#86efac;">🏛️ NPC</span>`;
+          const watchPill = isWatchHit
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.24); color:#86efac; border:1px solid #4ade80; font-weight:700;">🎯 WATCH</span>`
+            : '';
+          const deltaPill = t.stockDelta === 'new'
+            ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.2); color:#bae6fd; font-weight:700;">✨ NEW</span>`
+            : t.stockDelta === 'priceDrop'
+              ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(250,204,21,0.22); color:#fde047; font-weight:700;">💸 PRICE DROP</span>`
+              : t.stockDelta && t.stockDelta.startsWith('+')
+                ? `<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(34,197,94,0.18); color:#4ade80; font-weight:700;">📦 ${escapeHtml(t.stockDelta)}</span>`
+                : '';
           const stockPill =
             typeof t.inStock === 'number'
               ? t.inStock > 0
@@ -9964,12 +10231,16 @@
           return `
             <div class="monument-item shop-trade-card ${isAct ? 'active' : ''}" data-shop-id="${escapeHtml(t.id)}">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-                <div style="font-family:var(--font-display); font-weight:700; font-size:14.5px; color:#fff;">
+                <div style="font-family:var(--font-display); font-weight:700; font-size:14.5px; color:#fff; display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                  ${rustItemIconHtml(t.buyShort, t.buyItem, 20)}
                   <span style="color:#4ade80;">${t.buyQty.toLocaleString()}× ${escapeHtml(t.buyItem)}</span>
-                  <span style="color:var(--text-muted); margin:0 5px;">⇄</span>
+                  <span style="color:var(--text-muted); margin:0 2px;">⇄</span>
+                  ${rustItemIconHtml(t.payShort, t.payItem, 16)}
                   <span style="color:var(--sulfur-yellow);">${t.payQty.toLocaleString()}× ${escapeHtml(t.payItem)}</span>
                 </div>
                 <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+                  ${watchPill}
+                  ${deltaPill}
                   ${bestPill}
                   ${customVerdictPill}
                   ${stockPill}
@@ -9980,7 +10251,7 @@
                 </div>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:5px; font-size:11.5px; color:var(--text-secondary); flex-wrap:wrap;">
-                <span>📍 <strong style="color:#e2e8f0;">${escapeHtml(t.monument)}</strong> • ${escapeHtml(t.vendor)} • <span>${escapeHtml(catLabel)}</span> ${locBadge ? `<span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">${escapeHtml(locBadge)}</span>` : ''}</span>
+                <span>📍 <strong style="color:#e2e8f0;">${escapeHtml(t.monument)}</strong> • ${escapeHtml(t.vendor)} • <span>${escapeHtml(catLabel)}</span> ${locBadge ? `<span style="font-family:var(--font-mono); color:var(--sulfur-yellow);">${escapeHtml(locBadge)}</span>` : ''}${distStr ? ` • <span style="color:#7dd3fc;">📏 ${escapeHtml(distStr)}</span>` : ''}</span>
                 ${t.recycleSafe ? `<span style="color:#86efac; font-family:var(--font-mono); font-size:10.5px;">♻️ ${escapeHtml(t.recycleSafe)}</span>` : fairLine}
               </div>
               ${t.whyBest ? `<div style="font-size:11.5px; color:#fde68a; margin-top:4px;">💡 ${escapeHtml(t.whyBest)}</div>` : t.notes ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${escapeHtml(t.notes)}</div>` : ''}
@@ -10046,6 +10317,29 @@
     sortEl?.addEventListener('change', () => {
       selectedShopSort = sortEl.value || 'best';
       renderShopsModule();
+    });
+
+    const addShopWatchItem = () => {
+      const qEl = document.getElementById('shopWatchQueryInput');
+      const maxEl = document.getElementById('shopWatchMaxPriceInput');
+      const query = qEl?.value.trim() || '';
+      if (!query) return;
+      const maxPrice = maxEl && Number(maxEl.value) > 0 ? parseInt(maxEl.value, 10) : 0;
+      appState.shopWatchlist = [
+        ...(Array.isArray(appState.shopWatchlist) ? appState.shopWatchlist : []),
+        { id: 'wl-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5), query, maxPrice }
+      ];
+      if (qEl) qEl.value = '';
+      if (maxEl) maxEl.value = '';
+      syncStateToServer();
+      renderShopsModule();
+    };
+    document.getElementById('shopWatchAddBtn')?.addEventListener('click', addShopWatchItem);
+    document.getElementById('shopWatchQueryInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addShopWatchItem();
+    });
+    document.getElementById('shopWatchMaxPriceInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addShopWatchItem();
     });
 
     const inStockCb = document.getElementById('shopInStockOnlyCb');
@@ -10504,7 +10798,7 @@
       const autoCb = document.getElementById('rpShopAutoPollCb');
       if (autoCb) autoCb.checked = false;
       saveRustPlusPollSettings();
-      syncStateToServer();
+      syncStateToServer(true);
       renderAll();
     });
 
@@ -10546,6 +10840,18 @@
       shopMapPanX = 0;
       shopMapPanY = 0;
       setShopZoomClamped(1);
+    });
+    document.getElementById('shopMapCenterMeBtn')?.addEventListener('click', () => {
+      const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+      const me = findMyRustPlusTeamMember(tel);
+      if (!me || typeof me.wx !== 'number' || typeof me.wy !== 'number') {
+        const st = document.getElementById('rpShopStatusText');
+        if (st) st.textContent = '⚠️ Connect Rust+ and sync your live team position first.';
+        return;
+      }
+      shopMapPanX = me.wx;
+      shopMapPanY = me.wy;
+      setShopZoomClamped(Math.max(shopMapZoom, 2.0));
     });
     document.getElementById('shopMapExpandBtn')?.addEventListener('click', () => {
       shopMapExpanded = !shopMapExpanded;
@@ -10705,18 +11011,30 @@
     document.getElementById('rpTeamChatInput')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') sendTeamChatMsg();
     });
+    document.querySelectorAll('.rp-chat-quick-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const msg = btn.getAttribute('data-msg') || '';
+        const inp = document.getElementById('rpTeamChatInput');
+        if (inp && msg) {
+          inp.value = msg;
+          sendTeamChatMsg();
+        }
+      });
+    });
 
-    // Add Smart Switch / Alarm
+    // Add Smart Switch / Alarm / Storage Monitor
     document.getElementById('rpSmartDevAddBtn')?.addEventListener('click', async () => {
       const idEl = document.getElementById('rpSmartDevIdInput');
       const nameEl = document.getElementById('rpSmartDevNameInput');
+      const typeEl = document.getElementById('rpSmartDevTypeSelect');
       const entityId = idEl?.value.trim() || '';
       const name = nameEl?.value.trim() || '';
+      const entityType = typeEl?.value || 'switch';
       if (!entityId) return;
       const resp = await fetch('/api/shops/rustplus/smart-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
-        body: JSON.stringify({ action: 'add', entityId, name })
+        body: JSON.stringify({ action: 'add', entityId, name, entityType })
       });
       const data = await resp.json();
       if (resp.ok && Array.isArray(data.smartDevices)) {

@@ -92,6 +92,7 @@ const DEFAULT_STATE = {
     notifyOn60s: false
   },
   customShops: [],
+  shopWatchlist: [],
   rustPlusShopConfig: {
     ip: process.env.RUSTPLUS_IP || '',
     port: process.env.RUSTPLUS_PORT || '28082',
@@ -619,20 +620,38 @@ const BACKEND_STEAL_LIMITS = [
   { match: 'charcoal', maxSulfur: 320, why: 'Electric furnaces make 0 Charcoal — instant GP fuel.' }
 ];
 
+let RUST_ITEM_META = {};
+try {
+  const itemsJsonPath = path.join(PUBLIC_DIR, 'js', 'rust-items.json');
+  if (fs.existsSync(itemsJsonPath)) {
+    RUST_ITEM_META = JSON.parse(fs.readFileSync(itemsJsonPath, 'utf8')) || {};
+  }
+} catch (_) {
+  RUST_ITEM_META = {};
+}
+
 function inferShopCategoryFromName(name) {
   const s = String(name || '').toLowerCase();
-  if (/tea|berry|hemp|clone|seed/.test(s)) return 'teas';
-  if (/workbench|furnace|solar/.test(s)) return 'progression';
-  if (/garage door|armored|turret|sam site|battery|window|external/.test(s)) return 'defense';
-  if (/rocket|explosive|satchel|c4|beancan|grenade/.test(s)) return 'raid';
-  if (/rifle|ak|lr-300|sar|thompson|mp5|smg|python|revolver|shotgun|m249|l96|m39|scope|holo/.test(s)) return 'weapons';
-  if (/jackhammer|chainsaw|icepick|axe|gloves|syringe|medkit|keycard/.test(s)) return 'tools';
+  if (/tea|berry|hemp|clone|seed|fertilizer/.test(s)) return 'teas';
+  if (/workbench|furnace|solar|research|mixing/.test(s)) return 'progression';
+  if (/garage door|armored|turret|sam site|battery|window|external|windmill|trap/.test(s)) return 'defense';
+  if (/rocket|explosive|satchel|c4|beancan|grenade|mlrs/.test(s)) return 'raid';
+  if (/rifle|ak|lr-300|sar|thompson|mp5|smg|python|revolver|shotgun|m249|l96|m39|hmlmg|sks|scope|holo|ammo|5\.56|buckshot|bullet|facemask|chest plate|hazmat|road sign/.test(s)) return 'weapons';
+  if (/jackhammer|chainsaw|icepick|axe|gloves|syringe|medkit|keycard|diving|goggles|smart switch|smart alarm|storage monitor|industrial/.test(s)) return 'tools';
+  if (/minicopter|scrap transport|attack helicopter|kayak|tugboat|rhino|submarine|horse|saddle|boogie/.test(s)) return 'vehicles';
   return 'resources';
 }
 
-function resolveRustItemName(itemId) {
+function resolveRustItemInfo(itemId) {
   const key = String(itemId);
-  return RUST_ITEMS_BY_ID[key] || `Rust Item #${key}`;
+  const meta = RUST_ITEM_META[key];
+  const name = RUST_ITEMS_BY_ID[key] || (Array.isArray(meta) && meta[0]) || `Rust Item #${key}`;
+  const shortname = (Array.isArray(meta) && meta[1]) || '';
+  return { name, shortname };
+}
+
+function resolveRustItemName(itemId) {
+  return resolveRustItemInfo(itemId).name;
 }
 
 function worldGridLabelFromRustPlus(rawX, rawY, mapSize) {
@@ -690,9 +709,9 @@ function encodeRustPlusRequest(seq, playerId, playerToken, fieldNum, innerBytesO
   writeVarint(out, BigInt(String(playerId || '0')));
   writeVarint(out, (3 << 3) | 0);
   writeVarint(out, BigInt(parseInt(String(playerToken || '0'), 10)));
-  if (innerBytesOrObj && !Array.isArray(innerBytesOrObj) && typeof innerBytesOrObj.entityId === 'number') {
+  if (innerBytesOrObj && !Array.isArray(innerBytesOrObj) && innerBytesOrObj.entityId != null && innerBytesOrObj.entityId !== '') {
     writeVarint(out, (4 << 3) | 0);
-    writeVarint(out, innerBytesOrObj.entityId);
+    writeVarint(out, BigInt(String(innerBytesOrObj.entityId).replace(/[^\d]/g, '') || '0'));
   }
   const payload = Array.isArray(innerBytesOrObj) ? innerBytesOrObj : innerBytesOrObj?.bytes || [];
   writeVarint(out, (fieldNum << 3) | 2);
@@ -961,9 +980,35 @@ function decodeRustPlusTeamChat(buf) {
   return messages;
 }
 
+function decodeRustPlusEntityItem(buf) {
+  let pos = 0;
+  const item = { itemId: 0, quantity: 0, itemIsBlueprint: false };
+  while (pos < buf.length) {
+    const tag = readVarint(buf, pos);
+    pos = tag.offset;
+    const fn = Number(tag.value >> 3n);
+    const wt = Number(tag.value & 7n);
+    if (wt === 0) {
+      const v = readVarint(buf, pos);
+      pos = v.offset;
+      if (fn === 1) item.itemId = Number(BigInt.asIntN(32, v.value));
+      else if (fn === 2) item.quantity = Number(BigInt.asIntN(32, v.value));
+      else if (fn === 3) item.itemIsBlueprint = v.value !== 0n;
+    } else {
+      pos = skipWireField(buf, pos, wt);
+    }
+  }
+  const info = resolveRustItemInfo(item.itemId);
+  return {
+    ...item,
+    name: item.itemIsBlueprint ? `${info.name} (BP)` : info.name,
+    shortname: info.shortname
+  };
+}
+
 function decodeRustPlusEntityInfo(buf) {
   let pos = 0;
-  const ent = { type: 0, value: false, capacity: 0, hasProtection: false, protectionExpiry: 0 };
+  const ent = { type: 0, value: false, items: [], capacity: 0, hasProtection: false, protectionExpiry: 0 };
   while (pos < buf.length) {
     const tag = readVarint(buf, pos);
     pos = tag.offset;
@@ -988,9 +1033,15 @@ function decodeRustPlusEntityInfo(buf) {
           const pv = readVarint(pBuf, pPos);
           pPos = pv.offset;
           if (pfn === 1) ent.value = pv.value !== 0n;
-          else if (pfn === 3) ent.capacity = Number(pv.value);
+          else if (pfn === 3) ent.capacity = Number(BigInt.asIntN(32, pv.value));
           else if (pfn === 4) ent.hasProtection = pv.value !== 0n;
           else if (pfn === 5) ent.protectionExpiry = Number(pv.value);
+        } else if (pwt === 2 && pfn === 2) {
+          const ilen = readVarint(pBuf, pPos);
+          pPos = ilen.offset;
+          const iBuf = pBuf.slice(pPos, pPos + Number(ilen.value));
+          pPos += Number(ilen.value);
+          ent.items.push(decodeRustPlusEntityItem(iBuf));
         } else {
           pPos = skipWireField(pBuf, pPos, pwt);
         }
@@ -1380,6 +1431,10 @@ let cachedRustPlusMap = null;
 
 function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
   const needMap = Boolean(forceMap);
+  const entityIds = (Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : [])
+    .map((d) => String(d.entityId || '').replace(/[^\d]/g, ''))
+    .filter(Boolean)
+    .slice(0, 6);
 
   let infoResult = null;
   let timeResult = null;
@@ -1387,6 +1442,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
   let teamChatResult = null;
   let mapResult = null;
   let markersResult = null;
+  const entityInfoById = {};
   let graceTimer = null;
 
   const buildSnapshot = () => ({
@@ -1396,6 +1452,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
     teamChat: teamChatResult,
     map: mapResult,
     markers: markersResult,
+    entityInfoById,
     mode,
     usedProxy: mode !== 'direct'
   });
@@ -1413,6 +1470,9 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
         if (needMap) {
           sendRawWsBinary(socket, encodeRustPlusRequest(6, playerId, playerToken, 10)); // getMap
         }
+        entityIds.forEach((eid, idx) => {
+          sendRawWsBinary(socket, encodeRustPlusRequest(100 + idx, playerId, playerToken, 14, { entityId: eid })); // getEntityInfo
+        });
       },
       onResponse(resp, { finish }) {
         if (resp.error && resp.seq === 2 && !markersResult) {
@@ -1425,12 +1485,18 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
         if (Array.isArray(resp.teamChat)) teamChatResult = resp.teamChat;
         if (resp.map) mapResult = resp.map;
         if (Array.isArray(resp.markers)) markersResult = resp.markers;
+        if (resp.entityInfo && typeof resp.seq === 'number' && resp.seq >= 100) {
+          const eid = entityIds[resp.seq - 100];
+          if (eid) entityInfoById[eid] = resp.entityInfo;
+        }
 
+        const allEntitiesDone = entityIds.every((eid) => entityInfoById[eid] !== undefined);
         const allDone =
           markersResult !== null &&
           infoResult !== null &&
           timeResult !== null &&
           teamInfoResult !== null &&
+          allEntitiesDone &&
           (!needMap || mapResult !== null);
 
         if (allDone) {
@@ -1440,7 +1506,7 @@ function fetchRustPlusSnapshotAttempt(cfg, mode = 'auto', forceMap = false) {
         if (markersResult !== null && !graceTimer) {
           graceTimer = setTimeout(() => {
             finish(null, buildSnapshot());
-          }, needMap ? 2000 : 400);
+          }, needMap ? 2000 : 500);
         }
       },
       onTimeout() {
@@ -1503,6 +1569,10 @@ async function sendRustPlusCommand(cfg, fieldNum, innerBytesOrObj = []) {
 
 const sentShopStealAlerts = new Set();
 const sentWorldEventAlerts = new Set();
+const sentWatchlistAlerts = new Set();
+const sentSmartAlarmAlerts = new Set();
+let prevShopOrderSnapshot = new Map();
+let hasSeededShopSnapshot = false;
 let rustPlusShopInterval = null;
 let isRustPlusPolling = false;
 
@@ -1548,6 +1618,28 @@ function formatRustPlusTimeSummary(timeObj) {
   };
 }
 
+function aggregateEntityStorageItems(rawItems) {
+  const byKey = new Map();
+  for (const it of rawItems || []) {
+    if (!it || !it.quantity) continue;
+    const key = `${it.itemId}:${it.itemIsBlueprint ? 1 : 0}`;
+    const prev = byKey.get(key);
+    if (prev) prev.quantity += Number(it.quantity) || 0;
+    else {
+      byKey.set(key, {
+        itemId: it.itemId,
+        name: it.name || resolveRustItemName(it.itemId),
+        shortname: it.shortname || '',
+        quantity: Number(it.quantity) || 0,
+        isBlueprint: Boolean(it.itemIsBlueprint)
+      });
+    }
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 18);
+}
+
 async function applyVendingSnapshotToState(snapshot, cfg) {
   const prevInfo = squadState.rustPlusTelemetry?.serverInfo || {};
   const mapSize = Number(snapshot?.info?.mapSize || cfg?.mapSize || prevInfo.mapSize || 4250);
@@ -1559,6 +1651,9 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   const liveShops = [];
   const vendingPins = [];
   const newSteals = [];
+  const newWatchlistHits = [];
+  const nextOrderSnapshot = new Map();
+  const watchlist = Array.isArray(squadState.shopWatchlist) ? squadState.shopWatchlist : [];
   const nowTs = Date.now();
 
   for (const mk of vmMarkers) {
@@ -1573,18 +1668,29 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     let stealCount = 0;
 
     for (const so of mk.sellOrders) {
-      const baseBuy = resolveRustItemName(so.itemId);
-      const buyItem = so.itemIsBlueprint ? `${baseBuy} (BP)` : baseBuy;
+      const buyInfo = resolveRustItemInfo(so.itemId);
+      const buyItem = so.itemIsBlueprint ? `${buyInfo.name} (BP)` : buyInfo.name;
       const buyQty = Math.max(1, Number(so.quantity) || 1);
-      const payItem = resolveRustItemName(so.currencyId);
+      const payInfo = resolveRustItemInfo(so.currencyId);
+      const payItem = payInfo.name;
       const payQty = Math.max(1, Number(so.costPerItem) || 1);
       const inStock = Math.max(0, Number(so.amountInStock) || 0);
       if (inStock > 0) inStockCount++;
       const id = `rp-${mk.id}-${so.itemId}-${so.currencyId}`;
 
+      const prevOrder = prevShopOrderSnapshot.get(id);
+      nextOrderSnapshot.set(id, { inStock, payQty });
+      let stockDelta = '';
+      if (hasSeededShopSnapshot) {
+        if (!prevOrder && inStock > 0) stockDelta = 'new';
+        else if (prevOrder && inStock > prevOrder.inStock) stockDelta = `+${inStock - prevOrder.inStock}`;
+        else if (prevOrder && inStock < prevOrder.inStock && inStock > 0) stockDelta = `${inStock - prevOrder.inStock}`;
+        else if (prevOrder && payQty < prevOrder.payQty) stockDelta = 'priceDrop';
+      }
+
       let isSteal = false;
+      const lowerName = buyItem.toLowerCase();
       if (inStock > 0 && (payItem === 'Sulfur' || payItem === 'Sulfur Ore')) {
-        const lowerName = buyItem.toLowerCase();
         const rule = BACKEND_STEAL_LIMITS.find((r) => lowerName.includes(r.match));
         const effectiveSulfur = payItem === 'Sulfur Ore' ? payQty * 0.9 : payQty;
         if (rule && effectiveSulfur / buyQty <= rule.maxSulfur) {
@@ -1598,6 +1704,23 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         }
       }
 
+      let watchlistMatch = false;
+      if (inStock > 0 && watchlist.length > 0) {
+        for (const wl of watchlist) {
+          const q = String(wl?.query || '').trim().toLowerCase();
+          if (!q || !lowerName.includes(q)) continue;
+          const maxP = Number(wl.maxPrice) || 0;
+          if (maxP > 0 && payQty > maxP) continue;
+          watchlistMatch = true;
+          const wlKey = `${serverKey}:${id}:${payQty}:${q}`;
+          if (!sentWatchlistAlerts.has(wlKey)) {
+            sentWatchlistAlerts.add(wlKey);
+            newWatchlistHits.push({ query: wl.query, shopName, grid, buyQty, buyItem, payQty, payItem, inStock });
+          }
+          break;
+        }
+      }
+
       const entry = {
         id,
         markerId: String(mk.id),
@@ -1605,9 +1728,13 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         shopName,
         buyQty,
         buyItem,
+        buyShort: buyInfo.shortname,
         payQty,
         payItem,
+        payShort: payInfo.shortname,
         inStock,
+        stockDelta,
+        watchlistMatch,
         wx,
         wy,
         nx: Number(nx.toFixed(4)),
@@ -1619,7 +1746,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         notes: `Live Rust+ vending "${shopName}" at [${grid}] — ${inStock > 0 ? `${inStock} in stock` : 'SOLD OUT'}.`
       };
       liveShops.push(entry);
-      pinOrders.push({ id, buyQty, buyItem, payQty, payItem, inStock, isSteal });
+      pinOrders.push({ id, buyQty, buyItem, payQty, payItem, inStock, isSteal, watchlistMatch });
     }
 
     vendingPins.push({
@@ -1636,6 +1763,10 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
       stealCount,
       orders: pinOrders
     });
+  }
+  if (vmMarkers.length > 0) {
+    prevShopOrderSnapshot = nextOrderSnapshot;
+    hasSeededShopSnapshot = true;
   }
 
   // Decode Live World Events (Cargo, Patrol Heli, CH47, Locked Crate, Explosion, Travelling Vendor)
@@ -1730,14 +1861,15 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         isLeader: String(m.steamId) === leaderId
       };
     });
-    const combinedNotes = [...(snapshot.teamInfo.mapNotes || []), ...(snapshot.teamInfo.leaderMapNotes || [])];
-    mapNotes = combinedNotes.map((n) => {
+    const formatNote = (n, isLeader) => {
       const nx = Math.min(1, Math.max(0, n.x / mapSize));
       const ny = Math.min(1, Math.max(0, 1 - n.y / mapSize));
       return {
         type: n.type || 0,
         icon: n.icon || 0,
+        colourIndex: n.colourIndex || 0,
         color: n.colourIndex || 0,
+        isLeader: Boolean(isLeader),
         label: n.label || '',
         wx: Number((n.x - mapSize / 2).toFixed(1)),
         wy: Number((n.y - mapSize / 2).toFixed(1)),
@@ -1745,7 +1877,11 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         ny: Number(ny.toFixed(4)),
         grid: worldGridLabelFromRustPlus(n.x, n.y, mapSize)
       };
-    });
+    };
+    mapNotes = [
+      ...(snapshot.teamInfo.mapNotes || []).map((n) => formatNote(n, false)),
+      ...(snapshot.teamInfo.leaderMapNotes || []).map((n) => formatNote(n, true))
+    ];
   }
 
   let teamChat = Array.isArray(squadState.rustPlusTelemetry?.teamChat) ? squadState.rustPlusTelemetry.teamChat : [];
@@ -1753,7 +1889,33 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     teamChat = snapshot.teamChat.slice(-30);
   }
 
-  const smartDevices = Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : [];
+  const triggeredAlarms = [];
+  const smartDevices = (Array.isArray(squadState.rustPlusTelemetry?.smartDevices) ? squadState.rustPlusTelemetry.smartDevices : []).map((dev) => {
+    const eid = String(dev.entityId || '').replace(/[^\d]/g, '');
+    const liveEnt = snapshot?.entityInfoById?.[eid];
+    if (!liveEnt) return dev;
+    const mappedType = liveEnt.type === 2 ? 'alarm' : liveEnt.type === 3 ? 'storage' : 'switch';
+    const nextActive = Boolean(liveEnt.value);
+    if (mappedType === 'alarm' && nextActive && !dev.active) {
+      const alarmKey = `${serverKey}:alarm:${eid}:${Math.floor(nowTs / 30000)}`;
+      if (!sentSmartAlarmAlerts.has(alarmKey)) {
+        sentSmartAlarmAlerts.add(alarmKey);
+        triggeredAlarms.push({ entityId: eid, name: dev.name || `Alarm #${eid}` });
+      }
+    }
+    const mergedItems = aggregateEntityStorageItems(liveEnt.items || []);
+    return {
+      ...dev,
+      entityType: mappedType,
+      active: nextActive,
+      capacity: Number(liveEnt.capacity || 0),
+      hasProtection: Boolean(liveEnt.hasProtection),
+      protectionExpiry: Number(liveEnt.protectionExpiry || 0),
+      items: mergedItems,
+      lastCheckedAt: nowTs,
+      ...(mappedType === 'alarm' && nextActive ? { lastTriggeredAt: nowTs } : {})
+    };
+  });
 
   const timeSummary = snapshot?.time ? formatRustPlusTimeSummary(snapshot.time) : squadState.rustPlusTelemetry?.time || null;
   const nextServerInfo = {
@@ -1814,6 +1976,25 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
         color: 0x38bdf8
       }).catch(() => {});
     }
+    if (newWatchlistHits.length > 0) {
+      const wlLines = newWatchlistHits
+        .slice(0, 5)
+        .map((w) => `• **[${w.query}]** → **${w.buyQty}× ${w.buyItem}** for **${w.payQty} ${w.payItem}** at **[${w.grid}]** ("${w.shopName}", ${w.inStock} left)`)
+        .join('\n');
+      sendDiscordNotification({
+        title: `🎯 Shop Watchlist Item Live on Map!`,
+        description: `${wlLines}`,
+        color: 0x22c55e
+      }).catch(() => {});
+    }
+    if (triggeredAlarms.length > 0) {
+      const alarmLines = triggeredAlarms.map((a) => `• 🚨 **${a.name}** (ID: ${a.entityId})`).join('\n');
+      sendDiscordNotification({
+        title: `🚨 BASE SMART ALARM TRIGGERED!`,
+        description: `${alarmLines}${nextServerInfo.name ? `\n\nServer: **${nextServerInfo.name}**` : ''}`,
+        color: 0xef4444
+      }).catch(() => {});
+    }
   }
 
   return {
@@ -1858,7 +2039,7 @@ function configureRustPlusShopPoller() {
       } finally {
         isRustPlusPolling = false;
       }
-    }, 20000);
+    }, 15000);
   }
 }
 
@@ -2533,6 +2714,7 @@ const server = http.createServer(async (req, res) => {
           }
           return t;
         });
+        const preserveRustPlus = !body._syncRustPlus;
         squadState = {
           ...squadState,
           ...body,
@@ -2541,14 +2723,18 @@ const server = http.createServer(async (req, res) => {
             ...(squadState.discordConfig || {}),
             ...(body.discordConfig || {})
           },
-          rustPlusShopConfig: {
-            ...DEFAULT_STATE.rustPlusShopConfig,
-            ...(squadState.rustPlusShopConfig || {}),
-            ...(body.rustPlusShopConfig || {})
-          },
+          rustPlusShopConfig: preserveRustPlus
+            ? squadState.rustPlusShopConfig
+            : {
+                ...DEFAULT_STATE.rustPlusShopConfig,
+                ...(squadState.rustPlusShopConfig || {}),
+                ...(body.rustPlusShopConfig || {})
+              },
+          rustPlusTelemetry: preserveRustPlus ? squadState.rustPlusTelemetry : body.rustPlusTelemetry || DEFAULT_STATE.rustPlusTelemetry,
           activeTimers: mergedTimers,
           updatedAt: Date.now()
         };
+        delete squadState._syncRustPlus;
         saveState(squadState);
         broadcastState('state_update');
         return sendJson(res, 200, { ok: true, state: squadState });
@@ -3007,9 +3193,39 @@ const server = http.createServer(async (req, res) => {
         broadcastState('state_update');
         return sendJson(res, 200, { ok: true, smartDevices: nextList });
       }
-      if (!entityId) return sendJson(res, 400, { error: 'Enter numeric Entity ID (from Rust+ pairing or smart switch).' });
-      const name = String(body.name || '').trim() || `Smart Switch #${entityId}`;
-      const entityType = body.entityType === 'alarm' ? 'alarm' : 'switch';
+      if (!entityId) return sendJson(res, 400, { error: 'Enter numeric Entity ID (from Rust+ pairing, Smart Alarm, or Storage Monitor).' });
+      if (action === 'refresh') {
+        const cfg = squadState.rustPlusShopConfig || {};
+        if ((!cfg.ip && !cfg.serverId) || !cfg.playerId || !cfg.playerToken) {
+          return sendJson(res, 400, { error: 'Connect to Rust+ first to inspect Smart Devices.' });
+        }
+        try {
+          const resp = await sendRustPlusCommand(cfg, 14, { entityId });
+          const ent = resp?.entityInfo;
+          const idx = list.findIndex((d) => String(d.entityId) === entityId);
+          if (ent && idx >= 0) {
+            const mappedType = ent.type === 2 ? 'alarm' : ent.type === 3 ? 'storage' : 'switch';
+            list[idx] = {
+              ...list[idx],
+              entityType: mappedType,
+              active: Boolean(ent.value),
+              capacity: Number(ent.capacity || 0),
+              hasProtection: Boolean(ent.hasProtection),
+              protectionExpiry: Number(ent.protectionExpiry || 0),
+              items: aggregateEntityStorageItems(ent.items || []),
+              lastCheckedAt: Date.now()
+            };
+          }
+          squadState.rustPlusTelemetry = { ...DEFAULT_STATE.rustPlusTelemetry, ...(squadState.rustPlusTelemetry || {}), smartDevices: list };
+          saveState(squadState);
+          broadcastState('state_update');
+          return sendJson(res, 200, { ok: true, smartDevices: list });
+        } catch (err) {
+          return sendJson(res, 502, { error: err.message });
+        }
+      }
+      const name = String(body.name || '').trim() || `Smart Device #${entityId}`;
+      const entityType = body.entityType === 'alarm' ? 'alarm' : body.entityType === 'storage' ? 'storage' : 'switch';
       const idx = list.findIndex((d) => String(d.entityId) === entityId);
       const entry = { entityId, name, entityType, active: idx >= 0 ? Boolean(list[idx].active) : false, pairedAt: Date.now() };
       if (idx >= 0) list[idx] = { ...list[idx], ...entry };

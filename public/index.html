@@ -820,6 +820,14 @@
           <button type="button" class="filter-pill" data-scat="tools">🛠️ Tools &amp; Elec</button>
           <button type="button" class="filter-pill" data-scat="vehicles">🚁 Vehicles &amp; Horses</button>
         </div>
+
+        <div id="shopWatchlistBar" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding-top:8px; margin-top:8px; border-top:1px dashed rgba(148,163,184,0.22);">
+          <span style="font-size:11px; font-family:var(--font-mono); color:#86efac; font-weight:700;">🎯 WATCHLIST:</span>
+          <input id="shopWatchQueryInput" type="text" class="input" style="width:185px; font-size:11.5px; padding:4px 8px;" placeholder="Item (e.g. Diesel, Tea, AK)" />
+          <input id="shopWatchMaxPriceInput" type="number" class="input" style="width:105px; font-size:11.5px; padding:4px 8px;" min="1" placeholder="Max cost (opt)" />
+          <button id="shopWatchAddBtn" type="button" class="btn btn-sm" style="border-color:#4ade80; color:#bbf7d0;">🔔 Watch</button>
+          <div id="shopWatchlistPills" style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;"></div>
+        </div>
       </div>
 
       <!-- Interactive Live Rust+ Map Overlay (Shops + Squad GPS + World Events + Clock) -->
@@ -839,11 +847,14 @@
             <button id="shopMapZoomOutBtn" type="button" class="btn btn-sm" title="Zoom Out">➖</button>
             <button id="shopMapZoomInBtn" type="button" class="btn btn-sm" title="Zoom In">➕</button>
             <button id="shopMapZoomResetBtn" type="button" class="btn btn-sm" title="Reset Zoom">🏝️ 100%</button>
-            <button id="shopMapExpandBtn" type="button" class="btn btn-sm" title="Toggle tall tactical map view">⤢ Expand</button>
+            <button id="shopMapCenterMeBtn" type="button" class="btn btn-sm" style="border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
+            <button id="shopMapExpandBtn" type="button" class="btn btn-sm" title="Toggle expanded square tactical map view">⤢ Expand</button>
             <button id="shopMapRefreshBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;" title="Re-fetch server map image, live shops, squad &amp; events">🔄 Sync Map</button>
             <button id="shopMapOpenBaseFinderBtn" type="button" class="btn btn-sm" style="border-color:#4ade80; color:#bbf7d0;" title="Analyze this live server's seed in Base Finder">📍 Base Finder</button>
           </div>
         </div>
+        <div id="shopLiveAlertBanner" style="display:none; margin-bottom:8px;"></div>
+        <div id="shopLiveTeamStrip" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
         <div id="shopLiveEventsStrip" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
         <div id="shopLiveMapWrap" style="position:relative; width:100%; max-width:680px; margin:0 auto; background:#0b3a4a; border:1px solid var(--border-subtle); border-radius:6px; overflow:hidden;">
           <canvas id="shopLiveMapCanvas" width="900" height="900" style="width:100%; height:auto; aspect-ratio:1/1; display:block; cursor:grab;"></canvas>
@@ -989,8 +1000,17 @@
 
                 <!-- Collapsible Team Chat & Smart Switches -->
                 <details id="rpTeamChatDrawer" style="padding-top:8px; border-top:1px solid rgba(148,163,184,0.2);">
-                  <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#bae6fd;">💬 In-Game Team Chat &amp; Quick Send</summary>
-                  <div id="rpTeamChatList" style="max-height:130px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
+                  <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#bae6fd; display:flex; justify-content:space-between; align-items:center;">
+                    <span>💬 In-Game Team Chat &amp; Quick Send</span>
+                    <span id="rpTeamChatCountBadge" style="font-size:10px; font-family:var(--font-mono); color:#7dd3fc;"></span>
+                  </summary>
+                  <div id="rpTeamChatList" style="max-height:145px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
+                  <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;">
+                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Countering — backup needed!">⚔️ Counter</button>
+                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="On Oil Rig / Cargo — watch counters">🛢️ On Rig</button>
+                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Patrol Heli is up — clear roof">🚁 Heli</button>
+                    <button type="button" class="filter-pill rp-chat-quick-btn" data-msg="Check team map pin!">📌 Check Map</button>
+                  </div>
                   <div style="display:flex; gap:6px;">
                     <input id="rpTeamChatInput" type="text" class="input" style="flex:1; font-size:11.5px;" placeholder="Send message to in-game Rust Team Chat..." />
                     <button id="rpTeamChatSendBtn" type="button" class="btn btn-sm btn-primary">Send</button>
@@ -998,12 +1018,20 @@
                 </details>
 
                 <details id="rpSmartDevicesDrawer" style="padding-top:8px; border-top:1px solid rgba(148,163,184,0.2);">
-                  <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#fde68a;">⚡ Smart Switches &amp; Raid Alarms</summary>
+                  <summary style="cursor:pointer; font-size:11.5px; font-weight:700; color:#fde68a; display:flex; justify-content:space-between; align-items:center;">
+                    <span>⚡ Smart Switches, Alarms &amp; TC Storage Monitors</span>
+                    <span id="rpSmartDevicesBadge" style="font-size:10px; font-family:var(--font-mono); color:#fde047;"></span>
+                  </summary>
                   <div id="rpSmartDevicesList" style="display:flex; flex-direction:column; gap:6px; margin:6px 0;"></div>
                   <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <input id="rpSmartDevIdInput" type="text" class="input" style="width:120px; font-size:11px;" placeholder="Entity ID" />
-                    <input id="rpSmartDevNameInput" type="text" class="input" style="flex:1; min-width:120px; font-size:11px;" placeholder="Label (e.g. Base Turrets)" />
-                    <button id="rpSmartDevAddBtn" type="button" class="btn btn-sm">+ Add Switch</button>
+                    <select id="rpSmartDevTypeSelect" class="select" style="width:118px; font-size:11px;">
+                      <option value="switch">⚡ Switch</option>
+                      <option value="alarm">🚨 Alarm</option>
+                      <option value="storage">📦 TC / Box</option>
+                    </select>
+                    <input id="rpSmartDevIdInput" type="text" class="input" style="width:105px; font-size:11px;" placeholder="Entity ID" />
+                    <input id="rpSmartDevNameInput" type="text" class="input" style="flex:1; min-width:110px; font-size:11px;" placeholder="Label (e.g. Main TC, Turrets)" />
+                    <button id="rpSmartDevAddBtn" type="button" class="btn btn-sm">+ Add Device</button>
                   </div>
                 </details>
               </div>
