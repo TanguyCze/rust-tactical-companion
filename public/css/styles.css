@@ -3,13 +3,13 @@
    ========================================================================== */
 
 :root {
-  --bg-deep: #090b0e;
-  --bg-panel: #11151c;
-  --bg-card: #171c26;
-  --bg-card-hover: #1e2532;
-  --bg-input: #0d1016;
-  --border-subtle: #252d3d;
-  --border-highlight: #374357;
+  --bg-deep: #090c11;
+  --bg-panel: #131923;
+  --bg-card: #1a2230;
+  --bg-card-hover: #232d40;
+  --bg-input: #0e131b;
+  --border-subtle: #2f3b52;
+  --border-highlight: #475569;
 
   --rust-orange: #cd412b;
   --rust-orange-bright: #ea580c;
@@ -23,9 +23,9 @@
   --card-red: #ef4444;
   --card-purple: #a855f7;
 
-  --text-main: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-main: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
 
   --font-display: 'Chakra Petch', 'Rajdhani', system-ui, -apple-system, sans-serif;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -38,14 +38,48 @@
   padding: 0;
 }
 
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
 html, body {
   background-color: var(--bg-deep);
   color: var(--text-main);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.52;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+body.ui-readable {
+  font-size: 16px;
+}
+
+body.ui-readable .panel-subtitle,
+body.ui-readable .filter-pill,
+body.ui-readable .btn-sm {
+  font-size: 13.5px !important;
+}
+
+body.ui-readable .input,
+body.ui-readable .select {
+  font-size: 14.5px;
+  padding: 9px 13px;
 }
 
 /* Subtle tactical grid background */
@@ -335,6 +369,13 @@ body::before {
   align-items: start;
 }
 
+@media (min-width: 1151px) {
+  .bf-map-layout:not(.bf-map-expanded) > .panel:first-child {
+    position: sticky;
+    top: 76px;
+  }
+}
+
 .bf-map-layout.bf-map-expanded {
   grid-template-columns: 1fr;
 }
@@ -474,7 +515,7 @@ body::before {
 }
 
 .panel-subtitle {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -528,7 +569,7 @@ body::before {
 
 .btn-sm {
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .input, .select {
@@ -538,7 +579,7 @@ body::before {
   padding: 8px 12px;
   border-radius: 5px;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 13.5px;
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -554,10 +595,10 @@ body::before {
 }
 
 .filter-pill {
-  padding: 5px 12px;
+  padding: 6px 12px;
   border-radius: 4px;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   text-transform: uppercase;
   background: var(--bg-card);

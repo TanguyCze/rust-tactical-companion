@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261116k" />
+  <link rel="stylesheet" href="css/styles.css?v=20261117a" />
 </head>
 <body>
 
@@ -38,6 +38,9 @@
           <span class="sync-dot"></span>
           <span id="syncStatusText">CONNECTING...</span>
         </div>
+        <button id="readableToggleBtn" class="btn btn-sm" title="Toggle Larger High-Contrast Readable Text">
+          👁️ Aa+
+        </button>
         <button id="audioToggleBtn" class="btn btn-sm" title="Toggle Timer Sound Alerts">
           🔔 AUDIO: ON
         </button>
@@ -350,7 +353,7 @@
         </div>
         <div class="grid-2" style="align-items: start;">
           <div id="monumentAtlasList" class="monument-list" style="max-height: 75vh; overflow-y: auto;"></div>
-          <div id="selectedMonumentDetail" style="position: sticky; top: 12px;"></div>
+          <div id="selectedMonumentDetail" style="position: sticky; top: 76px;"></div>
         </div>
         <div id="bossNpcCheesePanel" style="margin-top: 16px;"></div>
       </div>
@@ -835,7 +838,7 @@
             </div>
           </div>
 
-          <div class="panel" style="position:sticky; top:12px;">
+          <div class="panel" style="position:sticky; top:76px;">
             <div class="panel-header">
               <div>
                 <div class="panel-title">🛠️ Rust Conveyor Filter Editor &amp; JSON Export</div>
@@ -977,32 +980,36 @@
               <div class="panel-title">🗺️ Map Overlay &amp; Recommended Build Zones</div>
               <div class="panel-subtitle" id="bfMapMetaLabel">Paste a RustMaps URL above to render the procedural map + grid</div>
             </div>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
+                <input id="bfShowSpotsCb" type="checkbox" checked />
+                <span>🏆 Build Spots</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
                 <input id="bfShowMonumentsCb" type="checkbox" checked />
-                <span>Show All Monuments</span>
+                <span>🏛️ Monuments</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
                 <input id="bfShowNoBuildCb" type="checkbox" checked />
-                <span>🚫 No-Build Zones</span>
+                <span>🚫 No-Build</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
                 <input id="bfShowRouteCb" type="checkbox" checked />
-                <span>🛤️ Route Lines</span>
+                <span>🛤️ Route</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
                 <input id="bfShowRustPlusCb" type="checkbox" checked />
-                <span>📡 Live Rust+</span>
+                <span>📡 Rust+</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
                 <input id="bfShowPinsCb" type="checkbox" checked />
-                <span>📌 Team Pins</span>
+                <span>📌 Pins</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer;">
+              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
                 <input id="bfShowDeathsCb" type="checkbox" checked />
                 <span>💀 Deaths</span>
               </label>
-              <button id="bfExpandMapBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11.5px;">⤢ Full Width</button>
+              <button id="bfExpandMapBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;">⤢ Full Width</button>
             </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
@@ -1342,7 +1349,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261116k"></script>
-  <script src="js/app.js?v=20261116k"></script>
+  <script src="js/data.js?v=20261117a"></script>
+  <script src="js/app.js?v=20261117a"></script>
 </body>
 </html>

@@ -354,6 +354,28 @@
       }
     } catch (_) {}
 
+    // Readable / High-Contrast scale toggle
+    const READABLE_KEY = 'rust_companion_readable';
+    const readableBtn = document.getElementById('readableToggleBtn');
+    const syncReadableUi = (on) => {
+      document.body.classList.toggle('ui-readable', Boolean(on));
+      if (readableBtn) {
+        readableBtn.textContent = on ? '👁️ Aa+ ON' : '👁️ Aa+';
+        readableBtn.style.borderColor = on ? '#38bdf8' : '';
+        readableBtn.style.color = on ? '#bae6fd' : '';
+      }
+    };
+    try {
+      syncReadableUi(localStorage.getItem(READABLE_KEY) === '1');
+    } catch (_) {}
+    readableBtn?.addEventListener('click', () => {
+      const next = !document.body.classList.contains('ui-readable');
+      syncReadableUi(next);
+      try {
+        localStorage.setItem(READABLE_KEY, next ? '1' : '0');
+      } catch (_) {}
+    });
+
     // Audio toggle
     const audioBtn = document.getElementById('audioToggleBtn');
     audioBtn.addEventListener('click', () => {
@@ -8299,12 +8321,73 @@
     return null;
   }
 
+  function bfDrawCanvasPillLabel(ctx, text, px, py, {
+    color = '#f8fafc',
+    borderColor = 'rgba(148, 163, 184, 0.38)',
+    bg = 'rgba(7, 11, 18, 0.88)',
+    font = '700 10.5px "Inter", sans-serif',
+    offsetY = -14,
+    labelBoxes = null,
+    optional = false
+  } = {}) {
+    if (!text) return false;
+    ctx.save();
+    ctx.font = font;
+    const textW = ctx.measureText(text).width;
+    const padX = 5;
+    const boxW = textW + padX * 2;
+    const boxH = 15;
+    const offsets = optional ? [offsetY, offsetY > 0 ? -Math.abs(offsetY) : Math.abs(offsetY)] : [offsetY, offsetY - 17, offsetY + 17, offsetY - 34, offsetY + 34];
+
+    let chosenY = null;
+    if (Array.isArray(labelBoxes)) {
+      for (const dy of offsets) {
+        const bx = px - boxW / 2;
+        const by = py + dy - boxH / 2;
+        const collides = labelBoxes.some((b) => !(bx + boxW + 2 < b.x || bx - 2 > b.x + b.w || by + boxH + 1 < b.y || by - 1 > b.y + b.h));
+        if (!collides) {
+          chosenY = py + dy;
+          labelBoxes.push({ x: bx, y: by, w: boxW, h: boxH });
+          break;
+        }
+      }
+      if (chosenY === null) {
+        if (optional) {
+          ctx.restore();
+          return false;
+        }
+        chosenY = py + offsetY;
+      }
+    } else {
+      chosenY = py + offsetY;
+    }
+
+    const bx = px - boxW / 2;
+    const by = chosenY - boxH / 2;
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(bx, by, boxW, boxH, 4);
+    else ctx.rect(bx, by, boxW, boxH);
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = borderColor;
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, px, chosenY + 0.5);
+    ctx.restore();
+    return true;
+  }
+
   function renderBaseFinderMap() {
     const canvas = document.getElementById('bfMapCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
+    const labelBoxes = [];
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#0b3a4a';
     ctx.fillRect(0, 0, W, H);
@@ -8380,7 +8463,8 @@
           showEvents: rpOn,
           showDeaths: deathsOn,
           showPins: pinsOn,
-          pinOut: bfRenderedPins
+          pinOut: bfRenderedPins,
+          labelBoxes
         });
       }
       drawBfRulerOverlay(ctx, toPx);
@@ -8432,9 +8516,9 @@
     if (showNoBuild) {
       const hasExact = bfNoBuildColliders.spheres.length > 0 || bfNoBuildColliders.boxes.length > 0;
       ctx.save();
-      ctx.fillStyle = 'rgba(249, 115, 22, 0.16)';
-      ctx.strokeStyle = 'rgba(251, 146, 60, 0.72)';
-      ctx.lineWidth = 1.25;
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.08)';
+      ctx.strokeStyle = 'rgba(251, 146, 60, 0.44)';
+      ctx.lineWidth = 1.15;
       ctx.setLineDash([4, 3]);
 
       if (hasExact) {
@@ -8473,6 +8557,10 @@
     // 3. Monument pins (all monuments when Show All Monuments is checked, or key hubs only)
     bfRenderedPins = [];
     const showAllMons = Boolean(document.getElementById('bfShowMonumentsCb')?.checked ?? true);
+    const showSpots = Boolean(document.getElementById('bfShowSpotsCb')?.checked ?? true);
+    const deferredMonLabels = [];
+    const deferredSpotLabels = [];
+    const deferredFarmLabels = [];
     mons.forEach((m) => {
       const vis = bfGetMonumentVisual(m, targetKey);
       if (!vis) return;
@@ -8548,109 +8636,116 @@
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = '#090b0e';
       ctx.stroke();
-      if (vis.short) {
-        ctx.font = vis.isMajor ? '700 10px "Inter", sans-serif' : '600 9px "Inter", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-        ctx.lineWidth = 3;
-        ctx.strokeText(vis.short, px, py - (vis.r + 4));
-        ctx.fillStyle = vis.isMajor ? '#ffffff' : '#e2e8f0';
-        ctx.fillText(vis.short, px, py - (vis.r + 4));
+      if (vis.short && (vis.isMajor || isFocusedTarget || bfZoom >= 1.25)) {
+        deferredMonLabels.push({
+          text: vis.short,
+          px,
+          py,
+          offsetY: -(vis.r + 11),
+          color: isFocusedTarget ? '#7dd3fc' : vis.isMajor ? '#f8fafc' : '#cbd5e1',
+          borderColor: isFocusedTarget ? '#38bdf8' : 'rgba(148,163,184,0.35)',
+          font: vis.isMajor ? '700 10px "Inter", sans-serif' : '600 9.5px "Inter", sans-serif',
+          isMajor: vis.isMajor || isFocusedTarget
+        });
       }
       ctx.restore();
     });
 
     // 4. Top 5 Recommended Build Spots
-    bfTopSpots.forEach((spot, idx) => {
-      const { px, py } = toPx(spot.wx, spot.wy);
-      const isSel = idx === bfSelectedIdx;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(px, py, isSel ? 18 : 13, 0, Math.PI * 2);
-      ctx.fillStyle = isSel ? 'rgba(34, 197, 94, 0.38)' : 'rgba(34, 197, 94, 0.22)';
-      ctx.fill();
-      ctx.lineWidth = isSel ? 2.8 : 1.8;
-      ctx.strokeStyle = idx === 0 ? '#facc15' : '#4ade80';
-      ctx.stroke();
+    if (showSpots) {
+      bfTopSpots.forEach((spot, idx) => {
+        const { px, py } = toPx(spot.wx, spot.wy);
+        const isSel = idx === bfSelectedIdx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, isSel ? 18 : 13, 0, Math.PI * 2);
+        ctx.fillStyle = isSel ? 'rgba(34, 197, 94, 0.38)' : 'rgba(34, 197, 94, 0.22)';
+        ctx.fill();
+        ctx.lineWidth = isSel ? 2.8 : 1.8;
+        ctx.strokeStyle = idx === 0 ? '#facc15' : '#4ade80';
+        ctx.stroke();
 
-      ctx.beginPath();
-      ctx.arc(px, py, 9, 0, Math.PI * 2);
-      ctx.fillStyle = idx === 0 ? '#eab308' : '#16a34a';
-      ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px, py, 9, 0, Math.PI * 2);
+        ctx.fillStyle = idx === 0 ? '#eab308' : '#16a34a';
+        ctx.fill();
 
-      ctx.font = '800 10.5px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = idx === 0 ? '#090b0e' : '#ffffff';
-      ctx.fillText(`#${idx + 1}`, px, py + 0.5);
+        ctx.font = '800 10.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = idx === 0 ? '#090b0e' : '#ffffff';
+        ctx.fillText(`#${idx + 1}`, px, py + 0.5);
+        ctx.restore();
 
-      ctx.textBaseline = 'alphabetic';
-      ctx.font = '700 10.5px "JetBrains Mono", monospace';
-      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-      ctx.lineWidth = 3;
-      const lbl = `[${spot.grid}] ${spot.score}/100`;
-      ctx.strokeText(lbl, px, py + 22);
-      ctx.fillStyle = idx === 0 ? '#facc15' : '#4ade80';
-      ctx.fillText(lbl, px, py + 22);
-      ctx.restore();
+        deferredSpotLabels.push({
+          text: `[${spot.grid}] ${spot.score}/100`,
+          px,
+          py,
+          offsetY: 21,
+          color: idx === 0 ? '#fde047' : '#86efac',
+          borderColor: idx === 0 ? 'rgba(234,179,8,0.6)' : 'rgba(74,222,128,0.45)',
+          font: '700 10px "JetBrains Mono", monospace'
+        });
 
-      bfRenderedPins.push({
-        px,
-        py,
-        r: isSel ? 18 : 13,
-        wx: spot.wx,
-        wy: spot.wy,
-        title: `#${idx + 1} Recommended Spot [${spot.grid}]`,
-        color: idx === 0 ? '#facc15' : '#4ade80',
-        lines: [`Score: ${spot.score}/100 • Click pin to select`],
-        selectAction: { type: 'spot', idx }
+        bfRenderedPins.push({
+          px,
+          py,
+          r: isSel ? 18 : 13,
+          wx: spot.wx,
+          wy: spot.wy,
+          title: `#${idx + 1} Recommended Spot [${spot.grid}]`,
+          color: idx === 0 ? '#facc15' : '#4ade80',
+          lines: [`Score: ${spot.score}/100 • Click pin to select`],
+          selectAction: { type: 'spot', idx }
+        });
       });
-    });
 
-    // 4B. Best Overall "Under the Radar" Fast-Progress Spot (regardless of preferences)
-    if (bfStealthBest) {
-      const { px, py } = toPx(bfStealthBest.wx, bfStealthBest.wy);
-      const isSel = bfSelectedIdx === -1;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(px, py, isSel ? 20 : 14, 0, Math.PI * 2);
-      ctx.fillStyle = isSel ? 'rgba(168, 85, 247, 0.42)' : 'rgba(168, 85, 247, 0.24)';
-      ctx.fill();
-      ctx.lineWidth = isSel ? 2.8 : 2;
-      ctx.strokeStyle = '#c084fc';
-      ctx.stroke();
+      // 4B. Best Overall "Under the Radar" Fast-Progress Spot (regardless of preferences)
+      if (bfStealthBest) {
+        const { px, py } = toPx(bfStealthBest.wx, bfStealthBest.wy);
+        const isSel = bfSelectedIdx === -1;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, isSel ? 20 : 14, 0, Math.PI * 2);
+        ctx.fillStyle = isSel ? 'rgba(168, 85, 247, 0.42)' : 'rgba(168, 85, 247, 0.24)';
+        ctx.fill();
+        ctx.lineWidth = isSel ? 2.8 : 2;
+        ctx.strokeStyle = '#c084fc';
+        ctx.stroke();
 
-      ctx.beginPath();
-      ctx.arc(px, py, 9.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#7e22ce';
-      ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#7e22ce';
+        ctx.fill();
 
-      ctx.font = '11px "Inter", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🥷', px, py + 0.5);
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🥷', px, py + 0.5);
+        ctx.restore();
 
-      ctx.textBaseline = 'alphabetic';
-      ctx.font = '700 10.5px "JetBrains Mono", monospace';
-      ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-      ctx.lineWidth = 3;
-      const lbl = `🥷 [${bfStealthBest.grid}] ${bfStealthBest.score}/100`;
-      ctx.strokeText(lbl, px, py - 18);
-      ctx.fillStyle = '#e9d5ff';
-      ctx.fillText(lbl, px, py - 18);
-      ctx.restore();
+        deferredSpotLabels.push({
+          text: `🥷 [${bfStealthBest.grid}] ${bfStealthBest.score}/100`,
+          px,
+          py,
+          offsetY: -20,
+          color: '#e9d5ff',
+          borderColor: 'rgba(192,132,252,0.6)',
+          font: '700 10px "JetBrains Mono", monospace'
+        });
 
-      bfRenderedPins.push({
-        px,
-        py,
-        r: isSel ? 20 : 14,
-        wx: bfStealthBest.wx,
-        wy: bfStealthBest.wy,
-        title: `🥷 Best Under-Radar [${bfStealthBest.grid}]`,
-        color: '#c084fc',
-        lines: [`Score: ${bfStealthBest.score}/100 • Click pin to select`],
-        selectAction: { type: 'spot', idx: -1 }
-      });
+        bfRenderedPins.push({
+          px,
+          py,
+          r: isSel ? 20 : 14,
+          wx: bfStealthBest.wx,
+          wy: bfStealthBest.wy,
+          title: `🥷 Best Under-Radar [${bfStealthBest.grid}]`,
+          color: '#c084fc',
+          lines: [`Score: ${bfStealthBest.score}/100 • Click pin to select`],
+          selectAction: { type: 'spot', idx: -1 }
+        });
+      }
     }
 
     // 4C. Selected Spot Progression Route & Nearby Farming Radius
@@ -8721,16 +8816,17 @@
       ctx.lineWidth = isSel ? 2.4 : 1.5;
       ctx.strokeStyle = '#fbbf24';
       ctx.stroke();
-
-      ctx.font = '700 10px "Inter", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-      ctx.lineWidth = 3;
-      const tag = `${fm.icon} [${fm.grid}]`;
-      ctx.strokeText(tag, px, py - 11);
-      ctx.fillStyle = '#fde047';
-      ctx.fillText(tag, px, py - 11);
       ctx.restore();
+      deferredFarmLabels.push({
+        text: `${fm.icon} [${fm.grid}]`,
+        px,
+        py,
+        offsetY: -13,
+        color: '#fde047',
+        borderColor: 'rgba(251,191,36,0.45)',
+        font: '700 9.5px "Inter", sans-serif',
+        isSel
+      });
 
       bfRenderedPins.push({
         px,
@@ -8745,7 +8841,7 @@
       });
     });
 
-    // 6. Live Rust+ & Shared Squad Pins Overlay (Squad GPS, Deaths, Team Stashes/Pins, World Events)
+    // 6. Live Rust+ & Shared Squad Pins Overlay (Priority #1 labels)
     const rpOn2 = document.getElementById('bfShowRustPlusCb')?.checked !== false;
     const pinsOn2 = document.getElementById('bfShowPinsCb')?.checked !== false;
     const deathsOn2 = document.getElementById('bfShowDeathsCb')?.checked !== false;
@@ -8758,9 +8854,18 @@
         showEvents: rpOn2,
         showDeaths: deathsOn2,
         showPins: pinsOn2,
-        pinOut: bfRenderedPins
+        pinOut: bfRenderedPins,
+        labelBoxes
       });
     }
+
+    // 7. Non-overlapping deferred labels (Build Spots → Farming → Monuments)
+    deferredSpotLabels.forEach((l) => bfDrawCanvasPillLabel(ctx, l.text, l.px, l.py, { ...l, labelBoxes }));
+    deferredFarmLabels.forEach((l) => bfDrawCanvasPillLabel(ctx, l.text, l.px, l.py, { ...l, labelBoxes, optional: !l.isSel }));
+    deferredMonLabels
+      .sort((a, b) => Number(b.isMajor) - Number(a.isMajor))
+      .forEach((l) => bfDrawCanvasPillLabel(ctx, l.text, l.px, l.py, { ...l, labelBoxes, optional: true }));
+
     drawBfRulerOverlay(ctx, toPx);
   }
 
@@ -9424,6 +9529,7 @@
     ['bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
     });
+    document.getElementById('bfShowSpotsCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowNoBuildCb')?.addEventListener('change', renderBaseFinderMap);
     document.getElementById('bfShowRouteCb')?.addEventListener('change', renderBaseFinderMap);
@@ -10077,7 +10183,8 @@
     showEvents = true,
     showDeaths = true,
     showPins = true,
-    pinOut = []
+    pinOut = [],
+    labelBoxes = null
   }) {
     const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
     if (!tel) return;
@@ -10166,15 +10273,15 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('💀', px, py + 0.5);
-        ctx.textBaseline = 'alphabetic';
-        ctx.font = '700 9px "JetBrains Mono", monospace';
-        ctx.strokeStyle = 'rgba(0,0,0,0.94)';
-        ctx.lineWidth = 3;
-        const tag = `💀 ${d.name} [${grid}]${ago && ago !== 'Dead' ? ` • ${ago}` : ''}`;
-        ctx.strokeText(tag, px, py - 12);
-        ctx.fillStyle = '#fca5a5';
-        ctx.fillText(tag, px, py - 12);
         ctx.restore();
+        const tag = `💀 ${d.name} [${grid}]${ago && ago !== 'Dead' ? ` • ${ago}` : ''}`;
+        bfDrawCanvasPillLabel(ctx, tag, px, py, {
+          color: '#fecaca',
+          borderColor: 'rgba(248,113,113,0.65)',
+          font: '700 9.5px "JetBrains Mono", monospace',
+          offsetY: -17,
+          labelBoxes
+        });
         const distLine = formatPlayerDistanceBearing(d.wx, d.wy, myMember);
         pinOut.push({
           px,
@@ -10232,16 +10339,16 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(ev.icon || '⚡', px, py + 0.5);
-
-        ctx.textBaseline = 'alphabetic';
-        ctx.font = '700 10px "JetBrains Mono", monospace';
-        ctx.strokeStyle = 'rgba(0,0,0,0.94)';
-        ctx.lineWidth = 3;
-        const lbl = `${ev.label} [${ev.grid}]`;
-        ctx.strokeText(lbl, px, py + 24);
-        ctx.fillStyle = ev.color || '#fca5a5';
-        ctx.fillText(lbl, px, py + 24);
         ctx.restore();
+
+        const lbl = `${ev.label} [${ev.grid}]`;
+        bfDrawCanvasPillLabel(ctx, lbl, px, py, {
+          color: '#f8fafc',
+          borderColor: ev.color || '#f43f5e',
+          font: '700 10px "JetBrains Mono", monospace',
+          offsetY: 22,
+          labelBoxes
+        });
 
         const distLine = formatPlayerDistanceBearing(ev.wx, ev.wy, myMember);
         const hintLine =
@@ -10289,17 +10396,17 @@
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = '#090b0e';
         ctx.stroke();
+        ctx.restore();
 
-        ctx.font = isMe ? '800 10.5px "Inter", sans-serif' : '700 10px "Inter", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-        ctx.lineWidth = 3;
         const deathAgo = !tm.isAlive ? formatTeamDeathAgo(tm) : '';
         const badge = `${isMe ? '⌖ YOU • ' : tm.isLeader ? '👑 ' : ''}${!tm.isAlive ? '💀 ' : ''}${tm.name} [${tm.grid}]${deathAgo && deathAgo !== 'Dead' ? ` • ${deathAgo}` : ''}`;
-        ctx.strokeText(badge, px, py - 13);
-        ctx.fillStyle = !tm.isAlive ? '#fca5a5' : isMe ? '#67e8f9' : tm.isOnline ? '#bae6fd' : '#94a3b8';
-        ctx.fillText(badge, px, py - 13);
-        ctx.restore();
+        bfDrawCanvasPillLabel(ctx, badge, px, py, {
+          color: !tm.isAlive ? '#fecaca' : isMe ? '#67e8f9' : tm.isOnline ? '#bae6fd' : '#cbd5e1',
+          borderColor: dotColor,
+          font: isMe ? '800 10.5px "Inter", sans-serif' : '700 10px "Inter", sans-serif',
+          offsetY: -18,
+          labelBoxes
+        });
 
         const distLine = !isMe ? formatPlayerDistanceBearing(tm.wx, tm.wy, myMember) : '';
         pinOut.push({
@@ -10349,16 +10456,16 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(sp.icon || '📍', px, py + 0.5);
-
-        ctx.textBaseline = 'alphabetic';
-        ctx.font = '700 9.5px "Inter", sans-serif';
-        ctx.strokeStyle = 'rgba(0,0,0,0.95)';
-        ctx.lineWidth = 3;
-        const lbl = `[${grid}] ${String(sp.label || 'Pin').slice(0, 20)}`;
-        ctx.strokeText(lbl, px, py - 14);
-        ctx.fillStyle = col;
-        ctx.fillText(lbl, px, py - 14);
         ctx.restore();
+
+        const lbl = `[${grid}] ${String(sp.label || 'Pin').slice(0, 20)}`;
+        bfDrawCanvasPillLabel(ctx, lbl, px, py, {
+          color: '#f8fafc',
+          borderColor: col,
+          font: '700 10px "Inter", sans-serif',
+          offsetY: -18,
+          labelBoxes
+        });
 
         const distLine = formatPlayerDistanceBearing(wx, wy, myMember);
         pinOut.push({
