@@ -510,6 +510,123 @@
     modal.classList.add('open');
   }
 
+  function showTacticalToast(message, variant = 'ok', ms = 2600) {
+    const rack = document.getElementById('tacticalToastRack');
+    if (!rack) return;
+    const toast = document.createElement('div');
+    toast.className = `tactical-toast ${variant}`;
+    toast.textContent = String(message || '');
+    rack.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => toast.remove(), 220);
+    }, ms);
+  }
+
+  function initQuickJumpPalette() {
+    const modal = document.getElementById('quickJumpModal');
+    const inp = document.getElementById('quickJumpInput');
+    const resEl = document.getElementById('quickJumpResults');
+    const openBtn = document.getElementById('openQuickJumpBtn');
+    const closeBtn = document.getElementById('closeQuickJumpBtn');
+    if (!modal || !inp || !resEl) return;
+
+    const buildEntries = (q) => {
+      const term = String(q || '').trim().toLowerCase();
+      const entries = [
+        { label: '📍 Tactical Map Hub (RustMaps Overlay & Pins)', tag: 'TAB', action: () => { switchAppTab('tab-basefinder'); } },
+        { label: '📡 Rust+ Live Map, Team Chat & Smart Switches', tag: 'SUBTAB', action: () => { switchAppTab('tab-basefinder'); document.querySelector('.bf-subtab-btn[data-bf-sub="rustplus"]')?.click(); } },
+        { label: '🏛️ Monument Guide, Keycards & NPC Cheese', tag: 'TAB', action: () => { switchAppTab('tab-map'); } },
+        { label: '💥 Raid Calculator & Sulfur Planner', tag: 'TAB', action: () => { switchAppTab('tab-raid'); } },
+        { label: '♻️ Component Recycler & Decay Calculator', tag: 'TAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="main"]')?.click(); } },
+        { label: '⚡ Base Electricity & Battery Planner', tag: 'SUBTAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="elec"]')?.click(); } },
+        { label: '📦 Industrial Conveyor Filters & Shift+Paste JSON', tag: 'SUBTAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="conveyor"]')?.click(); } },
+        { label: '🌱 Genetics Solver, Compost & Berry Teas', tag: 'TAB', action: () => { switchAppTab('tab-genetics'); } },
+        { label: '⏱️ Squad Timers & Event Countdown Alarms', tag: 'TAB', action: () => { switchAppTab('tab-timers'); } }
+      ];
+      (DATA.monuments || []).forEach((m) => {
+        entries.push({
+          label: `🏛️ ${m.name}${m.npcCheese ? ' (NPC Cheese)' : ''}`,
+          tag: 'MONUMENT',
+          action: () => {
+            selectedMonumentId = m.id;
+            switchAppTab('tab-map');
+            renderMonumentAtlas();
+          }
+        });
+      });
+      (DATA.raidTargets || []).forEach((rt) => {
+        entries.push({
+          label: `💣 ${rt.name} (${rt.hp} HP)`,
+          tag: 'RAID TARGET',
+          action: () => {
+            selectedRaidTargetId = rt.id;
+            switchAppTab('tab-raid');
+            renderRaidTargets();
+            renderSelectedTargetInspector();
+          }
+        });
+      });
+      (DATA.conveyorItemsCatalog || []).forEach((it) => {
+        entries.push({
+          label: `📦 ${it.name} [${it.shortname}] — Add to Conveyor Filter`,
+          tag: it.tier ? `T${it.tier} PIPE` : 'PIPE ITEM',
+          action: () => {
+            switchAppTab('tab-recycler');
+            document.querySelector('.rc-subtab-btn[data-rc-sub="conveyor"]')?.click();
+            toggleConveyorQuickSlot({ item: it.name, shortname: it.shortname, min: it.defaultMin || 0, max: it.defaultMax || 0, buf: it.defaultBuf || 0 });
+            showTacticalToast(`Added/toggled ${it.name} in Conveyor Filter`);
+          }
+        });
+      });
+      const filtered = term ? entries.filter((e) => e.label.toLowerCase().includes(term) || e.tag.toLowerCase().includes(term)) : entries.slice(0, 12);
+      return filtered.slice(0, 14);
+    };
+
+    const renderJumpResults = () => {
+      const items = buildEntries(inp.value);
+      resEl.innerHTML = items.length
+        ? items.map((it, idx) => `
+            <button type="button" class="quick-jump-item ${idx === 0 ? 'active' : ''}" data-jidx="${idx}">
+              <span>${escapeHtml(it.label)}</span>
+              <span class="quick-jump-tag">${escapeHtml(it.tag)}</span>
+            </button>`).join('')
+        : `<div style="padding:12px; text-align:center; color:var(--text-muted); font-size:12px;">No matching Rust tool, monument, raid target, or item.</div>`;
+      resEl.querySelectorAll('.quick-jump-item').forEach((btn, idx) => {
+        btn.addEventListener('click', () => {
+          modal.classList.remove('open');
+          items[idx]?.action();
+        });
+      });
+    };
+
+    const openJump = () => {
+      modal.classList.add('open');
+      inp.value = '';
+      renderJumpResults();
+      setTimeout(() => inp.focus(), 20);
+    };
+    openBtn?.addEventListener('click', openJump);
+    closeBtn?.addEventListener('click', () => modal.classList.remove('open'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+    inp.addEventListener('input', renderJumpResults);
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        resEl.querySelector('.quick-jump-item')?.click();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openJump();
+      } else if (e.key === 'Escape' && modal.classList.contains('open')) {
+        modal.classList.remove('open');
+      }
+    });
+  }
+
   async function sendDiscordAlert(title, description, color = 0xcd412b, extraOpts = {}) {
     const cfg = { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}) };
     const webhookUrl = extraOpts.webhookUrl ?? appState.discordWebhookUrl ?? '';
@@ -1246,6 +1363,37 @@
       const qty = Number(document.getElementById('quickAddQtyInput')?.value) || 1;
       const mode = document.getElementById('quickAddModeSelect')?.value || 'combo';
       if (tId) addRaidQueueItem(tId, qty, mode);
+    });
+
+    document.querySelectorAll('.raid-tpl-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tpl = btn.getAttribute('data-tpl');
+        const templates = {
+          stone_2x2: [
+            { targetId: 'stone_wall', qty: 1, mode: 'combo' },
+            { targetId: 'sheet_metal_door', qty: 2, mode: 'combo' }
+          ],
+          doors_heavy: [
+            { targetId: 'garage_door', qty: 2, mode: 'combo' },
+            { targetId: 'armored_door', qty: 1, mode: 'combo' }
+          ],
+          compound_push: [
+            { targetId: 'high_ext_stone', qty: 1, mode: 'combo' },
+            { targetId: 'auto_turret', qty: 2, mode: 'combo' },
+            { targetId: 'garage_door', qty: 2, mode: 'combo' }
+          ],
+          silent_2x2: [
+            { targetId: 'sheet_metal_door', qty: 2, mode: 'explo_only' },
+            { targetId: 'garage_door', qty: 1, mode: 'explo_only' }
+          ]
+        };
+        if (!templates[tpl]) return;
+        appState.raidQueue = templates[tpl].map((x) => ({ ...x }));
+        renderRaidPlanner();
+        renderRaidStashReadiness();
+        syncStateToServer();
+        showTacticalToast(`Loaded "${btn.textContent.trim()}" raid template`);
+      });
     });
 
     document.getElementById('clearRaidQueueBtn')?.addEventListener('click', () => {
@@ -3816,9 +3964,12 @@
                 ${m.rusthelpUrl ? ` • <a href="${m.rusthelpUrl}" target="_blank" rel="noopener" style="color:#60a5fa; text-decoration:none; font-weight:600;">📖 RustHelp Wiki ↗</a>` : ''}
               </div>
             </div>
-            <button class="btn btn-primary btn-sm" id="startMonumentTimerBtn" data-mid="${m.id}">
-              ${m.safeZone ? `🚨 Safe Zone Hostile (${m.respawnMin}m)` : `⏱️ Completed! Start ${m.respawnMin}m Timer`}
-            </button>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+              ${realMatches.length > 0 ? `<button class="btn btn-sm" id="monFocusMapBtn" style="border-color:#38bdf8; color:#bae6fd;">📍 Ping on Map</button>` : ''}
+              <button class="btn btn-primary btn-sm" id="startMonumentTimerBtn" data-mid="${m.id}">
+                ${m.safeZone ? `🚨 Safe Zone Hostile (${m.respawnMin}m)` : `⏱️ Completed! Start ${m.respawnMin}m Timer`}
+              </button>
+            </div>
           </div>
 
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin:10px 0;">
@@ -3845,6 +3996,13 @@
         </div>
       `;
 
+      detailEl.querySelector('#monFocusMapBtn')?.addEventListener('click', () => {
+        const rm = realMatches[0];
+        if (!rm) return;
+        switchAppTab('tab-basefinder');
+        bfFocusWorldPoint(rm.x, rm.y, 1.75);
+        showTacticalToast(`Centered Tactical Map on ${m.name} [${activeGrid}]`, 'ok');
+      });
       detailEl.querySelector('#startMonumentTimerBtn')?.addEventListener('click', (e) => {
         const suffix = m.safeZone ? 'Safe Zone Hostile' : 'Respawn';
         const color = m.safeZone ? '#ef4444' : '#3b82f6';
@@ -6855,7 +7013,7 @@
       return;
     }
     if (customConveyorFilters.length >= 12) {
-      alert('Rust Industrial Conveyors support max 12 filter slots per conveyor (or use a Category wildcard filter).');
+      showTacticalToast('Max 12 slots per Rust Conveyor (use a Category wildcard!)', 'warn');
       return;
     }
     customConveyorFilters.push({
@@ -7188,7 +7346,10 @@
                 <strong style="font-size:13px; color:#f8fafc;">${escapeHtml(p.name)}</strong>
                 <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">${escapeHtml(p.summary)}</div>
               </div>
-              <span style="font-size:10px; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#7dd3fc;">${p.conveyorsCount} Conv • ${p.powerRwm} rWm</span>
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                <span style="font-size:10px; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#7dd3fc;">${p.conveyorsCount} Conv • ${p.powerRwm} rWm</span>
+                ${(p.conveyors || []).length > 1 ? `<button type="button" class="btn btn-sm btn-sulfur conv-preset-saveall-btn" data-pid="${escapeHtml(p.id)}" style="padding:1px 7px; font-size:10px;">💾 Save All ${(p.conveyors || []).length} Pipes</button>` : ''}
+              </div>
             </div>
             <div style="display:flex; flex-direction:column; gap:5px; margin-top:6px;">
               ${(p.conveyors || [])
@@ -7218,6 +7379,34 @@
           </div>`
         )
         .join('');
+
+      presetsEl.querySelectorAll('.conv-preset-saveall-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pid = btn.getAttribute('data-pid');
+          const preset = (DATA.conveyorPresets || []).find((x) => x.id === pid);
+          if (!preset || !Array.isArray(preset.conveyors)) return;
+          const mode = /All/i.test(preset.mode || '') ? 'all' : 'any';
+          const list = Array.isArray(appState.conveyorFilters) ? [...appState.conveyorFilters] : [];
+          preset.conveyors.forEach((conv, idx) => {
+            const filters = (conv.filters || []).slice(0, 12).map((f) => ({
+              ...f,
+              shortname: resolveConveyorShortname(f.item, f.shortname),
+              isBlueprint: Boolean(f.isBlueprint)
+            }));
+            list.unshift({
+              id: `cf-${Date.now()}-${idx}`,
+              name: `${preset.name.replace(/^[^\w]+/, '').slice(0, 22)} — Pipe ${idx + 1}`,
+              mode,
+              filters,
+              updatedAt: Date.now()
+            });
+          });
+          appState.conveyorFilters = list.slice(0, 30);
+          syncStateToServer();
+          renderConveyorModule();
+          showTacticalToast(`Saved all ${preset.conveyors.length} pipes from ${preset.name}!`, 'ok');
+        });
+      });
 
       presetsEl.querySelectorAll('.conv-pipe-copy-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
@@ -7332,6 +7521,21 @@
       Object.keys(elecDeviceCounts).forEach((k) => (elecDeviceCounts[k] = 0));
       renderElectricityPlanner();
     });
+    document.querySelectorAll('.elec-tpl-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tpl = btn.getAttribute('data-etpl');
+        const presets = {
+          solo_duo: { auto_turret: 3, conveyor: 4, crafter: 1, elec_furnace: 6, ceiling_light: 3, door_controller: 2, seismic_sensor: 1, smart_switch: 2, smart_alarm: 1, storage_monitor: 1 },
+          industrial: { auto_turret: 2, conveyor: 8, crafter: 3, elec_furnace: 12, industrial_light: 4, smart_switch: 2, storage_monitor: 1 },
+          clan_compound: { auto_turret: 12, sam_site: 2, conveyor: 6, crafter: 2, elec_furnace: 9, ceiling_light: 6, door_controller: 4, seismic_sensor: 2, hbhf_sensor: 2, smart_switch: 4, smart_alarm: 2, storage_monitor: 1, searchlight: 1 }
+        };
+        if (!presets[tpl]) return;
+        Object.keys(elecDeviceCounts).forEach((k) => (elecDeviceCounts[k] = 0));
+        Object.entries(presets[tpl]).forEach(([k, v]) => (elecDeviceCounts[k] = v));
+        renderElectricityPlanner();
+        showTacticalToast(`Loaded "${btn.textContent.trim()}" electrical plan`);
+      });
+    });
     document.getElementById('elecBatterySelect')?.addEventListener('change', renderElectricityPlanner);
     document.getElementById('elecMarginSelect')?.addEventListener('change', renderElectricityPlanner);
 
@@ -7350,7 +7554,7 @@
     });
     document.getElementById('conveyorAddFilterBtn')?.addEventListener('click', () => {
       if (customConveyorFilters.length >= 12) {
-        alert('Rust Industrial Conveyors support max 12 filter slots per conveyor (or use a Category filter).');
+        showTacticalToast('Max 12 filter slots per Rust Conveyor (use a Category wildcard).', 'warn');
         return;
       }
       const item = document.getElementById('conveyorItemSelect')?.value || 'Sulfur Ore';
@@ -7370,7 +7574,7 @@
     });
     document.getElementById('conveyorSaveBtn')?.addEventListener('click', (e) => {
       if (!customConveyorFilters.length) {
-        alert('Add at least 1 filter slot before saving.');
+        showTacticalToast('Add at least 1 filter slot before saving.', 'warn');
         return;
       }
       const nameInp = document.getElementById('conveyorFilterNameInput');
@@ -7394,6 +7598,7 @@
       syncStateToServer();
       renderConveyorModule();
       flashButtonFeedback(e.currentTarget, '✓ Saved!');
+      showTacticalToast(`Saved "${name}" to Squad Filters`, 'ok');
     });
     document.getElementById('conveyorImportBtn')?.addEventListener('click', () => {
       const inp = document.getElementById('conveyorImportInput');
@@ -7409,8 +7614,9 @@
         const nameInp = document.getElementById('conveyorFilterNameInput');
         if (nameInp && !nameInp.value.trim()) nameInp.value = `Imported Filter (${imported.length} items)`;
         renderConveyorModule();
+        showTacticalToast(`Imported ${imported.length} conveyor slots cleanly`, 'ok');
       } catch (err) {
-        alert(`Invalid Rust Conveyor JSON: ${err.message}`);
+        showTacticalToast(`Invalid Rust Conveyor JSON: ${err.message}`, 'warn', 3400);
       }
     });
     document.getElementById('conveyorCopyBtn')?.addEventListener('click', async (e) => {
@@ -12125,6 +12331,7 @@
       }
     };
     safeRun(initNavigation);
+    safeRun(initQuickJumpPalette);
     safeRun(initRaidModule);
     safeRun(initRaidStashModule);
     safeRun(initMonumentsModule);

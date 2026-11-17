@@ -1699,25 +1699,7 @@ details > summary:hover {
   margin: 4px 0 8px;
 }
 
-/* Global Polish: Scrollbars, Focus Rings & Tactile Feedback */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(9, 14, 22, 0.7);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.35);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.6);
-}
-
+/* Global Polish: Focus Rings, Tactile Feedback, Toasts & Quick Jump Palette */
 .btn:active:not(:disabled),
 .filter-pill:active,
 .conv-item-chip:active {
@@ -1732,4 +1714,76 @@ details > summary:hover {
 .conv-item-chip:focus-visible {
   outline: 2px solid #38bdf8;
   outline-offset: 1px;
+}
+
+.quick-jump-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #f8fafc;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.quick-jump-item:hover,
+.quick-jump-item.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.16);
+}
+
+.quick-jump-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.9);
+  color: #7dd3fc;
+  flex-shrink: 0;
+}
+
+.tactical-toast-rack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.tactical-toast {
+  pointer-events: auto;
+  padding: 9px 13px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid #38bdf8;
+  color: #f8fafc;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  animation: toastSlideIn 0.18s ease-out;
+}
+
+.tactical-toast.warn {
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+
+.tactical-toast.ok {
+  border-color: #22c55e;
+  color: #bbf7d0;
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }

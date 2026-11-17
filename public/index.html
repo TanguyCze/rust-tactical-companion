@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261117h" />
+  <link rel="stylesheet" href="css/styles.css?v=20261117i" />
 </head>
 <body>
 
@@ -33,6 +33,9 @@
       </div>
 
       <div class="header-controls">
+        <button id="openQuickJumpBtn" type="button" class="btn btn-sm" style="border-color:rgba(56,189,248,0.45); color:#bae6fd;" title="Instant Cross-Tab Command Palette (Ctrl+K)">
+          🔍 Jump <span style="opacity:0.65; font-size:10px; font-family:var(--font-mono);">Ctrl+K</span>
+        </button>
         <button id="hudRustPlusPill" type="button" class="btn btn-sm" style="display:none; background:rgba(16,185,129,0.14); border-color:rgba(52,211,153,0.45); color:#a7f3d0; font-family:var(--font-mono); font-size:11px;" title="Live Rust+ Telemetry — click to open Tactical Map &amp; Shops"></button>
         <div id="syncStatusBadge" class="sync-badge">
           <span class="sync-dot"></span>
@@ -305,6 +308,15 @@
                 <button id="discordRaidPlanBtn" class="btn btn-sm">📋 Copy Discord Plan</button>
                 <button id="clearRaidQueueBtn" class="btn btn-sm btn-danger">Clear</button>
               </div>
+            </div>
+
+            <!-- 1-Click Common Base Templates -->
+            <div id="raidQuickBaseTemplates" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+              <span style="font-size:10.5px; color:var(--text-muted); font-family:var(--font-mono);">Quick Plan:</span>
+              <button type="button" class="btn btn-sm raid-tpl-btn" data-tpl="stone_2x2">🏠 2×2 Stone</button>
+              <button type="button" class="btn btn-sm raid-tpl-btn" data-tpl="doors_heavy">🚪 Garage + Armored Doors</button>
+              <button type="button" class="btn btn-sm raid-tpl-btn" data-tpl="compound_push">🗼 Compound + Turrets</button>
+              <button type="button" class="btn btn-sm raid-tpl-btn" data-tpl="silent_2x2">🤫 Silent Doors (Explo)</button>
             </div>
 
             <!-- Quick Add Bar -->
@@ -779,6 +791,12 @@
                 <div class="panel-subtitle">Set counts for turrets, furnaces, conveyors &amp; Rust+ sensors — auto-computes real rWm power &amp; backup runtime</div>
               </div>
               <button id="elecResetBtn" type="button" class="btn btn-sm">Reset</button>
+            </div>
+            <div id="elecQuickPresetsBar" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+              <span style="font-size:10.5px; color:var(--text-muted); font-family:var(--font-mono);">Base Presets:</span>
+              <button type="button" class="btn btn-sm elec-tpl-btn" data-etpl="solo_duo">🏠 Solo/Duo Core</button>
+              <button type="button" class="btn btn-sm elec-tpl-btn" data-etpl="industrial">⚙️ Industrial Auto-Smelt</button>
+              <button type="button" class="btn btn-sm elec-tpl-btn" data-etpl="clan_compound">🏰 Clan Defense (12 Turrets)</button>
             </div>
             <div id="elecDevicesGrid" class="target-grid"></div>
           </div>
@@ -1360,7 +1378,19 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261117h"></script>
-  <script src="js/app.js?v=20261117h"></script>
+  <div id="quickJumpModal" class="modal-backdrop">
+    <div class="modal-card" style="max-width: 560px; padding: 14px;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+        <input id="quickJumpInput" type="search" class="input" style="flex:1; font-size:14px;" placeholder="🔍 Jump to anything (Oil Rig, Kevlar, Uzi, Auto-Smelt, Decay, Rust+, Turret...)" />
+        <button id="closeQuickJumpBtn" type="button" class="btn btn-sm">Esc</button>
+      </div>
+      <div id="quickJumpResults" style="display:flex; flex-direction:column; gap:5px; max-height:340px; overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <div id="tacticalToastRack" class="tactical-toast-rack" aria-live="polite"></div>
+
+  <script src="js/data.js?v=20261117i"></script>
+  <script src="js/app.js?v=20261117i"></script>
 </body>
 </html>
