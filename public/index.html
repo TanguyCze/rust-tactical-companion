@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261117b" />
+  <link rel="stylesheet" href="css/styles.css?v=20261117c" />
 </head>
 <body>
 
@@ -831,8 +831,12 @@
                   <div class="panel-subtitle">1-click <strong>Copy JSON</strong> per conveyor pipe (paste in-game) or load into editor to customize</div>
                 </div>
               </div>
+              <div style="padding:8px 10px; border-radius:6px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); font-size:11.5px; color:#cbd5e1; margin-bottom:10px; line-height:1.45;">
+                <strong style="color:#7dd3fc;">✅ Vanilla Adaptor Targets:</strong> Boxes, TC (2), Locker (3 partitions), Drop Box, Coffin, Fridge, Furnaces, Small Oil Refinery, Vending Machine, Crafter.<br/>
+                <strong style="color:#fca5a5;">❌ Not Pipeable (Vanilla):</strong> Auto Turrets, Mixing Tables, Repair Benches.
+              </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-                <input id="conveyorPresetSearch" type="search" class="input" style="flex:1; min-width:180px;" placeholder="Filter presets (smelter, tc, locker, turret, crafter...)" />
+                <input id="conveyorPresetSearch" type="search" class="input" style="flex:1; min-width:180px;" placeholder="Filter presets (smelter, refinery, tc, locker, fridge, crafter...)" />
               </div>
               <div id="conveyorPresetsList" style="display:flex; flex-direction:column; gap:10px;"></div>
             </div>
@@ -860,16 +864,16 @@
                 <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">ADD ITEM / CATEGORY</label>
                 <select id="conveyorItemSelect" class="select" style="width:100%;"></select>
               </div>
-              <div style="width:66px;">
-                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">MIN</label>
+              <div style="width:66px;" title="Minimum quantity required in SOURCE box before pulling">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">MIN (SRC)</label>
                 <input id="conveyorMinInput" type="number" class="input" value="0" min="0" style="width:100%;" />
               </div>
-              <div style="width:74px;">
-                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">MAX</label>
+              <div style="width:74px;" title="Stop transferring once DESTINATION reaches this cap (0 = no cap)">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">MAX (DEST)</label>
                 <input id="conveyorMaxInput" type="number" class="input" value="0" min="0" style="width:100%;" />
               </div>
-              <div style="width:66px;">
-                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">BUF</label>
+              <div style="width:66px;" title="Batch / look-ahead buffer amount per transfer cycle">
+                <label style="display:block; font-size:10.5px; color:var(--text-secondary); margin-bottom:3px;">BUFFER</label>
                 <input id="conveyorBufInput" type="number" class="input" value="0" min="0" style="width:100%;" />
               </div>
               <button id="conveyorAddFilterBtn" type="button" class="btn btn-sulfur">+ Add</button>
@@ -1349,7 +1353,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261117b"></script>
-  <script src="js/app.js?v=20261117b"></script>
+  <script src="js/data.js?v=20261117c"></script>
+  <script src="js/app.js?v=20261117c"></script>
 </body>
 </html>

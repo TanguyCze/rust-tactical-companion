@@ -2364,14 +2364,14 @@ window.RUST_DATA = {
         {
           label: 'Conveyor 3 → Comps & Scrap Box',
           filters: [
-            { item: 'Category: Components', min: 0, max: 0, buf: 0 },
+            { item: 'Category: Component', min: 0, max: 0, buf: 0 },
             { item: 'Scrap', min: 0, max: 0, buf: 0 }
           ]
         },
         {
           label: 'Conveyor 4 → Guns & Ammo Box',
           filters: [
-            { item: 'Category: Weapons', min: 0, max: 0, buf: 0 },
+            { item: 'Category: Weapon', min: 0, max: 0, buf: 0 },
             { item: 'Category: Ammunition', min: 0, max: 0, buf: 0 }
           ]
         },
@@ -2446,23 +2446,30 @@ window.RUST_DATA = {
       ]
     },
     {
-      id: 'turret_ammo',
-      name: '🔫 Auto Turret Ammo Restocker',
-      category: 'Base Defense',
-      powerRwm: 1,
-      conveyorsCount: 1,
+      id: 'refinery_lgf',
+      name: '🛢️ Small Oil Refinery Auto-Fuel Loop',
+      category: 'Smelting',
+      powerRwm: 2,
+      conveyorsCount: 2,
       mode: 'Require Any (OR)',
-      summary: 'Ammo Box → Conveyor (Max 384 / 3 stacks) → Splitter → Storage Adaptors on Auto Turrets.',
+      summary: 'Crude Oil + Wood Box → Conveyor IN → Storage Adaptor on Small Oil Refinery → Conveyor OUT → Low Grade Fuel Box.',
       proTips: [
-        'Max = 384 (3 full 128 stacks) ensures each turret has 3 stacks loaded+reserve without wasting all base ammo if 1 turret gets destroyed!',
-        'Use Max = 256 if you have 6+ turrets on one branch so early-wipe ammo spreads evenly.'
+        'Small Oil Refinery accepts 1 Storage Adaptor cleanly in vanilla Rust!',
+        'Set Wood Max = 1000 so Charcoal byproduct from refining does not clog your Refinery output slots.'
       ],
       conveyors: [
         {
-          label: 'Conveyor → Turret Pods',
+          label: 'Conveyor IN (Materials → Oil Refinery)',
           filters: [
-            { item: '5.56 Rifle Ammo', min: 0, max: 384, buf: 32 },
-            { item: 'Incendiary 5.56 Rifle Ammo', min: 0, max: 128, buf: 16 }
+            { item: 'Crude Oil', min: 0, max: 0, buf: 0 },
+            { item: 'Wood', min: 0, max: 1000, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor OUT (Oil Refinery → LGF / Charcoal Box)',
+          filters: [
+            { item: 'Low Grade Fuel', min: 0, max: 0, buf: 0 },
+            { item: 'Charcoal', min: 0, max: 0, buf: 0 }
           ]
         }
       ]
@@ -2471,25 +2478,25 @@ window.RUST_DATA = {
       id: 'locker_kits',
       name: '🪖 Auto-Locker Full Kit Restocker',
       category: 'Kits & Combat',
-      powerRwm: 2,
-      conveyorsCount: 2,
+      powerRwm: 1,
+      conveyorsCount: 1,
       mode: 'Require Any (OR)',
-      summary: 'Wait-zero Locker refills! Use separate Armor/Weapons Box + Ammo/Meds Box piped into a Storage Adaptor on top of your Locker.',
+      summary: 'Wait-zero Locker refills! Attach 1 Storage Adaptor per Locker row (3 ports total on a Locker) from your Gun/Armor/Meds Boxes.',
       proTips: [
-        'WARNING: One Storage Adaptor feeds ALL 3 Locker rows combined! Set Max = 3 for 3 full kits across all 3 rows, or Max = 12 Medical Syringes (4 per kit).',
-        'Buffer = 0 keeps empty slots topped up automatically right after your squad grabs a respawn kit.'
+        'Each Storage Adaptor on a Locker controls ONLY that single shelf partition (3 partitions = 3 adaptors)!',
+        'Set Max = 1 per gun/armor piece & 128 Ammo / 4 Syringes / 3 Bandages per shelf so every respawn row stays cleanly stocked.'
       ],
       conveyors: [
         {
-          label: 'Conveyor → Locker (3 Full AK Kits Combined)',
+          label: 'Conveyor → Locker Shelf Partition (1 Full AK Kit)',
           filters: [
-            { item: 'Assault Rifle', min: 0, max: 3, buf: 0 },
-            { item: 'Metal Facemask', min: 0, max: 3, buf: 0 },
-            { item: 'Metal Chest Plate', min: 0, max: 3, buf: 0 },
-            { item: 'Road Sign Kilt', min: 0, max: 3, buf: 0 },
-            { item: '5.56 Rifle Ammo', min: 0, max: 384, buf: 0 },
-            { item: 'Medical Syringe', min: 0, max: 12, buf: 0 },
-            { item: 'Bandage', min: 0, max: 9, buf: 0 }
+            { item: 'Assault Rifle', min: 0, max: 1, buf: 0 },
+            { item: 'Metal Facemask', min: 0, max: 1, buf: 0 },
+            { item: 'Metal Chest Plate', min: 0, max: 1, buf: 0 },
+            { item: 'Road Sign Kilt', min: 0, max: 1, buf: 0 },
+            { item: '5.56 Rifle Ammo', min: 0, max: 128, buf: 0 },
+            { item: 'Medical Syringe', min: 0, max: 4, buf: 0 },
+            { item: 'Bandage', min: 0, max: 3, buf: 0 }
           ]
         }
       ]
@@ -2501,17 +2508,17 @@ window.RUST_DATA = {
       powerRwm: 3,
       conveyorsCount: 2,
       mode: 'Require All (AND)',
-      summary: 'Sulfur + Charcoal Boxes → Conveyor IN (Max caps prevent stalling!) → Industrial Crafter (WB2/WB3) → Conveyor OUT → Boom Box.',
+      summary: 'Sulfur + Charcoal Boxes → Conveyor IN (Require All + Max caps!) → Industrial Crafter (WB2/WB3) → Conveyor OUT → Boom Box.',
       proTips: [
         'NEVER leave Max = 0 on Industrial Crafter input! Without Max caps, Charcoal fills every input slot and locks out Sulfur!',
-        'Set Charcoal Max = 2000 and Sulfur Max = 1500 so both ingredients always fit inside the Crafter simultaneously.'
+        'Toggle "Require All (AND)" ON in the Conveyor so it only pushes when both Charcoal & Sulfur are available.'
       ],
       conveyors: [
         {
           label: 'Conveyor IN → Industrial Crafter (Gun Powder)',
           filters: [
-            { item: 'Charcoal', min: 30, max: 2000, buf: 0 },
-            { item: 'Sulfur', min: 20, max: 1500, buf: 0 }
+            { item: 'Charcoal', min: 0, max: 2000, buf: 0 },
+            { item: 'Sulfur', min: 0, max: 1500, buf: 0 }
           ]
         },
         {
@@ -2524,33 +2531,28 @@ window.RUST_DATA = {
     },
     {
       id: 'berry_tea',
-      name: '🧪 Auto Berry Sorter → Mixing Table & Tea Fridge',
+      name: '🧊 Tea & Berry Fridge Auto-Sorter',
       category: 'Farming & Teas',
-      powerRwm: 2,
-      conveyorsCount: 2,
+      powerRwm: 1,
+      conveyorsCount: 1,
       mode: 'Require Any (OR)',
-      summary: 'Planter Harvest Box → Conveyor IN (Berries capped at Max = 40 each) → Mixing Table → Conveyor OUT → Fridge.',
+      summary: 'Depot / Harvest Box → Conveyor → Storage Adaptor on Fridge (keeps Pure Ore/Scrap Teas & Berries out of main boxes).',
       proTips: [
-        'Keep each Berry type capped at Max = 40 inside the Mixing Table so all 4 colors have room.',
+        'Vanilla Mixing Tables CANNOT attach a Storage Adaptor — pipe directly into a Fridge or Dedicated Box instead!',
         'Works great alongside Pure Ore Tea (+50% Sulfur) cloning!'
       ],
       conveyors: [
         {
-          label: 'Conveyor IN → Mixing Table (Ore + Scrap Berries)',
-          filters: [
-            { item: 'Blue Berry', min: 0, max: 40, buf: 0 },
-            { item: 'Yellow Berry', min: 0, max: 40, buf: 0 },
-            { item: 'White Berry', min: 0, max: 40, buf: 0 },
-            { item: 'Red Berry', min: 0, max: 40, buf: 0 }
-          ]
-        },
-        {
-          label: 'Conveyor OUT → Tea Fridge',
+          label: 'Conveyor → Fridge (Pure Teas & Berries)',
           filters: [
             { item: 'Pure Ore Tea', min: 0, max: 0, buf: 0 },
             { item: 'Pure Scrap Tea', min: 0, max: 0, buf: 0 },
             { item: 'Pure Wood Tea', min: 0, max: 0, buf: 0 },
-            { item: 'Pure Max Health Tea', min: 0, max: 0, buf: 0 }
+            { item: 'Pure Max Health Tea', min: 0, max: 0, buf: 0 },
+            { item: 'Blue Berry', min: 0, max: 40, buf: 0 },
+            { item: 'Yellow Berry', min: 0, max: 40, buf: 0 },
+            { item: 'White Berry', min: 0, max: 40, buf: 0 },
+            { item: 'Red Berry', min: 0, max: 40, buf: 0 }
           ]
         }
       ]

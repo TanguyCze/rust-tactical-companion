@@ -6693,6 +6693,10 @@
         `<option value="Category: Attire">📁 Category: Attire / Armor (All)</option>` +
         `<option value="Category: Tool">📁 Category: Tools (All)</option>` +
         `<option value="Category: Electrical">📁 Category: Electrical (All)</option>` +
+        `<option value="Category: Construction">📁 Category: Construction (All)</option>` +
+        `<option value="Category: Food">📁 Category: Food / Teas (All)</option>` +
+        `<option value="Category: Traps">📁 Category: Traps / Turrets (All)</option>` +
+        `<option value="Category: Misc">📁 Category: Misc (All)</option>` +
         DATA.conveyorItemsCatalog
           .map((it) => `<option value="${escapeHtml(it.name)}">${escapeHtml(it.name)} (${escapeHtml(it.cat)})</option>`)
           .join('');
