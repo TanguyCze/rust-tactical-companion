@@ -1268,10 +1268,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 3, normal: 4, diesel: 0 },
       utilities: ['Computer Station', 'MLRS Aiming Terminal (Variant)', 'CCTV: COMPOUND****', 'No Recycler'],
       npcCheese: {
-        diagram: 'ridge_snipe',
+        diagram: 'abandoned_military',
+        spotTitle: '🏜️ Outer Perimeter Sand Dunes (West/North Fence) → Concrete Jersey Barriers by Ammo Tents',
         videoQuery: 'rust abandoned military base solo scientist cheese',
         aiThreat: '~7× Desert Military Scientists (LR-300 / M92, Roaming)',
         recommendedKit: 'Compound Bow / SAR + Bandages + Leather/Roadsign',
+        routeSteps: [
+          'Approach from the high sand dune ridge OUTSIDE the chain-link perimeter fence before entering the gate.',
+          'Snipe 3–4 patrolling Scientists through the fence gaps, then enter toward the sandbagged Ammo Tents.',
+          'Crouch behind a concrete Jersey Barrier between the tents (right-hand peek) to finish the last 2–3 inside.'
+        ],
         tips: [
           'Perimeter Fence Peeks: Stand behind the outer desert rock ridges or chain-link sandbags outside the compound — snipe roaming perimeter Scientists before crossing the gate so only 2–3 remain inside.',
           'Jersey Barrier Head-Glitch: Crouch tight behind concrete barriers between the ammo tents; Scientists lock onto the top concrete lip while your chest stays covered.',
@@ -1299,10 +1305,16 @@ window.RUST_DATA = {
       powerGrid: { stage: 1, fuses: 1, label: 'Stage 1 Power Grid (1× Heavy Fuse)' },
       utilities: ['1x Green Recycler', 'Small Oil Refinery', 'Cargo Ship Docking', 'Stage 1 Power Grid Room (1 Heavy Fuse)'],
       npcCheese: {
-        diagram: 'cargo_bridge',
+        diagram: 'harbor',
+        spotTitle: '🏗️ Tall Pier Shipping Containers & Concrete Dockside (Only when Cargo Ship Docks)',
         videoQuery: 'rust cargo ship harbor dock scientist cheese',
         aiThreat: '0 Normally (Cargo Ship Scientists ~16x ONLY when Cargo docks for 10m)',
         recommendedKit: 'Crossbow / DB / SAR — hold shipping container roofs',
+        routeSteps: [
+          'Harbor itself has ZERO Scientists during normal loot runs (only check when Cargo Ship horn docks at the pier).',
+          'Climb the stacked shipping containers on the Harbor pier directly beside the docked hull BEFORE crossing the ramp.',
+          'Pick off exposed Cargo upper-deck Scientists from above, or bait 1 at a time onto the Harbor gangplank lip.'
+        ],
         tips: [
           'Docked Cargo Crane Trap: While Cargo Ship is docked at Harbor, climb the tall dock shipping containers overlooking the deck instead of boarding first — pick off upper-deck Scientists with zero aggro range.',
           'Gangplank Funnel: Aggro a forward deck Scientist then back onto the Harbor concrete pier; they hesitate at the ship gangplank lip.'
@@ -1436,10 +1448,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 5, normal: 18, diesel: 0 },
       utilities: ['1x Green Recycler', 'Snowmobile Puzzle Spawn', '10x Arctic Scientists'],
       npcCheese: {
-        diagram: 'ridge_snipe',
+        diagram: 'arctic_research',
+        spotTitle: '🏔️ High Snow Rocks Outside Fence (West/North) → Raised Trailer Alleys & Snowmobile Garage Frame',
         videoQuery: 'rust arctic research base solo cheese scientists',
         aiThreat: '10× Cold-Weather Arctic Scientists (Roam courtyard & garages)',
         recommendedKit: 'Compound Bow or Silenced SAR + Jacket/Hazmat + Heat Packs',
+        routeSteps: [
+          'Climb the elevated snow boulders OUTSIDE the chain-link perimeter before stepping through the compound gate.',
+          'Drop 4–5 open-courtyard guards from the boulders, then enter via the tight gap between the raised hab trailers.',
+          'Pull remaining Scientists toward the Blue-Card Snowmobile Garage door frame and right-peek around the parked hulls.'
+        ],
         tips: [
           'Perimeter Rock Ridge Snipe: Climb the snow boulders just outside the chain-link fence before entering — 4 to 5 courtyard Scientists patrol right along the open snow lane in full view of the rocks.',
           'Blue Card Garage Hold: Bait Scientists toward the concrete Snowmobile Garage entrance; hold the steel frame on a right-hand peek so AI paths around the parked hull single-file.',
@@ -1491,10 +1509,16 @@ window.RUST_DATA = {
       powerGrid: { stage: 2, fuses: 4, label: 'Stage 2 Power Grid (4× Heavy Fuses)' },
       utilities: ['1x Green Recycler', 'Coaling Tower Unloader', '4x Scientists', 'Stage 2 Power Grid Room (4 Heavy Fuses)'],
       npcCheese: {
-        diagram: 'doorway_peek',
+        diagram: 'train_yard',
+        spotTitle: '🚂 Center Yard Derailed Boxcars & Concrete Switch Shack (Beside Central Coaling Tower)',
         videoQuery: 'rust train yard scientist puzzle solo guide',
         aiThreat: '4× Yard Tunnel Scientists (spawn near Coaling Tower / Fuse area)',
         recommendedKit: 'Crossbow + Nailgun or Revolver / SAR',
+        routeSteps: [
+          'Walk into the central tracks around the tall Coaling Tower (the 4 Scientists patrol around the lower tower/fuse shed).',
+          'Put a derailed train car wheel or large concrete pipe between you and the Coaling Tower stairs before firing.',
+          'If multiple aggro, duck inside the small concrete Switch Shack doorway beside the tower to break LOS and peek 1 by 1.'
+        ],
         tips: [
           'Freight Car & Concrete Pipe Peeks: Keep a boxcar wheel or concrete pipe between you and the Coaling Tower stairs — Train Yard Scientists lock onto chest height, letting you crown-tap from above/beside wheels.',
           'Switch House Doorway: Duck inside the small concrete switch shack if 2+ aggro simultaneously so they lose line-of-sight and stop spraying.'
@@ -1521,10 +1545,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 5, normal: 18, diesel: 3 },
       utilities: ['2x Green Recyclers', 'Tunnel Entrance', 'Chinook Drop Zone', '3x Motorbike Spawns'],
       npcCheese: {
-        diagram: 'doorway_peek',
+        diagram: 'airfield',
+        spotTitle: '🪜 Underground Concrete Tunnel Pillar (Right OUTSIDE the Locked Blue Card Door)',
         videoQuery: 'rust airfield blue room scientists trap',
         aiThreat: '3× Underground Blue-Room Scientists (spawn on Blue Door swipe)',
         recommendedKit: 'DB / Pump Shotgun or SMG / SAR + Torch/NVG',
+        routeSteps: [
+          'Loot runway hangars & tower first (0 Scientists above ground!), insert Fuse #1 in Office Building, then go underground via tunnel stairs.',
+          'Swipe Green Card, insert Fuse #2, and swipe Blue Card — immediately step BACK out of the doorway to the concrete tunnel pillar.',
+          'Hold the narrow doorway from behind the pillar as all 3 Scientists funnel out single-file into shotgun/SMG range.'
+        ],
         tips: [
           'Tunnel Staircase Hatch Bait: Do NOT rush into the Blue loot room right after swiping — stay back at the dark tunnel concrete pillar/stairway outside the door. All 3 Scientists funnel through the narrow doorway one at a time.',
           'Surface Clear First: Above ground has 0 Scientists (unless Chinook/Tunnels aggro), so loot hangars & tower quietly before heading underground.'
@@ -1573,10 +1603,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 4, normal: 14, diesel: 0 },
       utilities: ['1x Green Recycler', 'Diesel Mining Arm (120s/Barrel)', 'Supply Drop Signal Computer', 'Tunnel Entrance'],
       npcCheese: {
-        diagram: 'ridge_snipe',
+        diagram: 'giant_excavator',
+        spotTitle: '⛰️ Outer Earthen Crater Rim (Above Recycler Shed) → Middle Hopper Catwalk Railings',
         videoQuery: 'rust giant excavator solo cheese compound bow',
         aiThreat: '18× Excavator Pit Scientists (Heavy pit roamers + upper walkway guards)',
         recommendedKit: 'Compound Bow / Bolt / SAR (8x/Holo helpful) + Meds',
+        routeSteps: [
+          'Walk the HIGH earthen dirt rim circling the outer pit BEFORE walking down any mud ramp.',
+          'Snipe 8–10 Scientists patrolling the flat gravel yard below (AI stops chasing at the steep dirt slope).',
+          'Climb onto the middle Hopper Catwalk / Recycler Shed roof once Diesel runs so you watch both the engine room and rim.'
+        ],
         tips: [
           'Dirt Rim Range Cheese: Excavator Scientists will NOT chase you up onto the outer earthen crater rim — pick off 8–10 roaming AI cleanly from the high dirt slopes before walking down into the machinery pit.',
           'Catwalk / Hopper Steel Frame: Inside the pit, climb onto the middle catwalk railing corners; AI under the gantry struggles to angle shots up through the perforated floor.',
@@ -1605,10 +1641,16 @@ window.RUST_DATA = {
       powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['No Recycler', '2x Blueprint Books (NEW)', 'Computer Station & Telephone', 'CCTV: SILOEXIT1/2, SILOMISSILE, SILOSHIPPING, SILOTOWER'],
       npcCheese: {
-        diagram: 'stair_grate',
+        diagram: 'missile_silo',
+        spotTitle: '🪜 Central Missile Shaft Stairwell — 1 Half-Flight Landing ABOVE Patrol',
         videoQuery: 'rust missile silo stairwell cheese solo',
         aiThreat: '4× Outside Scientists + 23× Underground Silo Scientists (tight CQB + grenades)',
         recommendedKit: 'MP5/SAR/Thommy + Shotgun/Flashlight + Hazmat + 6+ Syringes',
+        routeSteps: [
+          'Clear the 4 surface guards using the outer yard shipping containers, then swipe Red Card & press the entrance elevator/door button.',
+          'Walk down the central missile shaft stairs slowly: stay ONE half-flight ABOVE Scientists below and shoot down through the metal stair grates.',
+          'When opening ANY sealed bulkhead door underground, immediately sprint 1 corner back to funnel rushing AI single-file.'
+        ],
         tips: [
           'Stairwell Grate Head-Glitch (Biggest Cheese): Inside the deep missile shaft stairwells, stand ONE half-flight ABOVE the Scientists and shoot down through the metal stair grates — they hit the underside metal while you see full helmets.',
           'Open-Door Step-Back Trigger: Next Silo waves spawn/aggro as you open each bulkhead door. Open every door, sprint 1 corner back immediately, and pre-aim the doorway as they push in single-file.',
@@ -1639,10 +1681,16 @@ window.RUST_DATA = {
       powerGrid: { stage: 3, fuses: 10, label: 'Stage 3 Power Grid (10× Heavy Fuses)' },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', 'Bradley APC (7 HV Rockets)', 'Stage 3 Powered Loot Room (8 Crates)'],
       npcCheese: {
-        diagram: 'doorway_peek',
+        diagram: 'launch_site',
+        spotTitle: '🧱 Cobalt Brick Ticket Booth / Garage Doorway (Across from Huge Rocket Factory) & Upper Stair Landing',
         videoQuery: 'rust bradley apc hv rocket cheese cobalt launch site',
         aiThreat: 'Bradley APC (7 HV Rockets) + 8× Rocket Factory Scientists',
         recommendedKit: 'Rocket Launcher + 7× HV Rockets + SAR/MP5 + Hazmat + Jug of Water',
+        routeSteps: [
+          'For Bradley APC: stand inside the Brick Cobalt Ticket Booth OR Recycler Shed doorway facing the paved Launch Pad road (avoid glass windows!).',
+          'Fire 2 HV Rockets at Bradley rear/treads, duck deep behind solid brick during its 4s MG + rocket burst, repeat until 7 HVs kill it.',
+          'For Rocket Factory Scientists: enter the tall factory Red-Card building and hold the upper concrete elevator/stair landings looking down.'
+        ],
         tips: [
           'Bradley Cobalt Garage / Ticket Booth Cheese: Bait Bradley near the brick Cobalt building or Recycle shed doorway. Fire 2 HV Rockets into its treads/rear, duck completely behind the concrete wall during its MG + rocket salvo (stay away from windows — splash kills through glass!), then peek cleanly every 4s. Takes 7 HV Rockets (1,400 Sulfur total).',
           'Factory Roof Staircase Hold: Inside the Red Card Rocket Factory, scientists spawn on middle catwalks; hold the upper elevator/stair landings on a right-hand head peek so only 1 helmet peeks up at a time.',
@@ -1671,10 +1719,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 6, military: 8, normal: 14, diesel: 3 },
       utilities: ['1x Green Recycler', '2x Blueprint Books (NEW)', '33x Scientist Spawns'],
       npcCheese: {
-        diagram: 'doorway_peek',
+        diagram: 'military_tunnels',
+        spotTitle: '🚇 Derailed Tanker / Boxcars (Main Mid-Tunnel) → Concrete Fuse-Room Doorway Behind Desk',
         videoQuery: 'rust military tunnels solo cheese fuse room train',
         aiThreat: '33× Tunnel Scientists (Heavy F1 Grenade spam + fast lane pushes)',
         recommendedKit: 'SAR/MP5/Thommy (Flashlight/NVG) + 6–8 Syringes + 30+ Bandages',
+        routeSteps: [
+          'Quietly clear the outer green sandbags/mine entrance with a Compound Bow so neighbors don’t counter.',
+          'Push along the derailed tanker/train cars in the main tunnel — Scientists rarely vault cleanly over the derailed railcars.',
+          'For puzzle waves, swipe into a side Concrete Fuse/Card Office, crouch behind the desk inside, and wait 3s deep in the corner whenever they yell "Frag!".'
+        ],
         tips: [
           'Overturned Train Car Right-Peek: Scientists CANNOT push cleanly over the derailed tanker/boxcars inside the main tunnel. Stick to the concrete edge or right side of a boxcar and head-tap across the tracks.',
           'Concrete Fuse Room Bunker: Pull aggro then retreat inside the small concrete fuse/card rooms; hold the narrow steel doorway behind the concrete desk. When a Scientist yells "Frag/Grenade!", step deep behind the internal corner for 3s.',
@@ -1702,10 +1756,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 2, military: 6, normal: 12, diesel: 0 },
       utilities: ['No Recycler', 'Blueprint Books & Pages (NEW)', 'CCTV: LAB****'],
       npcCheese: {
-        diagram: 'moonpool_door',
+        diagram: 'underwater_labs',
+        spotTitle: '🌊 Open Moonpool Vertical Ladder Shaft & Closed Corridor Bulkhead Door Frames',
         videoQuery: 'rust underwater labs solo scientist cheese',
         aiThreat: '~4–8× Underwater Lab Dwellers (Modular hallway ambushers)',
         recommendedKit: 'Pump/DB Shotgun or MP5 + Compound Bow + Diving Tank/Flippers',
+        routeSteps: [
+          'Swim up ANY underwater Moonpool hatch ladder into an airlocked room (keep this ladder right behind you as an instant escape!).',
+          'Open the next closed steel Bulkhead Door, fire once to aggro the module, and immediately sidestep behind the left/right wall frame.',
+          'If overrun or bleeding, jump straight back down the vertical Moonpool water shaft — AI never shoots down into water shafts.'
+        ],
         tips: [
           'Bulkhead Door Crack Funnel: Lab Scientists are locked inside corridor modules until you open bulkhead doors. Crack a door open, fire 1–2 shots/arrows, and immediately sidestep behind the frame — they walk straight into close-range shotgun pre-aim.',
           'Moonpool Ladder Reset: Whenever outnumbered or bleeding, drop cleanly down through any moonpool hatch into the ocean (NPCs will never shoot into underwater vertical shafts) to med safely and re-peek.'
@@ -1733,10 +1793,16 @@ window.RUST_DATA = {
       crates: { locked: 1, elite: 1, military: 5, normal: 10, diesel: 0 },
       utilities: ['No Recycler', '15m Hackable Locked Crate', '15x Scientists + 6x Heavy Scientists', 'CCTV: OILRIG1DOCK/HELI/L1-L4'],
       npcCheese: {
-        diagram: 'crane_funnel',
+        diagram: 'small_oil_rig',
+        spotTitle: '🏗️ Top-Deck (L4) Orange Crane Ladder & Red-Room Vent Roof (Right Above Helipad)',
         videoQuery: 'rust small oil rig crane cheese heavy scientists bow',
         aiThreat: '15× Oil Rig Scientists (L1–L4) + 6× Heavy Scientists (after Locked Crate trigger)',
         recommendedKit: 'Budget Solo: Compound Bow + Nailgun/Revolver + 2× F1 Grenades ( bandies/cloth ) OR SAR + 40 5.56',
+        routeSteps: [
+          'Pick off dock & L1 guards from your RHIB/kayak beside the bottom dock steel pilings before climbing the rig ladder.',
+          'Clear L1→L4 quietly with a Compound Bow up the outer catwalk grates, then swipe Red Card on Top Deck.',
+          'Start the Locked Crate on L4 Helipad and IMMEDIATELY sprint/jump onto the Orange Crane Ladder or Red-Room Vent Roof so all 6 Heavies funnel up 1 staircase below you.'
+        ],
         tips: [
           'Crane Ladder / Vent Roof Heavy Cheese: Start the Locked Crate on L4 helipad and IMMEDIATELY climb onto the orange Crane ladder or the Red-Room vent roof. The 6 Heavy Scientists funnel slowly along the helipad stairs & doorway without flanking behind you.',
           'Dock Grate & Boat Pillar Clear: Before climbing up, float in a RHIB/kayak by the bottom dock pillars or crouch behind L1 stair containers — lower scientists expose their heads through catwalk grates while struggling to hit crouched boat players.',
@@ -1764,10 +1830,16 @@ window.RUST_DATA = {
       crates: { locked: 1, elite: 2, military: 8, normal: 10, diesel: 4 },
       utilities: ['No Recycler', 'Research Table', '15m Hackable Locked Crate', '27x Scientists + 12x Heavy Scientists', 'CCTV: OILRIG2DOCK/EXHAUST/HELI/L1-L6'],
       npcCheese: {
-        diagram: 'crane_funnel',
+        diagram: 'large_oil_rig',
+        spotTitle: '🏗️ Top-Deck (L6) Tall Red Crane Cab / Counterweight Stairs (North-West Corner Above Helipad)',
         videoQuery: 'rust large oil rig crane cheese heavy scientists solo',
         aiThreat: '27× Oil Rig Scientists (L1–L6) + 12× Heavy Scientists (M249/Minigun/SPAS)',
         recommendedKit: 'Compound Bow + SAR/AK + 3× F1 Grenades + Hazmat + 6+ Syringes + Cloth',
+        routeSteps: [
+          'Park boat under L1 steel pilings (safe underwater dive zone!), climb stairs L1→L5 peeking UP through stair grating gaps.',
+          'Clear Top Deck (L6), swipe Red Card, hack the Locked Crate on the Helipad, and IMMEDIATELY sprint up the Tall Red Crane stairs beside the pad.',
+          'Stand inside the upper Red Crane Cab / behind the counterweights — all 12 Heavies clump single-file on the lower ramp bend for head-taps & F1 Grenades.'
+        ],
         tips: [
           'Red Crane Cab / Catwalk Bend Funnel (Classic Solo Cheese): Hack the Locked Crate on Top Deck and sprint straight up the tall Red Crane stairs into the crane cab or behind the crane counterweights. The 12 Heavy Scientists clump single-file on the lower ramp landing where you can head-tap or drop F1 Grenades.',
           'Vent Duct / Stairwell Head-Peeks (Green → Blue → Red): Clear L3–L5 slowly from bottom stairwells looking UP through railing gaps — Scientists below chest-lock while only their helmets poke above the grating.',
@@ -1796,10 +1868,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['3x Yellow Recyclers (40% Safe)', '2x Tier 1 Workbenches', 'Research Table & Repair Bench', '7x NPC Vending Shops (Blue Card = 100 Scrap)', 'Missions: CZ-721 & Vagabond'],
       npcCheese: {
-        diagram: 'safe_zone',
+        diagram: 'outpost',
+        spotTitle: '🏪 Vending Courtyard & CZ-721 Bunker (Center Safe Zone — Outside Wall Sentry Line)',
         videoQuery: 'rust outpost cz721 oil rig mission tips',
         aiThreat: 'Safe Zone Peacekeeper Sentries (Instant laser kill + 30m hostility cooldown)',
         recommendedKit: 'Holster everything >5s away from fence — zero barrels/pigs hit in sight',
+        routeSteps: [
+          'Holster ALL weapons/tools BEFORE crossing into Sentry line-of-sight (at least 1 grid away if you recently hit barrels or AI).',
+          'Walk to the central Vending Row for Blue Keycard (100 Scrap) + Jackhammer (150 Scrap).',
+          'Talk to NPC CZ-721 in the central research container to unlock permanent Outpost respawn & Oil Rig 200 Scrap bonus.'
+        ],
         tips: [
           'Avoid Accidental 30m Aggro: Firing a bow, throwing flares/rocks, or breaking barrels even outside the wall while visible to Outpost triggers a 30-minute Safe Zone timer.',
           'Zero-Scientist Oil Rig Prep: Pick up CZ-721 Oil Rig mission + buy Blue Keycard (100 Scrap), Jackhammer (150 Scrap), and F1 Grenades (8 Scrap each to cheese Rig Heavies!).'
@@ -1827,10 +1905,16 @@ window.RUST_DATA = {
       crates: { locked: 0, elite: 0, military: 0, normal: 0, diesel: 0 },
       utilities: ['2x Yellow Recyclers (40% Safe)', 'Tier 1 Workbench & Clan Table', 'Research Table & Repair Bench', 'Airwolf Heli Vendor & Casino', 'CCTV: AIRWOLF, CASINO, TOWNWEAPONS'],
       npcCheese: {
-        diagram: 'safe_zone',
+        diagram: 'bandit_camp',
+        spotTitle: '💣 Wooden Weapon Shack Vendor (East Side of Big Wheel) & Stilt Fertilizer Shop',
         videoQuery: 'rust bandit camp f1 grenade fertilizer scrap',
         aiThreat: 'Bandit Guards (AI with LRs — hostile 30m if weapon drawn)',
         recommendedKit: 'Keep hotbar clean; bring Scrap / Horse Fertilizer',
+        routeSteps: [
+          'Holster all weapons BEFORE crossing the wooden boardwalk/swamp perimeter into Bandit Camp.',
+          'Head to the wooden Weapon Vending Shop just beside the Casino Big Wheel.',
+          'Buy F1 Grenades (8 Scrap each — carry 3–4 before Oil Rig!) or trade Horse Fertilizer at the upper Fertilizer vendor.'
+        ],
         tips: [
           'F1 Grenade Stack Shop for Rig Cheese: Bandit Camp Weapon Shop sells F1 Grenades super cheap (8 Scrap each) — stack 3–4 before every Oil Rig run to wipe grouped Heavy Scientists.'
         ]
@@ -1846,9 +1930,15 @@ window.RUST_DATA = {
     {
       name: '🚁 Patrol Helicopter (Attack Heli)',
       diagram: 'heli_tower',
+      spotTitle: '🗼 TC-Authed Window Embrasure Floor + Solid Roof Overhead (OR Launch Site Cobalt Brick Building)',
       videoQuery: 'rust patrol helicopter solo take down cheese tower',
       threat: '10,000 HP (Main Rotor 900 HP / Tail Rotor 500 HP — 2× damage weakspots)',
       kit: 'Dedicated Stone/Metal Shooting Floor (TC-Authed!) + Window Embrasures + SAR / M249 / HMLMG',
+      routeSteps: [
+        'Either stand in a TC-authed shooting floor WITH Window Embrasures + a solid roof overhead (never clear TC!), OR use Launch Site brick rooms.',
+        'Tag Heli once to pull aggro, aim ONLY at the Top Main Rotor (900 HP) or Rear Tail Rotor (500 HP) — breaking both kills it fast.',
+        'Whenever Heli swings directly above and lasers, crouch under the solid roof center for 6–8s until it breaks aggro.'
+      ],
       tips: [
         'TC-Auth Rocket Prevention (Vanilla Rule): Heli fires barrage rockets at bases if zero defenders in radius hold Building Privilege on the TC. Keep TC-auth on your Heli Tower (never clear TC to bait), OR shoot from concrete monuments (Launch Cobalt Garage / Power Plant brick roofs) so zero base walls take splash!',
         'Rotor Focus Shortcut: Shoot exclusively at the Main Top Rotor or Rear Tail Rotor with M249/HMLMG/AK/SAR — destroying BOTH rotors drops Heli immediately even before body HP hits 0.',
@@ -1858,9 +1948,15 @@ window.RUST_DATA = {
     {
       name: '🚢 Cargo Ship (Offshore Sea Boss)',
       diagram: 'cargo_bridge',
+      spotTitle: '🚢 Rear Stern Ladder → Yellow Bow Shipping Containers → Outer Captain Bridge Stairwell',
       videoQuery: 'rust cargo ship solo cheese boarding',
       threat: '~16× Deck & Cabin Scientists + up to 3–4× Locked Crates (10m horn intervals)',
       kit: 'Crossbow/Compound + SAR/SMG + Boat/Sub/Mini + 2× F1 Grenades',
+      routeSteps: [
+        'Match Cargo speed from behind in a RHIB or Solo Sub and climb the Rear Stern boarding ladder behind the Scientist patrol.',
+        'Crouch behind the bright Yellow Bow Shipping Containers on deck to clear open-deck Scientists cleanly.',
+        'Walk to the back Captain Bridge stairwell doorway — hold the steel frame on a right-peek while upper Scientists walk down single-file.'
+      ],
       tips: [
         'Stern / Container Ledge Board: Climb the rear ladder on the stern opposite where deck Scientists patrol, or crouch tight behind the yellow bow shipping containers — clear forward deck first before pushing the captain bridge.',
         'Captain Bridge Stairwell Funnel: Hold the outer steel stairs or lower door frame below the bridge; Scientists inside the captain quarters walk onto the top landing one at a time.',
@@ -2262,67 +2358,109 @@ window.RUST_DATA = {
     Fun: 17
   },
 
+  conveyorCategoryGroups: [
+    { id: 'resources', icon: '🪨', label: 'Resources', categoryFilter: 'Category: Resources', catLabel: 'Resources' },
+    { id: 'components', icon: '⚙️', label: 'Components', categoryFilter: 'Category: Component', catLabel: 'Component' },
+    { id: 'weapons', icon: '🔫', label: 'Weapons', categoryFilter: 'Category: Weapon', catLabel: 'Weapon' },
+    { id: 'ammo', icon: '💥', label: 'Ammo', categoryFilter: 'Category: Ammunition', catLabel: 'Ammunition' },
+    { id: 'boom', icon: '💣', label: 'Boom / Raid', categoryFilter: '', catLabel: '' },
+    { id: 'medical', icon: '💉', label: 'Medical', categoryFilter: 'Category: Medical', catLabel: 'Medical' },
+    { id: 'attire', icon: '🛡️', label: 'Armor / Attire', categoryFilter: 'Category: Attire', catLabel: 'Attire' },
+    { id: 'tools', icon: '⛏️', label: 'Tools', categoryFilter: 'Category: Tool', catLabel: 'Tool' },
+    { id: 'electrical', icon: '⚡', label: 'Elec & Traps', categoryFilter: 'Category: Electrical', catLabel: 'Electrical' },
+    { id: 'construction', icon: '🧱', label: 'Doors / Build', categoryFilter: 'Category: Construction', catLabel: 'Construction' },
+    { id: 'teas', icon: '🧪', label: 'Teas & Food', categoryFilter: 'Category: Food', catLabel: 'Food' }
+  ],
+
   conveyorItemsCatalog: [
-    { name: 'Sulfur Ore', shortname: 'sulfur.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Sulfur', shortname: 'sulfur', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Metal Ore', shortname: 'metal.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Metal Fragments', shortname: 'metal.fragments', cat: 'Ores & Mats', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
-    { name: 'High Quality Metal Ore', shortname: 'hq.metal.ore', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'High Quality Metal', shortname: 'metal.refined', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Stones', shortname: 'stones', cat: 'Ores & Mats', defaultMax: 10000, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Wood', shortname: 'wood', cat: 'Ores & Mats', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Charcoal', shortname: 'charcoal', cat: 'Ores & Mats', defaultMax: 3000, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Crude Oil', shortname: 'crude.oil', cat: 'Ores & Mats', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Low Grade Fuel', shortname: 'lowgradefuel', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Scrap', shortname: 'scrap', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Cloth', shortname: 'cloth', cat: 'Ores & Mats', defaultMax: 1000, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Leather', shortname: 'leather', cat: 'Ores & Mats', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Gun Powder', shortname: 'gunpowder', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Explosives', shortname: 'explosives', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Rocket', shortname: 'ammo.rocket.basic', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'HV Rocket', shortname: 'ammo.rocket.hv', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Incendiary Rocket', shortname: 'ammo.rocket.fire', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Timed Explosive Charge', shortname: 'explosive.timed', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Satchel Charge', shortname: 'explosive.satchel', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: '5.56 Rifle Ammo', shortname: 'ammo.rifle', cat: 'Ammo & Meds', defaultMax: 384, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Incendiary 5.56 Rifle Ammo', shortname: 'ammo.rifle.incendiary', cat: 'Ammo & Meds', defaultMax: 128, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Explosive 5.56 Rifle Ammo', shortname: 'ammo.rifle.explosive', cat: 'Boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Pistol Bullet', shortname: 'ammo.pistol', cat: 'Ammo & Meds', defaultMax: 256, defaultMin: 0, defaultBuf: 0 },
-    { name: '12 Gauge Buckshot', shortname: 'ammo.shotgun', cat: 'Ammo & Meds', defaultMax: 64, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Medical Syringe', shortname: 'syringe.medical', cat: 'Ammo & Meds', defaultMax: 4, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Bandage', shortname: 'bandage', cat: 'Ammo & Meds', defaultMax: 3, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Assault Rifle', shortname: 'rifle.ak', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'LR-300 Assault Rifle', shortname: 'rifle.lr300', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'MP5A4', shortname: 'smg.mp5', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Thompson', shortname: 'smg.thompson', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Custom SMG', shortname: 'smg.2', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Semi-Automatic Rifle', shortname: 'rifle.semiauto', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Bolt Action Rifle', shortname: 'rifle.bolt', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'L96 Rifle', shortname: 'rifle.l96', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Python Revolver', shortname: 'pistol.python', cat: 'Weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Metal Facemask', shortname: 'metal.facemask', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Metal Chest Plate', shortname: 'metal.plate.torso', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Road Sign Jacket', shortname: 'roadsign.jacket', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Road Sign Kilt', shortname: 'roadsign.kilt', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Hazmat Suit', shortname: 'hazmatsuit', cat: 'Armor', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Jackhammer', shortname: 'jackhammer', cat: 'Tools & Elec', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Auto Turret', shortname: 'autoturret', cat: 'Tools & Elec', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Garage Door', shortname: 'wall.frame.garagedoor', cat: 'Tools & Elec', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Tech Trash', shortname: 'techparts', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Metal Pipe', shortname: 'metalpipe', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Metal Spring', shortname: 'metalspring', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Gears', shortname: 'gears', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Sewing Kit', shortname: 'sewingkit', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Rifle Body', shortname: 'riflebody', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'SMG Body', shortname: 'smgbody', cat: 'Components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Blue Berry', shortname: 'blue.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Yellow Berry', shortname: 'yellow.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Red Berry', shortname: 'red.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
-    { name: 'White Berry', shortname: 'white.berry', cat: 'Teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Pure Ore Tea', shortname: 'oretea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Pure Scrap Tea', shortname: 'scraptea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Pure Wood Tea', shortname: 'woodtea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Pure Max Health Tea', shortname: 'maxhealthtea.pure', cat: 'Teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 }
+    { name: 'Sulfur Ore', shortname: 'sulfur.ore', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Sulfur', shortname: 'sulfur', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Ore', shortname: 'metal.ore', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Fragments', shortname: 'metal.fragments', cat: 'Ores & Mats', group: 'resources', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'High Quality Metal Ore', shortname: 'hq.metal.ore', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'High Quality Metal', shortname: 'metal.refined', cat: 'Ores & Mats', group: 'resources', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Stones', shortname: 'stones', cat: 'Ores & Mats', group: 'resources', defaultMax: 10000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Wood', shortname: 'wood', cat: 'Ores & Mats', group: 'resources', defaultMax: 5000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Charcoal', shortname: 'charcoal', cat: 'Ores & Mats', group: 'resources', defaultMax: 3000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Crude Oil', shortname: 'crude.oil', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Low Grade Fuel', shortname: 'lowgradefuel', cat: 'Ores & Mats', group: 'resources', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Cloth', shortname: 'cloth', cat: 'Ores & Mats', group: 'resources', defaultMax: 1000, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Leather', shortname: 'leather', cat: 'Ores & Mats', group: 'resources', defaultMax: 500, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Animal Fat', shortname: 'fat.animal', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Diesel Fuel', shortname: 'diesel_barrel', cat: 'Ores & Mats', group: 'resources', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Scrap', shortname: 'scrap', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Tech Trash', shortname: 'techparts', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Pipe', shortname: 'metalpipe', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Spring', shortname: 'metalspring', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Gears', shortname: 'gears', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Sewing Kit', shortname: 'sewingkit', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Road Signs', shortname: 'roadsigns', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Sheet Metal', shortname: 'sheetmetal', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Rifle Body', shortname: 'riflebody', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'SMG Body', shortname: 'smgbody', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Semi Automatic Body', shortname: 'semibody', cat: 'Components', group: 'components', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Gun Powder', shortname: 'gunpowder', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Explosives', shortname: 'explosives', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Rocket', shortname: 'ammo.rocket.basic', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'HV Rocket', shortname: 'ammo.rocket.hv', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Incendiary Rocket', shortname: 'ammo.rocket.fire', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Timed Explosive Charge', shortname: 'explosive.timed', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Satchel Charge', shortname: 'explosive.satchel', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Explosive 5.56 Rifle Ammo', shortname: 'ammo.rifle.explosive', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'F1 Grenade', shortname: 'grenade.f1', cat: 'Boom', group: 'boom', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: '5.56 Rifle Ammo', shortname: 'ammo.rifle', cat: 'Ammo & Meds', group: 'ammo', defaultMax: 384, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Incendiary 5.56 Rifle Ammo', shortname: 'ammo.rifle.incendiary', cat: 'Ammo & Meds', group: 'ammo', defaultMax: 128, defaultMin: 0, defaultBuf: 0 },
+    { name: 'HV 5.56 Rifle Ammo', shortname: 'ammo.rifle.hv', cat: 'Ammo & Meds', group: 'ammo', defaultMax: 128, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pistol Bullet', shortname: 'ammo.pistol', cat: 'Ammo & Meds', group: 'ammo', defaultMax: 256, defaultMin: 0, defaultBuf: 0 },
+    { name: '12 Gauge Buckshot', shortname: 'ammo.shotgun', cat: 'Ammo & Meds', group: 'ammo', defaultMax: 64, defaultMin: 0, defaultBuf: 0 },
+    { name: '12 Gauge Slug', shortname: 'ammo.shotgun.slug', cat: 'Ammo & Meds', group: 'ammo', defaultMax: 64, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Medical Syringe', shortname: 'syringe.medical', cat: 'Medical', group: 'medical', defaultMax: 4, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Bandage', shortname: 'bandage', cat: 'Medical', group: 'medical', defaultMax: 3, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Large Medkit', shortname: 'largemedkit', cat: 'Medical', group: 'medical', defaultMax: 2, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Assault Rifle', shortname: 'rifle.ak', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'LR-300 Assault Rifle', shortname: 'rifle.lr300', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'MP5A4', shortname: 'smg.mp5', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Thompson', shortname: 'smg.thompson', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Custom SMG', shortname: 'smg.2', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Semi-Automatic Rifle', shortname: 'rifle.semiauto', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Bolt Action Rifle', shortname: 'rifle.bolt', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'L96 Rifle', shortname: 'rifle.l96', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Spas-12 Shotgun', shortname: 'shotgun.spas12', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pump Shotgun', shortname: 'shotgun.pump', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Python Revolver', shortname: 'pistol.python', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Rocket Launcher', shortname: 'rocket.launcher', cat: 'Weapons', group: 'weapons', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Facemask', shortname: 'metal.facemask', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Metal Chest Plate', shortname: 'metal.plate.torso', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Road Sign Jacket', shortname: 'roadsign.jacket', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Road Sign Kilt', shortname: 'roadsign.kilt', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Hazmat Suit', shortname: 'hazmatsuit', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Hoodie', shortname: 'hoodie', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pants', shortname: 'pants', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Boots', shortname: 'shoes.boots', cat: 'Armor', group: 'attire', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Jackhammer', shortname: 'jackhammer', cat: 'Tools', group: 'tools', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Chainsaw', shortname: 'chainsaw', cat: 'Tools', group: 'tools', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pickaxe', shortname: 'pickaxe', cat: 'Tools', group: 'tools', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Hatchet', shortname: 'hatchet', cat: 'Tools', group: 'tools', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Salvaged Icepick', shortname: 'icepick.salvaged', cat: 'Tools', group: 'tools', defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Auto Turret', shortname: 'autoturret', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Shotgun Trap', shortname: 'guntrap', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Electric Furnace', shortname: 'electric.furnace', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Large Rechargeable Battery', shortname: 'electric.battery.rechargable.large', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Industrial Conveyor', shortname: 'industrial.conveyor', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Industrial Splitter', shortname: 'industrial.splitter', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Storage Adaptor', shortname: 'storageadaptor', cat: 'Elec & Traps', group: 'electrical', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Garage Door', shortname: 'wall.frame.garagedoor', cat: 'Construction', group: 'construction', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Armored Door', shortname: 'door.hinged.toptier', cat: 'Construction', group: 'construction', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Armored Double Door', shortname: 'door.double.hinged.toptier', cat: 'Construction', group: 'construction', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Sheet Metal Door', shortname: 'door.hinged.metal', cat: 'Construction', group: 'construction', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Blue Berry', shortname: 'blue.berry', cat: 'Teas', group: 'teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Yellow Berry', shortname: 'yellow.berry', cat: 'Teas', group: 'teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Red Berry', shortname: 'red.berry', cat: 'Teas', group: 'teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'White Berry', shortname: 'white.berry', cat: 'Teas', group: 'teas', defaultMax: 40, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Ore Tea', shortname: 'oretea.pure', cat: 'Teas', group: 'teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Scrap Tea', shortname: 'scraptea.pure', cat: 'Teas', group: 'teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Wood Tea', shortname: 'woodtea.pure', cat: 'Teas', group: 'teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Pure Max Health Tea', shortname: 'maxhealthtea.pure', cat: 'Teas', group: 'teas', defaultMax: 0, defaultMin: 0, defaultBuf: 0 }
   ],
 
   conveyorPresets: [

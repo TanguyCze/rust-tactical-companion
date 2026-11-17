@@ -3345,123 +3345,303 @@
   // MODULE 2: MONUMENT GUIDE (KEYCARDS, FUSES, CRATES & RESPAWN TIMERS)
   // =========================================================================
   function renderNpcCheeseDiagramSvg(diagramKey) {
-    const diagrams = {
-      crane_funnel: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <rect x="18" y="22" width="76" height="28" rx="4" fill="#1e293b" stroke="#f59e0b" stroke-width="1.6"/>
-          <text x="56" y="39" fill="#fde047" font-size="9.5" font-weight="700" text-anchor="middle">CRANE CAB / VENT</text>
-          <circle cx="56" cy="14" r="6" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
-          <text x="56" y="17" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <path d="M94 38 L195 84 L350 84" stroke="#94a3b8" stroke-width="3" fill="none" stroke-dasharray="4,3"/>
-          <text x="150" y="54" fill="#cbd5e1" font-size="8.5" text-anchor="middle">Stair Bottleneck</text>
-          <line x1="63" y1="16" x2="188" y2="75" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
-          <circle cx="192" cy="77" r="6" fill="#ef4444" stroke="#090b0e"/>
-          <circle cx="210" cy="77" r="6" fill="#ef4444" stroke="#090b0e"/>
-          <circle cx="228" cy="77" r="6" fill="#ef4444" stroke="#090b0e"/>
-          <text x="210" y="99" fill="#fca5a5" font-size="8.5" font-weight="700" text-anchor="middle">Heavies Clump + F1 Nades</text>
-          <rect x="292" y="64" width="44" height="20" rx="3" fill="#451a03" stroke="#f59e0b"/>
-          <text x="314" y="77" fill="#fde68a" font-size="8.5" font-weight="700" text-anchor="middle">🔒 CRATE</text>
-        </svg>`,
-      stair_grate: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <line x1="35" y1="36" x2="220" y2="36" stroke="#64748b" stroke-width="4"/>
-          <line x1="80" y1="36" x2="210" y2="36" stroke="#38bdf8" stroke-width="2" stroke-dasharray="3,4"/>
-          <text x="125" y="25" fill="#93c5fd" font-size="8.5" text-anchor="middle">Grate / Railing Gap (Half-Flight UP)</text>
-          <circle cx="62" cy="24" r="7" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
-          <text x="62" y="27" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <line x1="69" y1="26" x2="232" y2="85" stroke="#4ade80" stroke-width="1.8"/>
-          <line x1="160" y1="88" x2="345" y2="88" stroke="#64748b" stroke-width="4"/>
-          <circle cx="238" cy="86" r="6.5" fill="#ef4444" stroke="#090b0e"/>
-          <circle cx="262" cy="86" r="6.5" fill="#ef4444" stroke="#090b0e"/>
-          <line x1="232" y1="84" x2="155" y2="41" stroke="#f87171" stroke-width="1.4" stroke-dasharray="3,3"/>
-          <text x="195" y="64" fill="#fca5a5" font-size="8.5" text-anchor="middle">AI shots blocked by lower stairs</text>
-          <text x="275" y="106" fill="#e2e8f0" font-size="8.5" font-weight="700" text-anchor="middle">Open Door → Step Back to Corner</text>
-        </svg>`,
-      doorway_peek: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <rect x="112" y="14" width="18" height="44" fill="#475569" stroke="#94a3b8"/>
-          <rect x="112" y="76" width="18" height="32" fill="#475569" stroke="#94a3b8"/>
-          <text x="121" y="70" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">DOOR</text>
-          <circle cx="80" cy="48" r="7" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
-          <text x="80" y="51" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <text x="64" y="34" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">Right-Peek</text>
-          <text x="64" y="74" fill="#94a3b8" font-size="8" text-anchor="middle">Solid Cover</text>
-          <line x1="88" y1="50" x2="262" y2="66" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
-          <rect x="266" y="50" width="52" height="30" rx="4" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.6"/>
-          <text x="292" y="68" fill="#fecaca" font-size="8.5" font-weight="700" text-anchor="middle">NPC / TANK</text>
-          <line x1="266" y1="58" x2="132" y2="34" stroke="#f87171" stroke-width="1.4" stroke-dasharray="3,3"/>
-          <text x="200" y="106" fill="#cbd5e1" font-size="8.5" text-anchor="middle">Break LOS behind concrete 4s → Step out → Peek / HV</text>
-        </svg>`,
-      ridge_snipe: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <polygon points="10,104 10,44 92,44 142,88 370,88 370,104" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
-          <circle cx="58" cy="36" r="7" fill="#22c55e" stroke="#090b0e" stroke-width="1.5"/>
-          <text x="58" y="39" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <text x="54" y="22" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">Rock Ridge / Rim</text>
-          <line x1="158" y1="24" x2="158" y2="96" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="4,3"/>
-          <text x="163" y="28" fill="#fde047" font-size="8" font-weight="700">AI Chase Boundary</text>
-          <line x1="66" y1="36" x2="270" y2="78" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
-          <circle cx="275" cy="79" r="6" fill="#ef4444"/>
-          <circle cx="305" cy="79" r="6" fill="#ef4444"/>
-          <circle cx="332" cy="79" r="6" fill="#ef4444"/>
-          <text x="295" y="66" fill="#fca5a5" font-size="8.5" font-weight="700" text-anchor="middle">Roam AI Won't Climb Out</text>
-        </svg>`,
-      moonpool_door: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <rect x="20" y="68" width="90" height="38" fill="#0c4a6e" stroke="#38bdf8"/>
-          <text x="65" y="90" fill="#bae6fd" font-size="8.5" font-weight="700" text-anchor="middle">🌊 MOONPOOL SAFE</text>
-          <rect x="110" y="24" width="246" height="44" fill="#1e293b" stroke="#64748b"/>
-          <line x1="210" y1="24" x2="210" y2="48" stroke="#f59e0b" stroke-width="3"/>
-          <text x="210" y="18" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">Crack Bulkhead Door</text>
-          <circle cx="152" cy="52" r="7" fill="#22c55e"/>
-          <text x="152" y="55" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <line x1="160" y1="52" x2="295" y2="52" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
-          <circle cx="302" cy="52" r="6.5" fill="#ef4444"/>
-          <text x="302" y="38" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">1-Way Funnel</text>
-          <text x="240" y="92" fill="#94a3b8" font-size="8.5" text-anchor="middle">Drop down water ladder anytime to heal</text>
-        </svg>`,
-      cargo_bridge: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <polygon points="36,88 310,88 352,58 72,58" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
-          <rect x="128" y="42" width="48" height="16" rx="2" fill="#ca8a04" stroke="#fde047"/>
-          <text x="152" y="53" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">CONTAINERS</text>
-          <rect x="242" y="24" width="54" height="34" rx="3" fill="#334155" stroke="#94a3b8"/>
-          <text x="269" y="44" fill="#f8fafc" font-size="8.5" font-weight="700" text-anchor="middle">BRIDGE</text>
-          <circle cx="96" cy="50" r="7" fill="#22c55e"/>
-          <text x="96" y="53" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <line x1="103" y1="50" x2="236" y2="48" stroke="#4ade80" stroke-width="1.8" stroke-dasharray="5,3"/>
-          <circle cx="242" cy="48" r="6" fill="#ef4444"/>
-          <text x="195" y="106" fill="#bae6fd" font-size="8.5" font-weight="700" text-anchor="middle">Stern Board → Container Peek → Hold Bridge Stairs (Sub Escape)</text>
-        </svg>`,
-      heli_tower: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <rect x="28" y="32" width="58" height="72" rx="3" fill="#1e293b" stroke="#4ade80" stroke-width="1.6"/>
-          <text x="57" y="52" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">TC-AUTH</text>
-          <text x="57" y="64" fill="#cbd5e1" font-size="8" text-anchor="middle">Embrasures</text>
-          <text x="57" y="92" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">No Rockets!</text>
-          <circle cx="76" cy="40" r="6" fill="#22c55e"/>
-          <ellipse cx="268" cy="42" rx="34" ry="12" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.6"/>
-          <line x1="226" y1="24" x2="310" y2="24" stroke="#f59e0b" stroke-width="3"/>
-          <text x="268" y="17" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle">Main Rotor (900 HP)</text>
-          <line x1="302" y1="42" x2="342" y2="38" stroke="#ef4444" stroke-width="4"/>
-          <circle cx="344" cy="38" r="6" fill="none" stroke="#f59e0b" stroke-width="2"/>
-          <text x="336" y="57" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">Tail (500 HP)</text>
-          <line x1="82" y1="39" x2="262" y2="25" stroke="#4ade80" stroke-width="1.7" stroke-dasharray="5,3"/>
-          <line x1="82" y1="41" x2="338" y2="38" stroke="#4ade80" stroke-width="1.4" stroke-dasharray="4,4"/>
-        </svg>`,
-      safe_zone: `
-        <svg viewBox="0 0 380 120" width="100%" height="115" style="display:block; background:rgba(9,14,22,0.85); border:1px solid rgba(168,85,247,0.35); border-radius:5px; margin:7px 0;">
-          <rect x="132" y="20" width="180" height="80" rx="8" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-dasharray="5,3"/>
-          <text x="222" y="38" fill="#86efac" font-size="9" font-weight="700" text-anchor="middle">SAFE ZONE PERIMETER</text>
-          <text x="222" y="56" fill="#e2e8f0" font-size="8.5" text-anchor="middle">Holster Weapons &gt;5s Outside</text>
-          <text x="222" y="72" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle">Buy Blue Card (100) + F1 Nades (8 Scrap)</text>
-          <text x="222" y="88" fill="#fca5a5" font-size="8" text-anchor="middle">Do NOT farm barrels in Sentry LOS (30m ban)</text>
-          <circle cx="72" cy="60" r="7" fill="#22c55e"/>
-          <text x="72" y="63" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">U</text>
-          <line x1="80" y1="60" x2="128" y2="60" stroke="#4ade80" stroke-width="1.8"/>
-        </svg>`
+    const svgWrap = (inner, legendExtra = '') => `
+      <div style="margin:7px 0;">
+        <svg viewBox="0 0 420 155" width="100%" height="145" style="display:block; background:linear-gradient(180deg, rgba(9,14,22,0.95), rgba(13,20,34,0.92)); border:1px solid rgba(168,85,247,0.4); border-radius:6px;">
+          <defs>
+            <marker id="cheeseArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#38bdf8" />
+            </marker>
+          </defs>
+          ${inner}
+        </svg>
+        <div class="cheese-diagram-legend">
+          <span><strong style="color:#4ade80;">● YOU</strong> = Exact Stand Spot</span>
+          <span><strong style="color:#38bdf8;">⇢ Path</strong> = Walk Route</span>
+          <span><strong style="color:#f87171;">● AI</strong> = Scientists / Boss</span>
+          <span><strong style="color:#fde047;">▬ Solid Wall / Cover</strong></span>
+          ${legendExtra}
+        </div>
+      </div>`;
+
+    const youMarker = (x, y, label = '') => `
+      <circle cx="${x}" cy="${y}" r="11" fill="rgba(34,197,94,0.22)" stroke="#4ade80" stroke-width="1" stroke-dasharray="2,2"/>
+      <circle cx="${x}" cy="${y}" r="6.5" fill="#22c55e" stroke="#052e16" stroke-width="1.5"/>
+      <text x="${x}" y="${y + 2.8}" fill="#052e16" font-size="7.5" font-weight="800" text-anchor="middle">YOU</text>
+      ${label ? `<text x="${x}" y="${y - 14}" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">${label}</text>` : ''}`;
+
+    const aiDot = (x, y, txt = 'AI') => `
+      <circle cx="${x}" cy="${y}" r="6" fill="#ef4444" stroke="#450a0a" stroke-width="1.2"/>
+      <text x="${x}" y="${y + 2.4}" fill="#fff" font-size="6.5" font-weight="800" text-anchor="middle">${txt}</text>`;
+
+    const map = {
+      abandoned_military: svgWrap(`
+        <polygon points="10,140 10,16 96,16 118,52 118,140" fill="rgba(180,83,9,0.22)" stroke="#d97706" stroke-width="1.2"/>
+        <text x="58" y="29" fill="#fde68a" font-size="8" font-weight="700" text-anchor="middle">SAND DUNES (OUTSIDE)</text>
+        <line x1="126" y1="14" x2="126" y2="142" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,3"/>
+        <text x="131" y="25" fill="#cbd5e1" font-size="7.5">Chain-Link Fence</text>
+        ${youMarker(62, 66, '1. Snipe Fence')}
+        <path d="M72 68 L175 88" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        <rect x="176" y="72" width="10" height="32" rx="2" fill="#64748b" stroke="#fde047" stroke-width="1.4"/>
+        <text x="181" y="64" fill="#fde047" font-size="7.5" font-weight="700" text-anchor="middle">Jersey Barrier</text>
+        ${youMarker(162, 88, '2. Head-Glitch')}
+        <rect x="235" y="34" width="68" height="34" rx="3" fill="#3f6212" stroke="#84cc16"/>
+        <text x="269" y="54" fill="#ecfccb" font-size="8" font-weight="700" text-anchor="middle">AMMO TENTS</text>
+        <rect x="330" y="92" width="76" height="44" rx="4" fill="#1e293b" stroke="#60a5fa"/>
+        <text x="368" y="112" fill="#bfdbfe" font-size="8" font-weight="700" text-anchor="middle">BUNKER</text>
+        <text x="368" y="124" fill="#93c5fd" font-size="7" text-anchor="middle">(Computer Stn)</text>
+        <line x1="74" y1="64" x2="250" y2="82" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        <line x1="173" y1="88" x2="288" y2="88" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(256, 84)}${aiDot(296, 90)}${aiDot(310, 56)}
+        <text x="284" y="106" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">~7 Scientists Patrol Center</text>
+      `),
+      harbor: svgWrap(`
+        <rect x="12" y="18" width="180" height="120" rx="4" fill="#1e293b" stroke="#64748b"/>
+        <text x="102" y="32" fill="#cbd5e1" font-size="8.5" font-weight="700" text-anchor="middle">HARBOR CONCRETE PIER</text>
+        <rect x="34" y="48" width="68" height="42" rx="3" fill="#ca8a04" stroke="#fde047" stroke-width="1.5"/>
+        <text x="68" y="67" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">TALL STACKED</text>
+        <text x="68" y="78" fill="#090b0e" font-size="8" font-weight="800" text-anchor="middle">CONTAINERS</text>
+        ${youMarker(68, 108, 'Climb Top Container')}
+        <path d="M188 76 L236 76" stroke="#f59e0b" stroke-width="6"/>
+        <text x="212" y="67" fill="#fde68a" font-size="7.5" font-weight="700" text-anchor="middle">Gangplank</text>
+        <polygon points="234,26 404,26 404,132 234,132 222,78" fill="#0f172a" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="318" y="42" fill="#bae6fd" font-size="8.5" font-weight="700" text-anchor="middle">DOCKED CARGO SHIP (10m)</text>
+        <line x1="80" y1="106" x2="296" y2="78" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(265, 76)}${aiDot(302, 78)}${aiDot(342, 74)}
+        <text x="320" y="99" fill="#fca5a5" font-size="8" text-anchor="middle">Deck AI hesitates at ramp lip</text>
+      `),
+      arctic_research: svgWrap(`
+        <polygon points="10,140 10,18 92,18 112,68 92,140" fill="#1e3a5f" stroke="#7dd3fc" stroke-width="1.3"/>
+        <text x="54" y="32" fill="#e0f2fe" font-size="8" font-weight="700" text-anchor="middle">SNOW ROCKS (OUTSIDE)</text>
+        ${youMarker(54, 66, '1. Snipe Lane')}
+        <line x1="118" y1="16" x2="118" y2="142" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,3"/>
+        <rect x="164" y="28" width="84" height="24" rx="2" fill="#334155" stroke="#94a3b8"/>
+        <text x="206" y="43" fill="#f8fafc" font-size="7.5" font-weight="700" text-anchor="middle">HAB TRAILER A</text>
+        <rect x="164" y="72" width="84" height="24" rx="2" fill="#334155" stroke="#94a3b8"/>
+        <text x="206" y="87" fill="#f8fafc" font-size="7.5" font-weight="700" text-anchor="middle">HAB TRAILER B</text>
+        <text x="206" y="65" fill="#93c5fd" font-size="7.5" text-anchor="middle">Trailer Alley (Heal Reset)</text>
+        <rect x="296" y="76" width="110" height="58" rx="4" fill="#1e293b" stroke="#3b82f6" stroke-width="1.6"/>
+        <text x="351" y="96" fill="#93c5fd" font-size="8" font-weight="700" text-anchor="middle">BLUE CARD GARAGE</text>
+        <text x="351" y="109" fill="#cbd5e1" font-size="7" text-anchor="middle">(Snowmobile Door Frame)</text>
+        <path d="M64 68 L280 112" stroke="#38bdf8" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        ${youMarker(284, 114, '2. Hold Door Frame')}
+        <line x1="65" y1="62" x2="188" y2="118" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <line x1="284" y1="103" x2="205" y2="118" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="4,3"/>
+        ${aiDot(165, 118)}${aiDot(196, 120)}${aiDot(228, 118)}
+        <text x="195" y="137" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">10x Arctic Scientists (Open Courtyard)</text>
+      `),
+      train_yard: svgWrap(`
+        <rect x="18" y="92" width="108" height="32" rx="3" fill="#7c2d12" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="72" y="111" fill="#fed7aa" font-size="8" font-weight="700" text-anchor="middle">DERAILED BOXCAR (COVER)</text>
+        ${youMarker(72, 68, 'Crouch Wheel/Car')}
+        <rect x="18" y="20" width="84" height="30" rx="3" fill="#334155" stroke="#fde047"/>
+        <text x="60" y="38" fill="#fde68a" font-size="8" font-weight="700" text-anchor="middle">SWITCH SHACK (LOS)</text>
+        <rect x="206" y="34" width="90" height="74" rx="4" fill="#1e293b" stroke="#94a3b8" stroke-width="1.6"/>
+        <text x="251" y="54" fill="#f8fafc" font-size="8.5" font-weight="700" text-anchor="middle">COALING TOWER</text>
+        <text x="251" y="66" fill="#cbd5e1" font-size="7" text-anchor="middle">Lower Stairs &amp; Pipes</text>
+        <rect x="322" y="26" width="84" height="94" rx="4" fill="#172554" stroke="#3b82f6"/>
+        <text x="364" y="70" fill="#93c5fd" font-size="8" font-weight="700" text-anchor="middle">BLUE PUZZLE</text>
+        <text x="364" y="82" fill="#cbd5e1" font-size="7" text-anchor="middle">BUILDING</text>
+        <line x1="84" y1="68" x2="215" y2="86" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(222, 86)}${aiDot(250, 96)}${aiDot(282, 88)}
+        <text x="248" y="128" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">4x Scientists Spawn Around Coaling Tower</text>
+      `),
+      airfield: svgWrap(`
+        <rect x="14" y="16" width="118" height="44" rx="3" fill="#1e293b" stroke="#64748b"/>
+        <text x="73" y="34" fill="#cbd5e1" font-size="8" font-weight="700" text-anchor="middle">SURFACE HANGARS &amp; OFFICE</text>
+        <text x="73" y="46" fill="#86efac" font-size="7" text-anchor="middle">(0 Scientists Above Ground!)</text>
+        <path d="M73 62 L73 96 L142 96" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        <text x="108" y="87" fill="#7dd3fc" font-size="7.5" font-weight="700">Ladder Down</text>
+        <rect x="146" y="72" width="260" height="66" rx="4" fill="#090d16" stroke="#3b82f6" stroke-width="1.4"/>
+        <text x="276" y="86" fill="#93c5fd" font-size="8" font-weight="700" text-anchor="middle">UNDERGROUND TUNNEL &amp; BLUE CARD ROOM</text>
+        <rect x="180" y="96" width="18" height="36" fill="#475569" stroke="#fde047" stroke-width="1.5"/>
+        <text x="189" y="146" fill="#fde047" font-size="7.5" font-weight="700" text-anchor="middle">Concrete Pillar</text>
+        ${youMarker(162, 114, 'Back Up Here!')}
+        <line x1="256" y1="88" x2="256" y2="104" stroke="#3b82f6" stroke-width="3"/>
+        <line x1="256" y1="122" x2="256" y2="138" stroke="#3b82f6" stroke-width="3"/>
+        <text x="256" y="148" fill="#60a5fa" font-size="7.5" font-weight="700" text-anchor="middle">Blue Door</text>
+        <line x1="173" y1="114" x2="325" y2="114" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(312, 114)}${aiDot(338, 108)}${aiDot(362, 118)}
+        <text x="342" y="132" fill="#fca5a5" font-size="7.5" font-weight="700" text-anchor="middle">3x AI Funnel Out 1-by-1</text>
+      `),
+      giant_excavator: svgWrap(`
+        <polygon points="10,145 10,16 122,16 144,64 144,145" fill="rgba(120,53,15,0.28)" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="68" y="31" fill="#fde68a" font-size="8" font-weight="700" text-anchor="middle">HIGH DIRT CRATER RIM</text>
+        <text x="68" y="42" fill="#86efac" font-size="7" font-weight="700" text-anchor="middle">(SAFE: AI Won't Climb Out!)</text>
+        ${youMarker(70, 74, '1. Snipe From Rim')}
+        <line x1="146" y1="18" x2="146" y2="142" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="4,3"/>
+        <text x="152" y="29" fill="#fde047" font-size="7.5" font-weight="700">AI Chase Stop Line</text>
+        <rect x="174" y="22" width="76" height="28" rx="3" fill="#14532d" stroke="#22c55e"/>
+        <text x="212" y="39" fill="#bbf7d0" font-size="7.5" font-weight="700" text-anchor="middle">RECYCLER SHED ROOF</text>
+        <path d="M80 70 L205 56" stroke="#38bdf8" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        <rect x="248" y="64" width="150" height="66" rx="4" fill="#1e293b" stroke="#94a3b8"/>
+        <text x="323" y="80" fill="#f8fafc" font-size="8.5" font-weight="700" text-anchor="middle">EXCAVATOR PIT &amp; CATWALK</text>
+        <text x="323" y="92" fill="#cbd5e1" font-size="7" text-anchor="middle">(Stand on Hopper Railings for Diesel Defense)</text>
+        <line x1="82" y1="78" x2="292" y2="112" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(268, 114)}${aiDot(300, 112)}${aiDot(338, 114)}${aiDot(372, 112)}
+        <text x="322" y="142" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">18x Pit Scientists Trapped Below</text>
+      `),
+      missile_silo: svgWrap(`
+        <text x="210" y="15" fill="#e9d5ff" font-size="8" font-weight="700" text-anchor="middle">SIDE CROSS-SECTION: CENTRAL MISSILE SHAFT STAIRWELL</text>
+        <rect x="20" y="22" width="90" height="28" rx="3" fill="#7f1d1d" stroke="#ef4444"/>
+        <text x="65" y="39" fill="#fecaca" font-size="7.5" font-weight="700" text-anchor="middle">RED CARD ENTRY</text>
+        <path d="M112 36 L142 54" stroke="#38bdf8" stroke-width="1.6" marker-end="url(#cheeseArrow)"/>
+        <line x1="88" y1="58" x2="262" y2="58" stroke="#64748b" stroke-width="4"/>
+        <line x1="128" y1="58" x2="256" y2="58" stroke="#38bdf8" stroke-width="2" stroke-dasharray="3,4"/>
+        <text x="182" y="48" fill="#93c5fd" font-size="8" font-weight="700" text-anchor="middle">UPPER GRATE FLOOR (HALF-FLIGHT ABOVE)</text>
+        ${youMarker(112, 46, 'Stand Here')}
+        <line x1="124" y1="48" x2="266" y2="114" stroke="#4ade80" stroke-width="1.8"/>
+        <line x1="195" y1="118" x2="395" y2="118" stroke="#64748b" stroke-width="4"/>
+        ${aiDot(272, 114)}${aiDot(305, 114)}
+        <line x1="266" y1="110" x2="176" y2="62" stroke="#f87171" stroke-width="1.4" stroke-dasharray="3,3"/>
+        <text x="234" y="88" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">AI shots hit underside metal!</text>
+        <rect x="334" y="76" width="68" height="34" rx="3" fill="#1e293b" stroke="#fde047"/>
+        <text x="368" y="91" fill="#fde047" font-size="7.5" font-weight="700" text-anchor="middle">BULKHEAD DOOR</text>
+        <text x="368" y="102" fill="#cbd5e1" font-size="6.8" text-anchor="middle">Open → Back 1 Corner</text>
+      `),
+      launch_site: svgWrap(`
+        <rect x="218" y="16" width="184" height="62" rx="4" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="310" y="34" fill="#fca5a5" font-size="8.5" font-weight="700" text-anchor="middle">HUGE ROCKET FACTORY (RED CARD)</text>
+        <text x="310" y="47" fill="#cbd5e1" font-size="7" text-anchor="middle">Inside: Hold Upper Concrete Stair Landings (8 AI)</text>
+        <rect x="20" y="102" width="128" height="40" rx="4" fill="#7c2d12" stroke="#fde047" stroke-width="1.8"/>
+        <text x="84" y="119" fill="#fde68a" font-size="8" font-weight="800" text-anchor="middle">COBALT BRICK BOOTH /</text>
+        <text x="84" y="131" fill="#fed7aa" font-size="7.5" font-weight="700" text-anchor="middle">RECYCLER SHED DOOR</text>
+        ${youMarker(154, 120, 'Peek Doorway (NO WINDOWS!)')}
+        <path d="M190 96 L390 96" stroke="#475569" stroke-width="10"/>
+        <text x="305" y="99" fill="#e2e8f0" font-size="7.5" font-weight="700" text-anchor="middle">BRADLEY APC PATROL ROAD</text>
+        <rect x="292" y="106" width="58" height="28" rx="4" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.6"/>
+        <text x="321" y="123" fill="#fecaca" font-size="8" font-weight="700" text-anchor="middle">BRADLEY (7 HV)</text>
+        <line x1="166" y1="118" x2="290" y2="118" stroke="#4ade80" stroke-width="1.7" stroke-dasharray="5,3"/>
+        <text x="232" y="144" fill="#bae6fd" font-size="7.5" text-anchor="middle">Fire 2 HVs → Hide Behind Brick 4s (Salvo)</text>
+      `),
+      military_tunnels: svgWrap(`
+        <rect x="14" y="20" width="392" height="122" rx="6" fill="#090d16" stroke="#64748b" stroke-width="1.5"/>
+        <text x="210" y="34" fill="#cbd5e1" font-size="8" font-weight="700" text-anchor="middle">MAIN SUBTERRANEAN RAIL TUNNEL</text>
+        <rect x="24" y="48" width="58" height="32" rx="3" fill="#1e293b" stroke="#84cc16"/>
+        <text x="53" y="67" fill="#bef264" font-size="7.5" font-weight="700" text-anchor="middle">ENTRY BOW</text>
+        <rect x="114" y="48" width="84" height="34" rx="3" fill="#475569" stroke="#e2e8f0" stroke-width="1.4"/>
+        <text x="156" y="63" fill="#fff" font-size="7.5" font-weight="700" text-anchor="middle">DERAILED WHITE</text>
+        <text x="156" y="74" fill="#cbd5e1" font-size="7" text-anchor="middle">TANKER / BOXCAR</text>
+        ${youMarker(102, 74, 'Right Peek')}
+        <rect x="220" y="96" width="114" height="40" rx="4" fill="#1e293b" stroke="#fde047" stroke-width="1.6"/>
+        <text x="277" y="112" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">FUSE / CARD BUNKER</text>
+        <text x="277" y="124" fill="#cbd5e1" font-size="7" text-anchor="middle">Crouch Behind Desk (Corner for Frags!)</text>
+        ${youMarker(240, 120)}
+        <line x1="112" y1="68" x2="262" y2="64" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(268, 62)}${aiDot(302, 66)}${aiDot(338, 62)}
+        <text x="364" y="118" fill="#fca5a5" font-size="7.5" font-weight="700" text-anchor="middle">RED ELITE VAULT</text>
+      `),
+      underwater_labs: svgWrap(`
+        <rect x="16" y="62" width="102" height="76" rx="4" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="67" y="94" fill="#bae6fd" font-size="8.5" font-weight="700" text-anchor="middle">🌊 OCEAN</text>
+        <text x="67" y="106" fill="#bae6fd" font-size="8" font-weight="700" text-anchor="middle">MOONPOOL SHAFT</text>
+        <text x="67" y="122" fill="#86efac" font-size="7" text-anchor="middle">(Drop Here to Heal!)</text>
+        <rect x="118" y="24" width="286" height="58" rx="4" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+        <line x1="252" y1="24" x2="252" y2="46" stroke="#f59e0b" stroke-width="4"/>
+        <line x1="252" y1="68" x2="252" y2="82" stroke="#f59e0b" stroke-width="4"/>
+        <text x="252" y="17" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">CRACK CLOSED BULKHEAD DOOR</text>
+        <path d="M67 62 L67 52 L176 52" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        ${youMarker(198, 52, 'Sidestep Frame')}
+        <line x1="208" y1="54" x2="332" y2="54" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        ${aiDot(338, 52)}${aiDot(366, 56)}
+        <text x="352" y="72" fill="#fca5a5" font-size="7.5" font-weight="700" text-anchor="middle">Locked AI Pushes Door 1-by-1</text>
+      `),
+      small_oil_rig: svgWrap(`
+        <text x="210" y="14" fill="#fde68a" font-size="8" font-weight="700" text-anchor="middle">SIDE CUTAWAY: SMALL OIL RIG (L1 DOCK → L4 TOP HELIPAD)</text>
+        <rect x="20" y="108" width="90" height="32" rx="3" fill="#0c4a6e" stroke="#38bdf8"/>
+        <text x="65" y="127" fill="#bae6fd" font-size="7.5" font-weight="700" text-anchor="middle">RHIB AT DOCK PILINGS</text>
+        <line x1="115" y1="118" x2="385" y2="118" stroke="#475569" stroke-width="3"/>
+        <line x1="135" y1="88" x2="385" y2="88" stroke="#64748b" stroke-width="3"/>
+        <text x="352" y="105" fill="#94a3b8" font-size="7.5">L1–L3 Bow Grates</text>
+        <line x1="150" y1="58" x2="395" y2="58" stroke="#94a3b8" stroke-width="4"/>
+        <text x="225" y="72" fill="#cbd5e1" font-size="7.5" font-weight="700">L4 TOP HELIPAD + RED CARD DOOR</text>
+        <rect x="28" y="24" width="110" height="28" rx="4" fill="#7c2d12" stroke="#fb923c" stroke-width="1.7"/>
+        <text x="83" y="41" fill="#fed7aa" font-size="8" font-weight="800" text-anchor="middle">ORANGE CRANE LADDER / VENT</text>
+        ${youMarker(146, 36, 'Sprint Here After Crate!')}
+        <path d="M312 46 L166 36" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        <rect x="316" y="36" width="54" height="20" rx="3" fill="#451a03" stroke="#f59e0b"/>
+        <text x="343" y="49" fill="#fde68a" font-size="7.5" font-weight="700" text-anchor="middle">🔒 CRATE</text>
+        ${aiDot(225, 53)}${aiDot(245, 53)}${aiDot(265, 53)}
+        <line x1="158" y1="38" x2="222" y2="52" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        <text x="245" y="28" fill="#fca5a5" font-size="7.5" font-weight="700" text-anchor="middle">6x Heavies Funnel Up L4 Stairs</text>
+      `),
+      large_oil_rig: svgWrap(`
+        <text x="210" y="14" fill="#fde68a" font-size="8" font-weight="700" text-anchor="middle">SIDE CUTAWAY: LARGE OIL RIG (L1 DOCK → L6 TOP HELIPAD &amp; RED CRANE)</text>
+        <rect x="16" y="114" width="96" height="28" rx="3" fill="#0c4a6e" stroke="#38bdf8"/>
+        <text x="64" y="131" fill="#bae6fd" font-size="7.5" font-weight="700" text-anchor="middle">UNDER-DOCK WATER SAFE</text>
+        <line x1="120" y1="120" x2="396" y2="120" stroke="#475569" stroke-width="3"/>
+        <line x1="138" y1="94" x2="396" y2="94" stroke="#64748b" stroke-width="3"/>
+        <text x="345" y="109" fill="#94a3b8" font-size="7.5">L1–L5 Stair Grates</text>
+        <line x1="145" y1="68" x2="398" y2="68" stroke="#cbd5e1" stroke-width="4"/>
+        <text x="275" y="81" fill="#e2e8f0" font-size="7.5" font-weight="700">L6 HELIPAD + RED CARD DOOR</text>
+        <rect x="18" y="22" width="114" height="30" rx="4" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.8"/>
+        <text x="75" y="36" fill="#fecaca" font-size="8" font-weight="800" text-anchor="middle">TALL RED CRANE CAB</text>
+        <text x="75" y="46" fill="#fde68a" font-size="7" text-anchor="middle">(NW Corner Behind Pad)</text>
+        ${youMarker(142, 36, 'Climb Crane')}
+        <path d="M318 56 L160 36" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        <rect x="322" y="45" width="54" height="20" rx="3" fill="#451a03" stroke="#f59e0b"/>
+        <text x="349" y="58" fill="#fde68a" font-size="7.5" font-weight="700" text-anchor="middle">🔒 CRATE</text>
+        ${aiDot(220, 62)}${aiDot(238, 62)}${aiDot(256, 62)}
+        <line x1="154" y1="38" x2="216" y2="60" stroke="#4ade80" stroke-width="1.6" stroke-dasharray="4,3"/>
+        <text x="255" y="28" fill="#fca5a5" font-size="7.5" font-weight="700" text-anchor="middle">12x Heavies Clump on Lower Crane Bend (+F1 Nades)</text>
+      `),
+      outpost: svgWrap(`
+        <rect x="128" y="18" width="268" height="118" rx="8" fill="rgba(34,197,94,0.12)" stroke="#22c55e" stroke-dasharray="5,3"/>
+        <text x="262" y="34" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">OUTPOST SAFE ZONE SENTRY PERIMETER</text>
+        <rect x="150" y="50" width="108" height="36" rx="4" fill="#1e293b" stroke="#3b82f6"/>
+        <text x="204" y="66" fill="#93c5fd" font-size="7.5" font-weight="700" text-anchor="middle">BLUE CARD SHOP (100)</text>
+        <text x="204" y="77" fill="#cbd5e1" font-size="6.8" text-anchor="middle">+ Jackhammer (150 Scrap)</text>
+        <rect x="272" y="50" width="108" height="36" rx="4" fill="#1e293b" stroke="#f59e0b"/>
+        <text x="326" y="66" fill="#fde68a" font-size="7.5" font-weight="700" text-anchor="middle">NPC CZ-721 CONTAINER</text>
+        <text x="326" y="77" fill="#cbd5e1" font-size="6.8" text-anchor="middle">(Oil Rig 200 Scrap Mission)</text>
+        <text x="262" y="114" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">⚠️ Holster Weapons &gt;5s Before Crossing Fence (No Barrel Hits!)</text>
+        ${youMarker(54, 72, 'Holster Here')}
+        <path d="M68 72 L145 72" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+      `),
+      bandit_camp: svgWrap(`
+        <rect x="128" y="18" width="268" height="118" rx="8" fill="rgba(234,179,8,0.1)" stroke="#f59e0b" stroke-dasharray="5,3"/>
+        <text x="262" y="34" fill="#fde68a" font-size="8.5" font-weight="700" text-anchor="middle">BANDIT CAMP SWAMP SAFE PERIMETER</text>
+        <rect x="150" y="50" width="108" height="38" rx="4" fill="#1e293b" stroke="#ef4444"/>
+        <text x="204" y="66" fill="#fca5a5" font-size="7.5" font-weight="700" text-anchor="middle">WOOD WEAPON SHACK</text>
+        <text x="204" y="78" fill="#fde047" font-size="7" font-weight="700" text-anchor="middle">F1 Grenades = 8 Scrap Each!</text>
+        <rect x="272" y="50" width="108" height="38" rx="4" fill="#1e293b" stroke="#22c55e"/>
+        <text x="326" y="66" fill="#86efac" font-size="7.5" font-weight="700" text-anchor="middle">CASINO &amp; FERTILIZER</text>
+        <text x="326" y="78" fill="#cbd5e1" font-size="6.8" text-anchor="middle">(3 Scrap per 2 Fertilizer)</text>
+        ${youMarker(54, 72, 'Clean Hotbar')}
+        <path d="M68 72 L145 72" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+      `),
+      heli_tower: svgWrap(`
+        <rect x="24" y="34" width="102" height="92" rx="4" fill="#1e293b" stroke="#4ade80" stroke-width="1.8"/>
+        <text x="75" y="52" fill="#86efac" font-size="8.5" font-weight="700" text-anchor="middle">TC-AUTHED TOWER</text>
+        <text x="75" y="65" fill="#cbd5e1" font-size="7.5" text-anchor="middle">Window Embrasures</text>
+        <text x="75" y="78" fill="#fde047" font-size="7.5" font-weight="700" text-anchor="middle">+ Solid Roof Overhead</text>
+        <text x="75" y="112" fill="#93c5fd" font-size="7" text-anchor="middle">(OR Launch Cobalt Brick)</text>
+        ${youMarker(108, 60)}
+        <ellipse cx="294" cy="54" rx="40" ry="14" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.6"/>
+        <line x1="244" y1="32" x2="344" y2="32" stroke="#f59e0b" stroke-width="3.5"/>
+        <text x="294" y="23" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle">Main Rotor (900 HP = 2× DMG)</text>
+        <line x1="334" y1="54" x2="382" y2="48" stroke="#ef4444" stroke-width="4"/>
+        <circle cx="384" cy="48" r="7" fill="none" stroke="#f59e0b" stroke-width="2"/>
+        <text x="372" y="70" fill="#fde047" font-size="8" font-weight="700" text-anchor="middle">Tail (500 HP)</text>
+        <line x1="120" y1="58" x2="288" y2="34" stroke="#4ade80" stroke-width="1.7" stroke-dasharray="5,3"/>
+        <line x1="120" y1="61" x2="376" y2="48" stroke="#4ade80" stroke-width="1.4" stroke-dasharray="4,4"/>
+        <text x="260" y="130" fill="#fca5a5" font-size="8" font-weight="700" text-anchor="middle">Keep TC Auth ON so Heli fires 0 Rocket Barrages!</text>
+      `),
+      cargo_bridge: svgWrap(`
+        <polygon points="36,110 340,110 388,68 78,68" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="90" y="128" fill="#7dd3fc" font-size="7.5" font-weight="700" text-anchor="middle">1. Rear Stern Ladder</text>
+        ${youMarker(78, 86, 'Stern')}
+        <path d="M90 84 L152 72" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#cheeseArrow)"/>
+        <rect x="154" y="54" width="66" height="20" rx="2" fill="#ca8a04" stroke="#fde047"/>
+        <text x="187" y="67" fill="#090b0e" font-size="7.5" font-weight="800" text-anchor="middle">YELLOW BOXES</text>
+        <rect x="272" y="28" width="76" height="40" rx="3" fill="#334155" stroke="#94a3b8"/>
+        <text x="310" y="47" fill="#f8fafc" font-size="8" font-weight="700" text-anchor="middle">CAPTAIN BRIDGE</text>
+        <text x="310" y="59" fill="#fde047" font-size="7" text-anchor="middle">(Hold Outer Stairs!)</text>
+        <line x1="195" y1="60" x2="266" y2="54" stroke="#4ade80" stroke-width="1.7" stroke-dasharray="4,3"/>
+        ${aiDot(272, 54)}${aiDot(318, 88)}${aiDot(245, 92)}
+      `)
     };
-    return diagrams[diagramKey] || diagrams.doorway_peek;
+    return map[diagramKey] || map.military_tunnels;
   }
 
   function getMonumentReadiness(monument) {
@@ -3596,14 +3776,22 @@
         : '';
       const npcCheeseHtml = m.npcCheese
         ? `<div style="margin-top:12px; padding:11px 12px; border-radius:6px; background:rgba(168, 85, 247, 0.1); border:1px solid rgba(168, 85, 247, 0.45);">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-              <strong style="font-size:12.5px; color:#e9d5ff;">🥷 NPC CHEESE &amp; SAFE CLEAR PLAYBOOK</strong>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:7px;">
+              <strong style="font-size:12.5px; color:#e9d5ff;">🥷 NPC CHEESE &amp; EXACT SPOT MAP</strong>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                ${cheeseVideoUrl ? `<a href="${cheeseVideoUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.45); color:#fecaca; text-decoration:none; font-weight:700;">🎥 Watch Clip Guides ↗</a>` : ''}
+                ${cheeseVideoUrl ? `<a href="${cheeseVideoUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.45); color:#fecaca; text-decoration:none; font-weight:700;">🎥 Watch Spot Clips ↗</a>` : ''}
                 ${m.rusthelpUrl ? `<a href="${m.rusthelpUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:4px; background:rgba(59,130,246,0.18); border:1px solid rgba(96,165,250,0.45); color:#bfdbfe; text-decoration:none; font-weight:700;">📖 RustHelp ↗</a>` : ''}
               </div>
             </div>
+            ${m.npcCheese.spotTitle ? `<div class="cheese-spot-banner"><strong style="color:#4ade80;">📍 EXACT CHEESE LOCATION:</strong> ${escapeHtml(m.npcCheese.spotTitle)}</div>` : ''}
             ${m.npcCheese.diagram ? renderNpcCheeseDiagramSvg(m.npcCheese.diagram) : ''}
+            ${Array.isArray(m.npcCheese.routeSteps) && m.npcCheese.routeSteps.length ? `
+              <div class="cheese-route-box">
+                <div style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#7dd3fc;">🧭 HOW TO WALK / CLIMB TO THIS SPOT:</div>
+                <ol class="cheese-route-list">
+                  ${m.npcCheese.routeSteps.map((st) => `<li>${escapeHtml(st)}</li>`).join('')}
+                </ol>
+              </div>` : ''}
             <div style="font-size:11.5px; color:#cbd5e1; margin-bottom:4px;">
               <strong style="color:#fca5a5;">Threat:</strong> ${escapeHtml(m.npcCheese.aiThreat)}
             </div>
@@ -3747,11 +3935,19 @@
               const bUrl = b.videoQuery ? `https://www.youtube.com/results?search_query=${encodeURIComponent(b.videoQuery)}` : '';
               return `
                 <div style="padding:12px; border-radius:7px; background:rgba(168, 85, 247, 0.08); border:1px solid rgba(168, 85, 247, 0.35);">
-                  <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
                     <div style="font-weight:700; font-size:13.5px; color:#fff;">${escapeHtml(b.name)}</div>
                     ${bUrl ? `<a href="${bUrl}" target="_blank" rel="noopener" style="font-family:var(--font-mono); font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.18); border:1px solid rgba(239,68,68,0.45); color:#fecaca; text-decoration:none; font-weight:700;">🎥 Watch Clips ↗</a>` : ''}
                   </div>
+                  ${b.spotTitle ? `<div class="cheese-spot-banner"><strong style="color:#4ade80;">📍 SPOT:</strong> ${escapeHtml(b.spotTitle)}</div>` : ''}
                   ${b.diagram ? renderNpcCheeseDiagramSvg(b.diagram) : ''}
+                  ${Array.isArray(b.routeSteps) && b.routeSteps.length ? `
+                    <div class="cheese-route-box">
+                      <div style="font-size:10px; font-family:var(--font-mono); font-weight:700; color:#7dd3fc;">🧭 ROUTE TO THIS SPOT:</div>
+                      <ol class="cheese-route-list">
+                        ${b.routeSteps.map((st) => `<li>${escapeHtml(st)}</li>`).join('')}
+                      </ol>
+                    </div>` : ''}
                   <div style="font-size:11px; color:#fca5a5; margin-bottom:3px;"><strong>Threat:</strong> ${escapeHtml(b.threat)}</div>
                   <div style="font-size:11px; color:#86efac; margin-bottom:7px;"><strong>Kit:</strong> ${escapeHtml(b.kit)}</div>
                   <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:#cbd5e1; line-height:1.45;">
@@ -6601,10 +6797,37 @@
   }
 
   let editingConveyorFilterId = '';
+  let activeConveyorGroupId = 'resources';
   const customConveyorFilters = [
     { item: 'Sulfur Ore', shortname: 'sulfur.ore', min: 0, max: 0, buf: 0, isBlueprint: false },
     { item: 'Metal Ore', shortname: 'metal.ore', min: 0, max: 0, buf: 0, isBlueprint: false }
   ];
+
+  function toggleConveyorQuickSlot(entry) {
+    if (!entry || !entry.item) return;
+    const matchIdx = customConveyorFilters.findIndex((f) => {
+      if (entry.shortname && f.shortname) return f.shortname.toLowerCase() === entry.shortname.toLowerCase();
+      return String(f.item || '').toLowerCase() === String(entry.item).toLowerCase();
+    });
+    if (matchIdx >= 0) {
+      customConveyorFilters.splice(matchIdx, 1);
+      renderConveyorModule();
+      return;
+    }
+    if (customConveyorFilters.length >= 12) {
+      alert('Rust Industrial Conveyors support max 12 filter slots per conveyor (or use a Category wildcard filter).');
+      return;
+    }
+    customConveyorFilters.push({
+      item: entry.item,
+      shortname: entry.shortname || '',
+      min: Math.max(0, Number(entry.min) || 0),
+      max: Math.max(0, Number(entry.max) || 0),
+      buf: Math.max(0, Number(entry.buf) || 0),
+      isBlueprint: false
+    });
+    renderConveyorModule();
+  }
 
   function resolveConveyorShortname(itemName, explicitShort = '') {
     if (explicitShort) return String(explicitShort);
@@ -6682,6 +6905,83 @@
     const slotsBadge = document.getElementById('conveyorSlotsBadge');
     const jsonPreviewEl = document.getElementById('conveyorJsonPreview');
     const itemSel = document.getElementById('conveyorItemSelect');
+    const pickerEl = document.getElementById('conveyorQuickPicker');
+
+    if (pickerEl && Array.isArray(DATA.conveyorCategoryGroups) && Array.isArray(DATA.conveyorItemsCatalog)) {
+      const groups = DATA.conveyorCategoryGroups;
+      if (!groups.some((g) => g.id === activeConveyorGroupId)) activeConveyorGroupId = groups[0]?.id || 'resources';
+      const activeGroup = groups.find((g) => g.id === activeConveyorGroupId) || groups[0];
+      const groupItems = DATA.conveyorItemsCatalog.filter((it) => it.group === activeGroup.id);
+      const hasWholeCat = activeGroup.categoryFilter
+        ? customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === activeGroup.categoryFilter.toLowerCase())
+        : false;
+
+      pickerEl.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
+          <span style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#bae6fd;">⚡ 1-CLICK CATEGORY GROUPS &amp; ITEM ICONS</span>
+          <span style="font-size:10px; color:var(--text-muted);">Click any tab → click icon or whole category to add/remove</span>
+        </div>
+        <div class="conv-cat-tabs">
+          ${groups
+            .map((g) => {
+              const cnt = DATA.conveyorItemsCatalog.filter((it) => it.group === g.id).length;
+              const isAct = g.id === activeGroup.id;
+              const wholeOn = g.categoryFilter && customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === g.categoryFilter.toLowerCase());
+              return `<button type="button" class="conv-cat-tab ${isAct ? 'active' : ''} ${wholeOn ? 'has-whole-cat' : ''}" data-gid="${escapeHtml(g.id)}"><span>${g.icon}</span><span>${escapeHtml(g.label)}</span><span style="opacity:0.65; font-size:9.5px;">(${cnt})</span></button>`;
+            })
+            .join('')}
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
+          ${activeGroup.categoryFilter
+            ? `<button type="button" class="btn btn-sm conv-whole-cat-btn ${hasWholeCat ? 'btn-primary' : 'btn-sulfur'}" data-cat-filter="${escapeHtml(activeGroup.categoryFilter)}" style="font-size:11px; padding:3px 9px;">${hasWholeCat ? `✓ Whole "${escapeHtml(activeGroup.label)}" Category Active (Click to Remove)` : `+ ${activeGroup.icon} Add Whole "${escapeHtml(activeGroup.label)}" Category (All Items • 1 Slot)`}</button>`
+            : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
+          <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">${groupItems.length} quick items</span>
+        </div>
+        <div class="conv-item-grid">
+          ${groupItems
+            .map((it) => {
+              const inFilter = customConveyorFilters.some((f) =>
+                f.shortname ? f.shortname.toLowerCase() === it.shortname.toLowerCase() : String(f.item || '').toLowerCase() === it.name.toLowerCase()
+              );
+              return `
+                <button type="button" class="conv-item-chip ${inFilter ? 'in-filter' : ''}" data-item-name="${escapeHtml(it.name)}" title="${inFilter ? 'Click to remove from filter' : `Click to add ${it.name}${it.defaultMax > 0 ? ` (Max:${it.defaultMax})` : ''}`}">
+                  ${rustItemIconHtml(it.shortname, it.name, 22)}
+                  <span class="conv-item-chip-name">${inFilter ? '✓ ' : ''}${escapeHtml(it.name)}</span>
+                  ${it.defaultMax > 0 ? `<span class="conv-item-chip-cap">:${it.defaultMax}</span>` : ''}
+                </button>`;
+            })
+            .join('')}
+        </div>`;
+
+      pickerEl.querySelectorAll('.conv-cat-tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          activeConveyorGroupId = btn.getAttribute('data-gid') || 'resources';
+          renderConveyorModule();
+        });
+      });
+
+      pickerEl.querySelectorAll('.conv-whole-cat-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const catFilter = btn.getAttribute('data-cat-filter');
+          if (catFilter) toggleConveyorQuickSlot({ item: catFilter, shortname: '', min: 0, max: 0, buf: 0 });
+        });
+      });
+
+      pickerEl.querySelectorAll('.conv-item-chip').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const name = btn.getAttribute('data-item-name');
+          const entry = (DATA.conveyorItemsCatalog || []).find((x) => x.name === name);
+          if (!entry) return;
+          toggleConveyorQuickSlot({
+            item: entry.name,
+            shortname: entry.shortname,
+            min: entry.defaultMin || 0,
+            max: entry.defaultMax || 0,
+            buf: entry.defaultBuf || 0
+          });
+        });
+      });
+    }
 
     if (itemSel && itemSel.options.length === 0 && Array.isArray(DATA.conveyorItemsCatalog)) {
       itemSel.innerHTML =
