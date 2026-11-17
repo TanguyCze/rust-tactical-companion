@@ -3862,14 +3862,26 @@
       });
     }
 
+    const monQuery = (document.getElementById('monumentSearchInput')?.value || '').trim().toLowerCase();
     const filtered = DATA.monuments.filter((item) => {
-      if (selectedMonumentFilter === 'ready_now') return getMonumentReadiness(item).ready;
-      if (selectedMonumentFilter === 'get_green') return item.cardsFound.includes('Green');
-      if (selectedMonumentFilter === 'get_blue') return item.cardsFound.includes('Blue');
-      if (selectedMonumentFilter === 'get_red') return item.cardsFound.includes('Red');
-      if (selectedMonumentFilter === 'tier3') return item.tier === 3;
-      if (selectedMonumentFilter === 'heavy_fuse') return Boolean(item.powerGrid);
-      if (selectedMonumentFilter === 'npc_cheese') return Boolean(item.npcCheese);
+      if (selectedMonumentFilter === 'ready_now' && !getMonumentReadiness(item).ready) return false;
+      if (selectedMonumentFilter === 'get_green' && !item.cardsFound.includes('Green')) return false;
+      if (selectedMonumentFilter === 'get_blue' && !item.cardsFound.includes('Blue')) return false;
+      if (selectedMonumentFilter === 'get_red' && !item.cardsFound.includes('Red')) return false;
+      if (selectedMonumentFilter === 'tier3' && item.tier !== 3) return false;
+      if (selectedMonumentFilter === 'heavy_fuse' && !item.powerGrid) return false;
+      if (selectedMonumentFilter === 'npc_cheese' && !item.npcCheese) return false;
+      if (monQuery) {
+        const hay = [
+          item.name,
+          item.biome,
+          ...(item.cardsNeeded || []),
+          ...(item.cardsFound || []),
+          ...(item.utilities || []),
+          item.npcCheese?.spotTitle || ''
+        ].join(' ').toLowerCase();
+        if (!hay.includes(monQuery)) return false;
+      }
       return true;
     });
 
@@ -3969,6 +3981,7 @@
         renderMonumentAtlas();
       });
     });
+    document.getElementById('monumentSearchInput')?.addEventListener('input', renderMonumentAtlas);
   }
 
   // =========================================================================
@@ -4209,7 +4222,19 @@
     const grid = document.getElementById('timerPresetsGrid');
     if (!grid) return;
 
-    const presets = (DATA.timerPresets || []).filter((p) => {
+    const allPresets = DATA.timerPresets || [];
+    const essCount = allPresets.filter((p) => Boolean(p.essential)).length;
+    const essBtn = document.querySelector('#timerPresetFilterBar .filter-pill[data-tfilter="essential"]');
+    const allBtn = document.querySelector('#timerPresetFilterBar .filter-pill[data-tfilter="all"]');
+    if (essBtn) essBtn.textContent = `⚡ Essential (${essCount})`;
+    if (allBtn) allBtn.textContent = `All (${allPresets.length})`;
+
+    const tq = (document.getElementById('timerPresetSearch')?.value || '').trim().toLowerCase();
+    const presets = allPresets.filter((p) => {
+      if (tq) {
+        const hay = `${p.name} ${p.category} ${p.hint || ''}`.toLowerCase();
+        return hay.includes(tq);
+      }
       if (selectedTimerPresetFilter === 'all') return true;
       if (selectedTimerPresetFilter === 'essential') return Boolean(p.essential);
       return p.group === selectedTimerPresetFilter;
@@ -4548,6 +4573,7 @@
       });
       renderTimerPresets();
     });
+    document.getElementById('timerPresetSearch')?.addEventListener('input', renderTimerPresets);
 
     document.getElementById('customQuickDurationBar')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.timer-quick-dur');
@@ -5327,30 +5353,43 @@
     }
 
     if (teasContainer) {
-      teasContainer.innerHTML = DATA.teaRecipes
-        .map((t) => {
-          const durMins = parseInt(String(t.duration || '30'), 10) || 30;
-          return `
-          <div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px; padding:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-              <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">🧪 ${escapeHtml(t.name)}</span>
-              <span class="combo-badge">${escapeHtml(t.recipe)}</span>
-            </div>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:12px;">
-              <span style="color:#60a5fa;">Basic: ${escapeHtml(t.basic)}</span>
-              <span style="color:#c084fc;">Adv: ${escapeHtml(t.advanced)}</span>
-              <span style="color:#4ade80; font-weight:700;">Pure: ${escapeHtml(t.pure)}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px;">
-              <div style="font-size:12px; color:var(--text-secondary); flex:1; min-width:200px;">${escapeHtml(t.notes)}</div>
-              <button type="button" class="btn btn-sm tea-timer-btn" data-tname="${escapeHtml(t.name)}" data-tmins="${durMins}">
-                ⏱️ Start ${durMins}m Buff Timer
-              </button>
-            </div>
+      const dairyGuideHtml = `
+        <div style="background:rgba(56,189,248,0.09); border:1px solid rgba(56,189,248,0.35); border-radius:6px; padding:11px 12px; margin-bottom:2px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:4px;">
+            <strong style="font-size:13px; color:#bae6fd;">🐄 Dairy Cream Separation &amp; Cooking Pie Boosts</strong>
+            <span style="font-family:var(--font-mono); font-size:10.5px; color:#86efac;">Powered Fridge + Cooking Workbench</span>
           </div>
-        `;
-        })
-        .join('');
+          <div style="font-size:11.5px; color:#cbd5e1; line-height:1.45;">
+            • <strong>Milk → Fridge → Skimmed Milk + Cream:</strong> Store Milk in a Fridge to separate <strong>Cream</strong>, then mix with Pure Teas for <strong>Creamy Pure Teas</strong>.<br/>
+            • <strong>Chicken Pie</strong> boosts crop good-gene chances during crossbreeding; <strong>Survivor's Pie</strong> boosts corpse harvest yield.
+          </div>
+        </div>`;
+      teasContainer.innerHTML =
+        dairyGuideHtml +
+        DATA.teaRecipes
+          .map((t) => {
+            const durMins = parseInt(String(t.duration || '30'), 10) || 30;
+            return `
+            <div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px; padding:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <span style="font-family:var(--font-display); font-weight:700; font-size:15px; color:#fff;">🧪 ${escapeHtml(t.name)}</span>
+                <span class="combo-badge">${escapeHtml(t.recipe)}</span>
+              </div>
+              <div style="display:flex; gap:12px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:12px;">
+                <span style="color:#60a5fa;">Basic: ${escapeHtml(t.basic)}</span>
+                <span style="color:#c084fc;">Adv: ${escapeHtml(t.advanced)}</span>
+                <span style="color:#4ade80; font-weight:700;">Pure: ${escapeHtml(t.pure)}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px;">
+                <div style="font-size:12px; color:var(--text-secondary); flex:1; min-width:200px;">${escapeHtml(t.notes)}</div>
+                <button type="button" class="btn btn-sm tea-timer-btn" data-tname="${escapeHtml(t.name)}" data-tmins="${durMins}">
+                  ⏱️ Start ${durMins}m Buff Timer
+                </button>
+              </div>
+            </div>
+          `;
+          })
+          .join('');
 
       teasContainer.querySelectorAll('.tea-timer-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -6545,13 +6584,14 @@
         return `
           <div class="target-card ${qty > 0 ? 'selected' : ''}" style="cursor:default;">
             <div class="target-card-top">
-              <span class="target-name" style="font-size:13px;">${c.name}</span>
+              <span class="target-name" style="font-size:13px; display:inline-flex; align-items:center; gap:6px;">${c.shortname ? rustItemIconHtml(c.shortname, c.name, 20) : ''}${escapeHtml(c.name)}</span>
               <span style="font-family:var(--font-mono); font-weight:800; color:var(--sulfur-yellow); font-size:14px;">x${qty}</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:10px; color:var(--text-secondary);">
               Rad: ${c.rad.scrap ? c.rad.scrap + ' Scrap ' : ''}${c.rad.hqm ? c.rad.hqm + ' HQM ' : ''}${c.rad.cloth ? c.rad.cloth + ' Cloth' : ''}
             </div>
             <div style="display:flex; gap:4px; margin-top:4px;">
+              <button class="btn btn-sm rec-mod-btn" data-cid="${c.id}" data-delta="-5" style="flex:1;">-5</button>
               <button class="btn btn-sm rec-mod-btn" data-cid="${c.id}" data-delta="-1" style="flex:1;">-1</button>
               <button class="btn btn-sm btn-primary rec-mod-btn" data-cid="${c.id}" data-delta="1" style="flex:1;">+1</button>
               <button class="btn btn-sm rec-mod-btn" data-cid="${c.id}" data-delta="5" style="flex:1;">+5</button>
@@ -6916,7 +6956,15 @@
       };
       if (!groups.some((g) => g.id === activeConveyorGroupId)) activeConveyorGroupId = groups[0]?.id || 'resources';
       const activeGroup = groups.find((g) => g.id === activeConveyorGroupId) || groups[0];
-      const groupItems = DATA.conveyorItemsCatalog.filter((it) => matchesGroup(it, activeGroup));
+      const itemQuery = (document.getElementById('conveyorItemQuickSearch')?.value || '').trim().toLowerCase();
+      const groupItems = itemQuery
+        ? DATA.conveyorItemsCatalog.filter(
+            (it) =>
+              it.name.toLowerCase().includes(itemQuery) ||
+              it.shortname.toLowerCase().includes(itemQuery) ||
+              it.cat.toLowerCase().includes(itemQuery)
+          )
+        : DATA.conveyorItemsCatalog.filter((it) => matchesGroup(it, activeGroup));
       const hasWholeCat = activeGroup.categoryFilter
         ? customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === activeGroup.categoryFilter.toLowerCase())
         : false;
@@ -6946,13 +6994,15 @@
             .join('')}
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
-          ${activeGroup.categoryFilter
-            ? `<button type="button" class="btn btn-sm conv-whole-cat-btn ${hasWholeCat ? 'btn-primary' : 'btn-sulfur'}" data-cat-filter="${escapeHtml(activeGroup.categoryFilter)}" style="font-size:11px; padding:3px 9px;">${hasWholeCat ? `✓ Whole "${escapeHtml(activeGroup.label)}" Category Active (Click to Remove)` : `+ ${activeGroup.icon} Add Whole "${escapeHtml(activeGroup.label)}" Category (All Items • 1 Slot)`}</button>`
-            : activeGroup.filterTier
-              ? `<button type="button" class="btn btn-sm btn-sulfur conv-tier-armor-btn" data-tier="${activeGroup.filterTier}" style="font-size:11px; padding:3px 9px;">+ ${activeGroup.icon} Add All T${activeGroup.filterTier} Clothes &amp; Armor (${Math.min(12, tierArmorItems.length)} items)</button>`
-              : activeGroup.filterNew
-                ? `<span style="font-size:10.5px; color:#86efac;">🆕 Latest Update Gear &amp; Items (Uzi, Kevlar/Ballistic, Milk/Cream, Pies, Heavy Fuse, BP Tiers):</span>`
-                : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
+          ${itemQuery
+            ? `<span style="font-size:10.5px; color:#7dd3fc;">🔍 Search results across ALL groups for "<strong>${escapeHtml(itemQuery)}</strong>" — click any icon to add/remove:</span>`
+            : activeGroup.categoryFilter
+              ? `<button type="button" class="btn btn-sm conv-whole-cat-btn ${hasWholeCat ? 'btn-primary' : 'btn-sulfur'}" data-cat-filter="${escapeHtml(activeGroup.categoryFilter)}" style="font-size:11px; padding:3px 9px;">${hasWholeCat ? `✓ Whole "${escapeHtml(activeGroup.label)}" Category Active (Click to Remove)` : `+ ${activeGroup.icon} Add Whole "${escapeHtml(activeGroup.label)}" Category (All Items • 1 Slot)`}</button>`
+              : activeGroup.filterTier
+                ? `<button type="button" class="btn btn-sm btn-sulfur conv-tier-armor-btn" data-tier="${activeGroup.filterTier}" style="font-size:11px; padding:3px 9px;">+ ${activeGroup.icon} Add All T${activeGroup.filterTier} Clothes &amp; Armor (${Math.min(12, tierArmorItems.length)} items)</button>`
+                : activeGroup.filterNew
+                  ? `<span style="font-size:10.5px; color:#86efac;">🆕 Latest Update Gear &amp; Items (Uzi, Kevlar/Ballistic, Milk/Cream, Pies, Heavy Fuse, BP Tiers):</span>`
+                  : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
           <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">${groupItems.length} quick items</span>
         </div>
         <div class="conv-item-grid">
@@ -7286,6 +7336,7 @@
     document.getElementById('elecMarginSelect')?.addEventListener('change', renderElectricityPlanner);
 
     document.getElementById('conveyorPresetSearch')?.addEventListener('input', renderConveyorModule);
+    document.getElementById('conveyorItemQuickSearch')?.addEventListener('input', renderConveyorModule);
     document.getElementById('conveyorItemSelect')?.addEventListener('change', (e) => {
       const entry = (DATA.conveyorItemsCatalog || []).find((x) => x.name === e.target.value);
       if (entry) {

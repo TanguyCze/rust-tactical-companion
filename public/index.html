@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261117g" />
+  <link rel="stylesheet" href="css/styles.css?v=20261117h" />
 </head>
 <body>
 
@@ -341,7 +341,8 @@
           </div>
         </div>
         <div id="monumentKeycardsStrip" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:8px 12px; margin-bottom:10px; border-radius:6px; background:rgba(15,23,42,0.65); border:1px solid var(--border-subtle);"></div>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;" id="monumentFilterBar">
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 14px;" id="monumentFilterBar">
+          <input id="monumentSearchInput" type="search" class="input" style="min-width: 190px; flex: 1 1 200px; max-width: 280px;" placeholder="🔍 Search monument, card, recycler, cheese..." />
           <button class="filter-pill active" data-mfilter="all">All</button>
           <button class="filter-pill" data-mfilter="ready_now">✅ Ready Now</button>
           <button class="filter-pill" data-mfilter="get_green">Gives Green Card</button>
@@ -390,9 +391,10 @@
               <div class="panel-subtitle">Click immediately after swiping a card, hacking Oil Rig crate, or taking Bradley APC</div>
             </div>
           </div>
-          <div id="timerPresetFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-            <button class="filter-pill active" data-tfilter="essential">⚡ Essential (9)</button>
-            <button class="filter-pill" data-tfilter="all">All (36)</button>
+          <div id="timerPresetFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+            <input id="timerPresetSearch" type="search" class="input" style="min-width: 160px; flex: 1 1 170px;" placeholder="🔍 Filter event / monument timer..." />
+            <button class="filter-pill active" data-tfilter="essential">⚡ Essential</button>
+            <button class="filter-pill" data-tfilter="all">All</button>
             <button class="filter-pill" data-tfilter="hacks">Crates &amp; Cargo</button>
             <button class="filter-pill" data-tfilter="events">Bradley, Heli &amp; Rig</button>
             <button class="filter-pill" data-tfilter="puzzles">Card Puzzles</button>
@@ -854,11 +856,14 @@
               </div>
             </div>
 
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
               <input id="conveyorFilterNameInput" type="text" class="input" style="flex:1; min-width:160px;" placeholder="Filter Name (e.g. Main TC Upkeep, Full AK Locker)" />
               <button id="conveyorSaveBtn" type="button" class="btn btn-sm btn-sulfur">💾 Save to My Filters</button>
             </div>
 
+            <div style="margin-bottom:8px;">
+              <input id="conveyorItemQuickSearch" type="search" class="input" style="width:100%; font-size:12px;" placeholder="🔍 Instant search across ALL items (uzi, milk, kevlar, hose, hammer, blueprint, ore...)" />
+            </div>
             <div id="conveyorQuickPicker" class="conv-picker-box"></div>
 
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:10px;">
@@ -1355,7 +1360,7 @@
     </div>
   </div>
 
-  <script src="js/data.js?v=20261117g"></script>
-  <script src="js/app.js?v=20261117g"></script>
+  <script src="js/data.js?v=20261117h"></script>
+  <script src="js/app.js?v=20261117h"></script>
 </body>
 </html>

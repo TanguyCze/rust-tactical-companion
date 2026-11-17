@@ -2173,24 +2173,24 @@ window.RUST_DATA = {
   // 7. RECYCLER COMPONENT YIELDS (RADTOWN 60% vs SAFE ZONE 40%)
   // =========================================================================
   recyclerComponents: [
-    { id: 'tech_trash', name: 'Tech Trash', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
-    { id: 'rifle_body', name: 'Rifle Body', rad: { scrap: 30, hqm: 3, metal: 0, cloth: 0 }, safe: { scrap: 20, hqm: 2, metal: 0, cloth: 0 } },
-    { id: 'smg_body', name: 'SMG Body', rad: { scrap: 18, hqm: 3, metal: 0, cloth: 0 }, safe: { scrap: 12, hqm: 2, metal: 0, cloth: 0 } },
-    { id: 'semi_body', name: 'Semi Auto Body', rad: { scrap: 18, hqm: 3, metal: 90, cloth: 0 }, safe: { scrap: 12, hqm: 2, metal: 60, cloth: 0 } },
-    { id: 'computer', name: 'Targeting Computer', rad: { scrap: 36, hqm: 2, metal: 60, cloth: 0 }, safe: { scrap: 24, hqm: 1, metal: 40, cloth: 0 } },
-    { id: 'cctv', name: 'CCTV Camera', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
-    { id: 'fuse', name: 'Electric Fuse', rad: { scrap: 24, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
-    { id: 'heavy_fuse', name: 'Heavy Fuse', rad: { scrap: 20, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
-    { id: 'gears', name: 'Gears', rad: { scrap: 12, hqm: 0, metal: 15, cloth: 0 }, safe: { scrap: 8, hqm: 0, metal: 10, cloth: 0 } },
-    { id: 'spring', name: 'Metal Spring', rad: { scrap: 12, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 8, hqm: 1, metal: 0, cloth: 0 } },
-    { id: 'pipe', name: 'Metal Pipe', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },
-    { id: 'sheet_metal', name: 'Sheet Metal', rad: { scrap: 10, hqm: 2, metal: 120, cloth: 0 }, safe: { scrap: 6, hqm: 1, metal: 80, cloth: 0 } },
-    { id: 'road_signs', name: 'Road Signs', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },
-    { id: 'sewing_kit', name: 'Sewing Kit', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 45 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 30 } },
-    { id: 'rope', name: 'Rope', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 18 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 12 } },
-    { id: 'tarp', name: 'Tarp', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 60 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 40 } },
-    { id: 'propane', name: 'Empty Propane Tank', rad: { scrap: 1, hqm: 0, metal: 60, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 40, cloth: 0 } },
-    { id: 'blade', name: 'Metal Blade', rad: { scrap: 2, hqm: 0, metal: 18, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 12, cloth: 0 } }
+    { id: 'tech_trash', shortname: 'techparts', name: 'Tech Trash', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'rifle_body', shortname: 'riflebody', name: 'Rifle Body', rad: { scrap: 30, hqm: 3, metal: 0, cloth: 0 }, safe: { scrap: 20, hqm: 2, metal: 0, cloth: 0 } },
+    { id: 'smg_body', shortname: 'smgbody', name: 'SMG Body', rad: { scrap: 18, hqm: 3, metal: 0, cloth: 0 }, safe: { scrap: 12, hqm: 2, metal: 0, cloth: 0 } },
+    { id: 'semi_body', shortname: 'semibody', name: 'Semi Auto Body', rad: { scrap: 18, hqm: 3, metal: 90, cloth: 0 }, safe: { scrap: 12, hqm: 2, metal: 60, cloth: 0 } },
+    { id: 'computer', shortname: 'targeting.computer', name: 'Targeting Computer', rad: { scrap: 36, hqm: 2, metal: 60, cloth: 0 }, safe: { scrap: 24, hqm: 1, metal: 40, cloth: 0 } },
+    { id: 'cctv', shortname: 'cctv.camera', name: 'CCTV Camera', rad: { scrap: 24, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'fuse', shortname: 'fuse', name: 'Electric Fuse', rad: { scrap: 24, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
+    { id: 'heavy_fuse', shortname: 'fuse.highgrade', name: 'Heavy Fuse', rad: { scrap: 20, hqm: 0, metal: 0, cloth: 0 }, safe: { scrap: 16, hqm: 0, metal: 0, cloth: 0 } },
+    { id: 'gears', shortname: 'gears', name: 'Gears', rad: { scrap: 12, hqm: 0, metal: 15, cloth: 0 }, safe: { scrap: 8, hqm: 0, metal: 10, cloth: 0 } },
+    { id: 'spring', shortname: 'metalspring', name: 'Metal Spring', rad: { scrap: 12, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 8, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'pipe', shortname: 'metalpipe', name: 'Metal Pipe', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'sheet_metal', shortname: 'sheetmetal', name: 'Sheet Metal', rad: { scrap: 10, hqm: 2, metal: 120, cloth: 0 }, safe: { scrap: 6, hqm: 1, metal: 80, cloth: 0 } },
+    { id: 'road_signs', shortname: 'roadsigns', name: 'Road Signs', rad: { scrap: 6, hqm: 2, metal: 0, cloth: 0 }, safe: { scrap: 4, hqm: 1, metal: 0, cloth: 0 } },
+    { id: 'sewing_kit', shortname: 'sewingkit', name: 'Sewing Kit', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 45 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 30 } },
+    { id: 'rope', shortname: 'rope', name: 'Rope', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 18 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 12 } },
+    { id: 'tarp', shortname: 'tarp', name: 'Tarp', rad: { scrap: 0, hqm: 0, metal: 0, cloth: 60 }, safe: { scrap: 0, hqm: 0, metal: 0, cloth: 40 } },
+    { id: 'propane', shortname: 'propanetank', name: 'Empty Propane Tank', rad: { scrap: 1, hqm: 0, metal: 60, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 40, cloth: 0 } },
+    { id: 'blade', shortname: 'metalblade', name: 'Metal Blade', rad: { scrap: 2, hqm: 0, metal: 18, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 12, cloth: 0 } }
   ],
 
   // =========================================================================
@@ -2757,6 +2757,72 @@ window.RUST_DATA = {
             { item: 'Yellow Berry', min: 0, max: 40, buf: 0 },
             { item: 'White Berry', min: 0, max: 40, buf: 0 },
             { item: 'Red Berry', min: 0, max: 40, buf: 0 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'kevlar_armory',
+      name: '🛡️ Endgame Kevlar, Weapons & BP Progression Sorter',
+      category: 'Endgame Gear',
+      powerRwm: 2,
+      conveyorsCount: 2,
+      mode: 'Require Any (OR)',
+      summary: 'Route high-tier Ballistic/Kevlar gear, BDU kits, Uzi/SKS/AK & Heavy Fuses + Blueprint Tiers into your secure T3 Core Vault.',
+      proTips: [
+        'Pipe directly to Large Wood Boxes inside your HQM Core so Ballistic armor & Blueprint Books are never left in outer drop-boxes.',
+        'Keep Heavy Fuses & Blueprint Pages/Books in a dedicated locked Progression Box.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor 1 → Core T3 Kevlar & Weapons Box',
+          filters: [
+            { item: 'Ballistic Helmet (Kevlar)', min: 0, max: 0, buf: 0 },
+            { item: 'Ballistic Vest (Kevlar)', min: 0, max: 0, buf: 0 },
+            { item: 'Ballistic Leg Armour (Kevlar)', min: 0, max: 0, buf: 0 },
+            { item: 'BDU Shirt', min: 0, max: 0, buf: 0 },
+            { item: 'BDU Pants', min: 0, max: 0, buf: 0 },
+            { item: 'Uzi', min: 0, max: 0, buf: 0 },
+            { item: 'SKS', min: 0, max: 0, buf: 0 },
+            { item: 'High Caliber Revolver', min: 0, max: 0, buf: 0 },
+            { item: 'Assault Rifle', min: 0, max: 0, buf: 0 }
+          ]
+        },
+        {
+          label: 'Conveyor 2 → Blueprint Tiers & Heavy Fuse Vault',
+          filters: [
+            { item: 'Blueprint Fragment', min: 0, max: 0, buf: 0 },
+            { item: 'Blueprint Page', min: 0, max: 0, buf: 0 },
+            { item: 'Blueprint Book', min: 0, max: 0, buf: 0 },
+            { item: 'Heavy Fuse', min: 0, max: 0, buf: 0 },
+            { item: 'Tech Trash', min: 0, max: 0, buf: 0 },
+            { item: 'Rifle Body', min: 0, max: 0, buf: 0 }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'dairy_fridge',
+      name: '🥛 Dairy, Cooking Pies & Creamy Tea Fridge Sorter',
+      category: 'Farming & Teas',
+      powerRwm: 1,
+      conveyorsCount: 1,
+      mode: 'Require Any (OR)',
+      summary: 'Pull fresh Milk into your Fridge (separates into Skimmed Milk + Cream!) alongside Chicken/Survivor Pies & Creamy Teas.',
+      proTips: [
+        'Fridges hold 1 Storage Adaptor in vanilla Rust — storing Milk in a powered Fridge preserves it & separates Skimmed Milk + Cream for upgraded teas.'
+      ],
+      conveyors: [
+        {
+          label: 'Conveyor → Fridge (Dairy, Pies & Creamy Teas)',
+          filters: [
+            { item: 'Milk', min: 0, max: 0, buf: 0 },
+            { item: 'Skimmed Milk', min: 0, max: 0, buf: 0 },
+            { item: 'Cream', min: 0, max: 0, buf: 0 },
+            { item: 'Bread Loaf', min: 0, max: 0, buf: 0 },
+            { item: 'Chicken Pie', min: 0, max: 0, buf: 0 },
+            { item: 'Survivor\'s Pie', min: 0, max: 0, buf: 0 },
+            { item: 'Creamy Pure Rad Tea', min: 0, max: 0, buf: 0 }
           ]
         }
       ]

@@ -1698,3 +1698,38 @@ details > summary:hover {
   color: #94a3b8;
   margin: 4px 0 8px;
 }
+
+/* Global Polish: Scrollbars, Focus Rings & Tactile Feedback */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(9, 14, 22, 0.7);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+.btn:active:not(:disabled),
+.filter-pill:active,
+.conv-item-chip:active {
+  transform: translateY(1px);
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.btn:focus-visible,
+.filter-pill:focus-visible,
+.conv-cat-tab:focus-visible,
+.conv-item-chip:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 1px;
+}
