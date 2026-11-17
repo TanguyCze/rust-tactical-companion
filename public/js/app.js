@@ -6911,7 +6911,7 @@
       const groups = DATA.conveyorCategoryGroups;
       if (!groups.some((g) => g.id === activeConveyorGroupId)) activeConveyorGroupId = groups[0]?.id || 'resources';
       const activeGroup = groups.find((g) => g.id === activeConveyorGroupId) || groups[0];
-      const groupItems = DATA.conveyorItemsCatalog.filter((it) => it.group === activeGroup.id);
+      const groupItems = DATA.conveyorItemsCatalog.filter((it) => (activeGroup.filterNew ? Boolean(it.isNew) : it.group === activeGroup.id));
       const hasWholeCat = activeGroup.categoryFilter
         ? customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === activeGroup.categoryFilter.toLowerCase())
         : false;
@@ -6924,7 +6924,7 @@
         <div class="conv-cat-tabs">
           ${groups
             .map((g) => {
-              const cnt = DATA.conveyorItemsCatalog.filter((it) => it.group === g.id).length;
+              const cnt = DATA.conveyorItemsCatalog.filter((it) => (g.filterNew ? Boolean(it.isNew) : it.group === g.id)).length;
               const isAct = g.id === activeGroup.id;
               const wholeOn = g.categoryFilter && customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === g.categoryFilter.toLowerCase());
               return `<button type="button" class="conv-cat-tab ${isAct ? 'active' : ''} ${wholeOn ? 'has-whole-cat' : ''}" data-gid="${escapeHtml(g.id)}"><span>${g.icon}</span><span>${escapeHtml(g.label)}</span><span style="opacity:0.65; font-size:9.5px;">(${cnt})</span></button>`;
@@ -6934,7 +6934,9 @@
         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
           ${activeGroup.categoryFilter
             ? `<button type="button" class="btn btn-sm conv-whole-cat-btn ${hasWholeCat ? 'btn-primary' : 'btn-sulfur'}" data-cat-filter="${escapeHtml(activeGroup.categoryFilter)}" style="font-size:11px; padding:3px 9px;">${hasWholeCat ? `✓ Whole "${escapeHtml(activeGroup.label)}" Category Active (Click to Remove)` : `+ ${activeGroup.icon} Add Whole "${escapeHtml(activeGroup.label)}" Category (All Items • 1 Slot)`}</button>`
-            : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
+            : activeGroup.filterNew
+              ? `<span style="font-size:10.5px; color:#86efac;">🆕 Latest Update Gear &amp; Items (Uzi, Kevlar/Ballistic, Milk/Cream, Pies, Heavy Fuse, BP Tiers):</span>`
+              : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
           <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">${groupItems.length} quick items</span>
         </div>
         <div class="conv-item-grid">
