@@ -6909,22 +6909,36 @@
 
     if (pickerEl && Array.isArray(DATA.conveyorCategoryGroups) && Array.isArray(DATA.conveyorItemsCatalog)) {
       const groups = DATA.conveyorCategoryGroups;
+      const matchesGroup = (it, g) => {
+        if (g.filterNew) return Boolean(it.isNew);
+        if (g.filterTier) return Number(it.tier) === Number(g.filterTier);
+        return it.group === g.id;
+      };
       if (!groups.some((g) => g.id === activeConveyorGroupId)) activeConveyorGroupId = groups[0]?.id || 'resources';
       const activeGroup = groups.find((g) => g.id === activeConveyorGroupId) || groups[0];
-      const groupItems = DATA.conveyorItemsCatalog.filter((it) => (activeGroup.filterNew ? Boolean(it.isNew) : it.group === activeGroup.id));
+      const groupItems = DATA.conveyorItemsCatalog.filter((it) => matchesGroup(it, activeGroup));
       const hasWholeCat = activeGroup.categoryFilter
         ? customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === activeGroup.categoryFilter.toLowerCase())
         : false;
+      const tierArmorItems = activeGroup.filterTier
+        ? groupItems.filter((it) => it.group === 'attire')
+        : [];
+      const tierBadgeStyle = (t) =>
+        t === 1
+          ? 'background:rgba(34,197,94,0.2); color:#86efac;'
+          : t === 2
+            ? 'background:rgba(59,130,246,0.22); color:#93c5fd;'
+            : 'background:rgba(239,68,68,0.22); color:#fca5a5;';
 
       pickerEl.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
           <span style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#bae6fd;">⚡ 1-CLICK CATEGORY GROUPS &amp; ITEM ICONS</span>
-          <span style="font-size:10px; color:var(--text-muted);">Click any tab → click icon or whole category to add/remove</span>
+          <span style="font-size:10px; color:var(--text-muted);">Click any tab → click icon, Tier Armor Pack, or whole category</span>
         </div>
         <div class="conv-cat-tabs">
           ${groups
             .map((g) => {
-              const cnt = DATA.conveyorItemsCatalog.filter((it) => (g.filterNew ? Boolean(it.isNew) : it.group === g.id)).length;
+              const cnt = DATA.conveyorItemsCatalog.filter((it) => matchesGroup(it, g)).length;
               const isAct = g.id === activeGroup.id;
               const wholeOn = g.categoryFilter && customConveyorFilters.some((f) => String(f.item || '').toLowerCase() === g.categoryFilter.toLowerCase());
               return `<button type="button" class="conv-cat-tab ${isAct ? 'active' : ''} ${wholeOn ? 'has-whole-cat' : ''}" data-gid="${escapeHtml(g.id)}"><span>${g.icon}</span><span>${escapeHtml(g.label)}</span><span style="opacity:0.65; font-size:9.5px;">(${cnt})</span></button>`;
@@ -6934,9 +6948,11 @@
         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
           ${activeGroup.categoryFilter
             ? `<button type="button" class="btn btn-sm conv-whole-cat-btn ${hasWholeCat ? 'btn-primary' : 'btn-sulfur'}" data-cat-filter="${escapeHtml(activeGroup.categoryFilter)}" style="font-size:11px; padding:3px 9px;">${hasWholeCat ? `✓ Whole "${escapeHtml(activeGroup.label)}" Category Active (Click to Remove)` : `+ ${activeGroup.icon} Add Whole "${escapeHtml(activeGroup.label)}" Category (All Items • 1 Slot)`}</button>`
-            : activeGroup.filterNew
-              ? `<span style="font-size:10.5px; color:#86efac;">🆕 Latest Update Gear &amp; Items (Uzi, Kevlar/Ballistic, Milk/Cream, Pies, Heavy Fuse, BP Tiers):</span>`
-              : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
+            : activeGroup.filterTier
+              ? `<button type="button" class="btn btn-sm btn-sulfur conv-tier-armor-btn" data-tier="${activeGroup.filterTier}" style="font-size:11px; padding:3px 9px;">+ ${activeGroup.icon} Add All T${activeGroup.filterTier} Clothes &amp; Armor (${Math.min(12, tierArmorItems.length)} items)</button>`
+              : activeGroup.filterNew
+                ? `<span style="font-size:10.5px; color:#86efac;">🆕 Latest Update Gear &amp; Items (Uzi, Kevlar/Ballistic, Milk/Cream, Pies, Heavy Fuse, BP Tiers):</span>`
+                : `<span style="font-size:10.5px; color:#fca5a5;">💣 Pick specific raid/boom items below (no single Rust wildcard covers just boom):</span>`}
           <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted);">${groupItems.length} quick items</span>
         </div>
         <div class="conv-item-grid">
@@ -6945,15 +6961,41 @@
               const inFilter = customConveyorFilters.some((f) =>
                 f.shortname ? f.shortname.toLowerCase() === it.shortname.toLowerCase() : String(f.item || '').toLowerCase() === it.name.toLowerCase()
               );
+              const tPill = it.tier
+                ? `<span style="font-family:var(--font-mono); font-size:9px; font-weight:800; padding:0 3px; border-radius:3px; ${tierBadgeStyle(it.tier)}">T${it.tier}</span>`
+                : '';
               return `
                 <button type="button" class="conv-item-chip ${inFilter ? 'in-filter' : ''}" data-item-name="${escapeHtml(it.name)}" title="${inFilter ? 'Click to remove from filter' : `Click to add ${it.name}${it.defaultMax > 0 ? ` (Max:${it.defaultMax})` : ''}`}">
                   ${rustItemIconHtml(it.shortname, it.name, 22)}
                   <span class="conv-item-chip-name">${inFilter ? '✓ ' : ''}${escapeHtml(it.name)}</span>
+                  ${tPill}
                   ${it.defaultMax > 0 ? `<span class="conv-item-chip-cap">:${it.defaultMax}</span>` : ''}
                 </button>`;
             })
             .join('')}
         </div>`;
+
+      pickerEl.querySelectorAll('.conv-tier-armor-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const tierNum = parseInt(btn.getAttribute('data-tier'), 10);
+          const armors = DATA.conveyorItemsCatalog.filter((it) => Number(it.tier) === tierNum && it.group === 'attire');
+          armors.forEach((it) => {
+            if (customConveyorFilters.length >= 12) return;
+            const exists = customConveyorFilters.some((f) => f.shortname?.toLowerCase() === it.shortname.toLowerCase());
+            if (!exists) {
+              customConveyorFilters.push({
+                item: it.name,
+                shortname: it.shortname,
+                min: it.defaultMin || 0,
+                max: it.defaultMax || 0,
+                buf: it.defaultBuf || 0,
+                isBlueprint: false
+              });
+            }
+          });
+          renderConveyorModule();
+        });
+      });
 
       pickerEl.querySelectorAll('.conv-cat-tab').forEach((btn) => {
         btn.addEventListener('click', () => {
