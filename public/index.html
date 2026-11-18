@@ -17,7 +17,14 @@
   <header class="top-header">
     <div class="header-inner">
       <div class="brand-group">
-        <div class="brand-logo">R</div>
+        <div class="brand-logo" aria-label="Rust Tactical Companion">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2.25l1.35 1.85a7.5 7.5 0 0 1 2.2.91l2.15-.74 1.32 1.32-.74 2.15c.38.69.69 1.43.91 2.2L21.75 12l-1.85 1.35a7.5 7.5 0 0 1-.91 2.2l.74 2.15-1.32 1.32-2.15-.74a7.5 7.5 0 0 1-2.2.91L12 21.75l-1.35-1.85a7.5 7.5 0 0 1-2.2-.91l-2.15.74-1.32-1.32.74-2.15a7.5 7.5 0 0 1-.91-2.2L2.25 12l1.85-1.35a7.5 7.5 0 0 1 .91-2.2l-.74-2.15 1.32-1.32 2.15.74a7.5 7.5 0 0 1 2.2-.91L12 2.25z" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="4.1" stroke="currentColor" stroke-width="1.65"/>
+            <path d="M12 6.5v2.2M12 15.3v2.2M6.5 12h2.2M15.3 12h2.2" stroke="#fde047" stroke-width="1.65" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="1.25" fill="#fde047"/>
+          </svg>
+        </div>
         <div>
           <div class="brand-title">
             RUST TACTICAL COMPANION
@@ -36,18 +43,19 @@
         <button id="openQuickJumpBtn" type="button" class="btn btn-sm" style="border-color:rgba(56,189,248,0.45); color:#bae6fd;" title="Instant Cross-Tab Command Palette (Ctrl+K)">
           🔍 Jump <span style="opacity:0.65; font-size:10px; font-family:var(--font-mono);">Ctrl+K</span>
         </button>
+        <span id="hudWipeClockBadge" class="hud-clock-badge" style="display:none;" title="In-game Rust day/night clock"></span>
         <button id="hudRustPlusPill" type="button" class="btn btn-sm" style="display:none; background:rgba(16,185,129,0.14); border-color:rgba(52,211,153,0.45); color:#a7f3d0; font-family:var(--font-mono); font-size:11px;" title="Live Rust+ Telemetry — click to open Tactical Map &amp; Shops"></button>
         <div id="syncStatusBadge" class="sync-badge">
           <span class="sync-dot"></span>
           <span id="syncStatusText">CONNECTING...</span>
         </div>
-        <button id="readableToggleBtn" class="btn btn-sm" title="Toggle Larger High-Contrast Readable Text">
+        <button id="readableToggleBtn" type="button" class="btn btn-sm" title="Toggle Larger High-Contrast Readable Text">
           👁️ Aa+
         </button>
-        <button id="audioToggleBtn" class="btn btn-sm" title="Toggle Timer Sound Alerts">
+        <button id="audioToggleBtn" type="button" class="btn btn-sm" title="Toggle Timer Sound Alerts">
           🔔 AUDIO: ON
         </button>
-        <button id="openSettingsBtn" class="btn btn-sm">
+        <button id="openSettingsBtn" type="button" class="btn btn-sm">
           ⚙️ SQUAD / PIN
         </button>
       </div>
@@ -59,23 +67,23 @@
        ==================================================================== -->
   <nav class="nav-bar">
     <div class="nav-inner">
-      <button class="nav-tab active" data-tab="tab-basefinder">
-        📍 Tactical Map Hub <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">MAP + RUST+</span>
+      <button type="button" class="nav-tab active" data-tab="tab-basefinder">
+        📍 Tactical Map Hub <span class="nav-badge" style="background:rgba(34,197,94,0.2); color:#4ade80;">MAP + RUST+</span> <span class="nav-shortcut-hint">Alt+1</span>
       </button>
-      <button class="nav-tab" data-tab="tab-map">
-        🏛️ Monuments <span class="nav-badge">KEYCARDS</span>
+      <button type="button" class="nav-tab" data-tab="tab-map">
+        🏛️ Monuments <span class="nav-badge">KEYCARDS</span> <span class="nav-shortcut-hint">Alt+2</span>
       </button>
-      <button class="nav-tab" data-tab="tab-raid">
-        💥 Raid &amp; Sulfur <span class="nav-badge">COMBOS</span>
+      <button type="button" class="nav-tab" data-tab="tab-raid">
+        💥 Raid &amp; Sulfur <span class="nav-badge">COMBOS</span> <span class="nav-shortcut-hint">Alt+3</span>
       </button>
-      <button class="nav-tab" data-tab="tab-recycler">
-        ⚡ Utility, Elec &amp; Pipes <span class="nav-badge">RECYCLE + IND</span>
+      <button type="button" class="nav-tab" data-tab="tab-recycler">
+        ⚡ Utility, Elec &amp; Pipes <span class="nav-badge">RECYCLE + IND</span> <span class="nav-shortcut-hint">Alt+4</span>
       </button>
-      <button class="nav-tab" data-tab="tab-genetics">
-        🌱 Genetics &amp; Tea <span class="nav-badge">6-GENE</span>
+      <button type="button" class="nav-tab" data-tab="tab-genetics">
+        🌱 Genetics &amp; Tea <span class="nav-badge">6-GENE</span> <span class="nav-shortcut-hint">Alt+5</span>
       </button>
-      <button class="nav-tab" data-tab="tab-timers">
-        ⏱️ Timers <span id="navTimerCount" class="nav-badge">0</span>
+      <button type="button" class="nav-tab" data-tab="tab-timers">
+        ⏱️ Timers <span id="navTimerCount" class="nav-badge">0</span> <span class="nav-shortcut-hint">Alt+6</span>
       </button>
     </div>
   </nav>
@@ -102,22 +110,22 @@
 
             <div class="raid-toolbar">
               <div class="filter-pills" id="raidCategoryPills">
-                <button class="filter-pill active" data-cat="All">All</button>
-                <button class="filter-pill" data-cat="Doors">Doors</button>
-                <button class="filter-pill" data-cat="Walls & Floors">Walls &amp; Floors</button>
-                <button class="filter-pill" data-cat="Windows & Grills">Windows</button>
-                <button class="filter-pill" data-cat="Traps & Turrets">Turrets &amp; Traps</button>
-                <button class="filter-pill" data-cat="Deployables & External">TC &amp; External</button>
+                <button type="button" class="filter-pill active" data-cat="All">All</button>
+                <button type="button" class="filter-pill" data-cat="Doors">Doors</button>
+                <button type="button" class="filter-pill" data-cat="Walls & Floors">Walls &amp; Floors</button>
+                <button type="button" class="filter-pill" data-cat="Windows & Grills">Windows</button>
+                <button type="button" class="filter-pill" data-cat="Traps & Turrets">Turrets &amp; Traps</button>
+                <button type="button" class="filter-pill" data-cat="Deployables & External">TC &amp; External</button>
               </div>
             </div>
 
             <div class="raid-toolbar">
               <input type="search" id="raidTargetSearch" class="input raid-search-input" placeholder="Search door, wall, turret, sam..." />
               <div class="filter-pills" id="raidWbPills">
-                <button class="filter-pill wb-pill active" data-wb="All">All Workbenches</button>
-                <button class="filter-pill wb-pill" data-wb="T1">Max T1</button>
-                <button class="filter-pill wb-pill" data-wb="T2">Max T2</button>
-                <button class="filter-pill wb-pill" data-wb="T3">T3 Meta</button>
+                <button type="button" class="filter-pill wb-pill active" data-wb="All">All Workbenches</button>
+                <button type="button" class="filter-pill wb-pill" data-wb="T1">Max T1</button>
+                <button type="button" class="filter-pill wb-pill" data-wb="T2">Max T2</button>
+                <button type="button" class="filter-pill wb-pill" data-wb="T3">T3 Meta</button>
               </div>
             </div>
 
@@ -142,7 +150,7 @@
                 <label class="text-xs text-muted" style="display:block; margin-bottom:4px;">REMAINING HP</label>
                 <input type="number" id="customHpInput" class="input" min="1" max="2000" value="160" />
               </div>
-              <button id="solveCustomHpBtn" class="btn btn-primary">Solve Finish</button>
+              <button id="solveCustomHpBtn" type="button" class="btn btn-primary">Solve Finish</button>
             </div>
             <div id="customHpResult" style="margin-top: 14px;"></div>
           </div>
@@ -282,6 +290,7 @@
                 <input id="raidIncludeUncookedCb" type="checkbox" checked />
                 Include <strong>Uncooked Sulfur Ore</strong> in readiness &amp; raid capacity
               </label>
+              <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#e2e8f0; cursor:pointer;" title="Mixing Table crafts 50 GP for 100 Sulfur + 100 Charcoal (saves 33% Charcoal vs Hand Craft)"><input id="raidMixingTableCb" type="checkbox" checked /> Mixing Table GP <strong>(−33% Charcoal)</strong></label>
               <div style="display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-secondary);">
                 <span>Furnaces:</span>
                 <select id="raidFurnaceCountSelect" class="select" style="padding:2px 6px; font-size:11.5px;">
@@ -305,8 +314,8 @@
                 <div class="card-subtitle">Build your raid shopping list — live totals auto-sync with your squad room.</div>
               </div>
               <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button id="discordRaidPlanBtn" class="btn btn-sm">📋 Copy Discord Plan</button>
-                <button id="clearRaidQueueBtn" class="btn btn-sm btn-danger">Clear</button>
+                <button id="discordRaidPlanBtn" type="button" class="btn btn-sm">📋 Copy Discord Plan</button>
+                <button id="clearRaidQueueBtn" type="button" class="btn btn-sm btn-danger">Clear</button>
               </div>
             </div>
 
@@ -321,21 +330,22 @@
 
             <!-- Quick Add Bar -->
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle);">
-              <select id="quickAddTargetSelect" class="select" style="flex: 2; min-width: 160px;"></select>
-              <input type="number" id="quickAddQtyInput" class="input" min="1" max="50" value="1" style="width: 70px;" />
-              <select id="quickAddModeSelect" class="select" style="flex: 2; min-width: 170px;">
+              <select id="quickAddTargetSelect" class="select" aria-label="Target structure" style="flex: 2; min-width: 160px;"></select>
+              <input type="number" id="quickAddQtyInput" class="input" aria-label="Quantity" min="1" max="50" value="1" style="width: 70px;" />
+              <select id="quickAddModeSelect" class="select" aria-label="Raid method mode" style="flex: 2; min-width: 170px;">
                 <option value="combo">Best Sulfur-Saver Combo</option>
                 <option value="explo_only">Explosive 5.56 Only (Silent)</option>
                 <option value="cheapest_single">Cheapest Single Boom / Fire</option>
                 <option value="fastest">Fastest Time (C4 / Rocket)</option>
                 <option value="t1">Tier 1 / Early Budget</option>
               </select>
-              <button id="quickAddRaidBtn" class="btn btn-sulfur">+ Add</button>
+              <button id="quickAddRaidBtn" type="button" class="btn btn-sulfur">+ Add</button>
             </div>
 
             <div id="raidQueueContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;"></div>
 
             <div id="raidTotalSummary"></div>
+            <div id="raidCraftChainBox" style="margin-top:12px;"></div>
             <div id="sulfurNodeBreakdown"></div>
           </div>
         </div>
@@ -355,14 +365,14 @@
         <div id="monumentKeycardsStrip" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:8px 12px; margin-bottom:10px; border-radius:6px; background:rgba(15,23,42,0.65); border:1px solid var(--border-subtle);"></div>
         <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 14px;" id="monumentFilterBar">
           <input id="monumentSearchInput" type="search" class="input" style="min-width: 190px; flex: 1 1 200px; max-width: 280px;" placeholder="🔍 Search monument, card, recycler, cheese..." />
-          <button class="filter-pill active" data-mfilter="all">All</button>
-          <button class="filter-pill" data-mfilter="ready_now">✅ Ready Now</button>
-          <button class="filter-pill" data-mfilter="get_green">Gives Green Card</button>
-          <button class="filter-pill" data-mfilter="get_blue">Gives Blue Card</button>
-          <button class="filter-pill" data-mfilter="get_red">Gives Red Card</button>
-          <button class="filter-pill" data-mfilter="tier3">Tier 3 / Elite</button>
-          <button class="filter-pill" data-mfilter="heavy_fuse">⚡ Heavy Fuse Grid</button>
-          <button class="filter-pill" data-mfilter="npc_cheese">🥷 NPC Cheese</button>
+          <button type="button" class="filter-pill active" data-mfilter="all">All</button>
+          <button type="button" class="filter-pill" data-mfilter="ready_now">✅ Ready Now</button>
+          <button type="button" class="filter-pill" data-mfilter="get_green">Gives Green Card</button>
+          <button type="button" class="filter-pill" data-mfilter="get_blue">Gives Blue Card</button>
+          <button type="button" class="filter-pill" data-mfilter="get_red">Gives Red Card</button>
+          <button type="button" class="filter-pill" data-mfilter="tier3">Tier 3 / Elite</button>
+          <button type="button" class="filter-pill" data-mfilter="heavy_fuse">⚡ Heavy Fuse Grid</button>
+          <button type="button" class="filter-pill" data-mfilter="npc_cheese">🥷 NPC Cheese</button>
         </div>
         <div class="grid-2" style="align-items: start;">
           <div id="monumentAtlasList" class="monument-list" style="max-height: 75vh; overflow-y: auto;"></div>
@@ -383,15 +393,25 @@
             <div class="panel-subtitle">Synced live across all connected squadmates — plays an audio alert at 60s remaining and upon completion</div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button id="openDiscordBotModalBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;" title="Configure Discord Bot DM, Channel ID & Webhook alerts when timers finish">🤖 Discord Alerts</button>
-            <button id="desktopNotifyBtn" class="btn btn-sm" title="Enable Desktop Notifications when timers hit 60s or finish">🔔 Desktop Notify: OFF</button>
-            <button id="testAudioAlarmBtn" class="btn btn-sm">🔊 Test Alarm Sound</button>
-            <button id="clearDoneTimersBtn" class="btn btn-sm" style="display:none;" title="Remove finished READY timers without stopping active countdowns">🧹 Clear Done</button>
-            <button id="clearAllTimersBtn" class="btn btn-sm">🗑️ Clear All Timers</button>
+            <button id="openDiscordBotModalBtn" type="button" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;" title="Configure Discord Bot DM, Channel ID & Webhook alerts when timers finish">🤖 Discord Alerts</button>
+            <button id="desktopNotifyBtn" type="button" class="btn btn-sm" title="Enable Desktop Notifications when timers hit 60s or finish">🔔 Desktop Notify: OFF</button>
+            <button id="testAudioAlarmBtn" type="button" class="btn btn-sm">🔊 Test Alarm Sound</button>
+            <button id="clearDoneTimersBtn" type="button" class="btn btn-sm" style="display:none;" title="Remove finished READY timers without stopping active countdowns">🧹 Clear Done</button>
+            <button id="clearAllTimersBtn" type="button" class="btn btn-sm">🗑️ Clear All Timers</button>
           </div>
         </div>
 
         <div id="activeTimersContainer" class="active-timers-grid"></div>
+        <div id="timerDespawnQuickBar" class="despawn-quick-bar">
+          <span class="despawn-quick-label">⚡ Combat &amp; Loot Despawn:</span>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="300" data-dlabel="🌿 Despawn T0 (Cloth/Wood)" data-dcolor="#22c55e">🌿 T0 (5m)</button>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="1200" data-dlabel="🔫 Despawn T1 (Tools/Revo)" data-dcolor="#3b82f6">🔫 T1 (20m)</button>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="2400" data-dlabel="🛡️ Despawn T2 (Kits/Guns)" data-dcolor="#a855f7">🛡️ T2 (40m)</button>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="3600" data-dlabel="💣 Despawn T3 (Boom/Sulfur)" data-dcolor="#ef4444">💣 T3 Boom (60m)</button>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="300" data-dlabel="🎒 Sleeping Bag Cooldown" data-dcolor="#eab308">🎒 Bag (5m)</button>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="120" data-dlabel="🛏️ Bed Cooldown" data-dcolor="#38bdf8">🛏️ Bed (2m)</button>
+          <button type="button" class="btn btn-sm timer-despawn-btn" data-dsec="1800" data-dlabel="🚫 Safe Zone Hostile" data-dcolor="#f97316">🚫 Hostile (30m)</button>
+        </div>
       </div>
 
       <div class="grid-2">
@@ -405,12 +425,12 @@
           </div>
           <div id="timerPresetFilterBar" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
             <input id="timerPresetSearch" type="search" class="input" style="min-width: 160px; flex: 1 1 170px;" placeholder="🔍 Filter event / monument timer..." />
-            <button class="filter-pill active" data-tfilter="essential">⚡ Essential</button>
-            <button class="filter-pill" data-tfilter="all">All</button>
-            <button class="filter-pill" data-tfilter="hacks">Crates &amp; Cargo</button>
-            <button class="filter-pill" data-tfilter="events">Bradley, Heli &amp; Rig</button>
-            <button class="filter-pill" data-tfilter="puzzles">Card Puzzles</button>
-            <button class="filter-pill" data-tfilter="world">Day/Night, Safe Zone &amp; Fuse</button>
+            <button type="button" class="filter-pill active" data-tfilter="essential">⚡ Essential</button>
+            <button type="button" class="filter-pill" data-tfilter="all">All</button>
+            <button type="button" class="filter-pill" data-tfilter="hacks">Crates &amp; Cargo</button>
+            <button type="button" class="filter-pill" data-tfilter="events">Bradley, Heli &amp; Rig</button>
+            <button type="button" class="filter-pill" data-tfilter="puzzles">Card Puzzles</button>
+            <button type="button" class="filter-pill" data-tfilter="world">Day/Night, Safe Zone &amp; Fuse</button>
           </div>
           <div id="timerPresetsGrid" class="target-grid"></div>
         </div>
@@ -452,7 +472,7 @@
               <button type="button" class="btn btn-sm timer-quick-dur" data-sec="3600">1h</button>
               <button type="button" class="btn btn-sm timer-quick-dur" data-sec="9600" title="Heavy Fuse Burnout (2h 40m)">⚡ 2h40m (Heavy Fuse)</button>
             </div>
-            <button id="startCustomTimerBtn" class="btn btn-primary" style="width: 100%; padding: 11px;">
+            <button id="startCustomTimerBtn" type="button" class="btn btn-primary" style="width: 100%; padding: 11px;">
               ⏱️ Start Shared Squad Timer
             </button>
           </div>
@@ -505,22 +525,24 @@
                 <textarea id="cloneGeneInput" rows="2" class="input" placeholder="Enter 6 genes or paste multiline list (#1 YGYWGG, GGYYXW...)" style="font-family: var(--font-mono); text-transform: uppercase; width: 255px; min-height: 40px; letter-spacing: 0.06em; resize: vertical;"></textarea>
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                   <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                    <button class="btn btn-sm gene-quick-btn" data-g="G" style="border-color:#22c55e; color:#4ade80;">+G</button>
-                    <button class="btn btn-sm gene-quick-btn" data-g="Y" style="border-color:#22c55e; color:#4ade80;">+Y</button>
-                    <button class="btn btn-sm gene-quick-btn" data-g="H" style="border-color:#22c55e; color:#4ade80;">+H</button>
-                    <button class="btn btn-sm gene-quick-btn" data-g="W" style="border-color:#ef4444; color:#f87171;">+W</button>
-                    <button class="btn btn-sm gene-quick-btn" data-g="X" style="border-color:#ef4444; color:#f87171;">+X</button>
-                    <button id="clearGeneInputBtn" class="btn btn-sm" title="Clear input">⌫</button>
+                    <button type="button" class="btn btn-sm gene-quick-btn" data-g="G" style="border-color:#22c55e; color:#4ade80;">+G</button>
+                    <button type="button" class="btn btn-sm gene-quick-btn" data-g="Y" style="border-color:#22c55e; color:#4ade80;">+Y</button>
+                    <button type="button" class="btn btn-sm gene-quick-btn" data-g="H" style="border-color:#22c55e; color:#4ade80;">+H</button>
+                    <button type="button" class="btn btn-sm gene-quick-btn" data-g="W" style="border-color:#ef4444; color:#f87171;">+W</button>
+                    <button type="button" class="btn btn-sm gene-quick-btn" data-g="X" style="border-color:#ef4444; color:#f87171;">+X</button>
+                    <button id="clearGeneInputBtn" type="button" class="btn btn-sm" title="Clear input" aria-label="Clear gene input">⌫</button>
                   </div>
                   <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button id="addCloneBtn" class="btn btn-primary btn-sm">+ Save Clones</button>
-                    <button id="liveScanToggleBtn" class="btn btn-sulfur btn-sm" title="Share your Rust game window to scan clones live as you click them">🎥 Live Scan Rust</button>
-                    <button id="toggleScannerBtn" class="btn btn-sm" title="Scan screenshot files from PC or paste with Ctrl+V">📷 Image / Ctrl+V</button>
-                    <button id="loadSampleClonesBtn" class="btn btn-sm">Load Example Batch</button>
+                    <button id="addCloneBtn" type="button" class="btn btn-primary btn-sm">+ Save Clones</button>
+                    <button id="liveScanToggleBtn" type="button" class="btn btn-sulfur btn-sm" title="Share your Rust game window to scan clones live as you click them">🎥 Live Scan Rust</button>
+                    <button id="toggleScannerBtn" type="button" class="btn btn-sm" title="Scan screenshot files from PC or paste with Ctrl+V">📷 Image / Ctrl+V</button>
+                    <button id="loadSampleClonesBtn" type="button" class="btn btn-sm">Load Example Batch</button>
                     <input id="scanCloneFileInput" type="file" accept="image/*" multiple style="display:none;" />
                   </div>
                 </div>
               </div>
+
+              <div id="cloneGeneLivePreview" class="gene-live-preview"></div>
 
               <!-- Live Game Window + Screenshot OCR Scanner Drawer (RustBreeder-style Scan) -->
               <div id="geneScannerPanel" class="scanner-panel" style="display:none;">
@@ -629,19 +651,19 @@
                 <label class="rb-filter-field">H <input id="filterCountH" type="number" min="0" max="6" placeholder="-" class="input rb-num-input" /></label>
                 <div style="display:flex; align-items:center; gap:4px;">
                   <span style="font-size:11px; color:var(--text-secondary);">Slots:</span>
-                  <input id="filterSlot1" maxlength="1" placeholder="1" class="input rb-slot-input" />
-                  <input id="filterSlot2" maxlength="1" placeholder="2" class="input rb-slot-input" />
-                  <input id="filterSlot3" maxlength="1" placeholder="3" class="input rb-slot-input" />
-                  <input id="filterSlot4" maxlength="1" placeholder="4" class="input rb-slot-input" />
-                  <input id="filterSlot5" maxlength="1" placeholder="5" class="input rb-slot-input" />
-                  <input id="filterSlot6" maxlength="1" placeholder="6" class="input rb-slot-input" />
+                  <input id="filterSlot1" maxlength="1" placeholder="1" aria-label="Gene slot 1" class="input rb-slot-input" />
+                  <input id="filterSlot2" maxlength="1" placeholder="2" aria-label="Gene slot 2" class="input rb-slot-input" />
+                  <input id="filterSlot3" maxlength="1" placeholder="3" aria-label="Gene slot 3" class="input rb-slot-input" />
+                  <input id="filterSlot4" maxlength="1" placeholder="4" aria-label="Gene slot 4" class="input rb-slot-input" />
+                  <input id="filterSlot5" maxlength="1" placeholder="5" aria-label="Gene slot 5" class="input rb-slot-input" />
+                  <input id="filterSlot6" maxlength="1" placeholder="6" aria-label="Gene slot 6" class="input rb-slot-input" />
                 </div>
-                <select id="filterMinChance" class="select" style="padding:3px 6px; font-size:11.5px;">
+                <select id="filterMinChance" class="select" aria-label="Minimum crossbreed chance" style="padding:3px 6px; font-size:11.5px;">
                   <option value="0">Any Odds</option>
                   <option value="0.5">50%+ Odds</option>
                   <option value="1">100% Guaranteed Only</option>
                 </select>
-                <button id="resetGeneFiltersBtn" class="btn btn-sm">Reset Filters</button>
+                <button id="resetGeneFiltersBtn" type="button" class="btn btn-sm">Reset Filters</button>
               </div>
             </div>
 
@@ -666,7 +688,7 @@
                 <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">PLANT FIBER / PLANT MATTER</label>
                 <input id="fertFiberInput" type="number" class="input" value="200" min="0" style="width: 150px;" />
               </div>
-              <button id="calcFertilizerBtn" class="btn btn-sulfur">Calculate Scrap Yield</button>
+              <button id="calcFertilizerBtn" type="button" class="btn btn-sulfur">Calculate Scrap Yield</button>
             </div>
             <div id="fertCalcResult" style="margin-top: 12px;"></div>
           </div>
@@ -681,8 +703,8 @@
                 <div class="panel-subtitle">Click "Solve Crossbreed" after adding 2+ clones of the same crop</div>
               </div>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button id="clearCropClonesBtn" class="btn btn-sm" title="Clear clones for selected crop">🗑️ Clear Crop</button>
-                <button id="runGeneticsSolverBtn" class="btn btn-primary btn-sm">⚡ Re-Solve Best Crossbreed</button>
+                <button id="clearCropClonesBtn" type="button" class="btn btn-sm" title="Clear clones for selected crop">🗑️ Clear Crop</button>
+                <button id="runGeneticsSolverBtn" type="button" class="btn btn-primary btn-sm">⚡ Re-Solve Best Crossbreed</button>
               </div>
             </div>
             <div id="savedClonesList"></div>
@@ -720,10 +742,18 @@
                 <div class="panel-title">♻️ Component Recycler Calculator (Monument 60% vs Safe Zone 40%)</div>
                 <div class="panel-subtitle">Click components to add them — compares Radtown Monument vs Outpost/Bandit recycler output</div>
               </div>
-              <button id="clearRecyclerBtn" class="btn btn-sm">Reset</button>
+              <button id="clearRecyclerBtn" type="button" class="btn btn-sm">Reset</button>
             </div>
 
+            <div id="recyclerQuickHauls" class="recycler-haul-bar">
+              <span class="recycler-haul-label">Quick Hauls:</span>
+              <button type="button" class="btn btn-sm rec-haul-btn" data-haul="road_barrel">🛣️ Road Barrel</button>
+              <button type="button" class="btn btn-sm rec-haul-btn" data-haul="sewer_green">🟢 Sewer Green</button>
+              <button type="button" class="btn btn-sm rec-haul-btn" data-haul="launch_elite">🚀 Launch / Elite</button>
+              <button type="button" class="btn btn-sm rec-haul-btn" data-haul="underwater_lab">🔬 Underwater Lab</button>
+            </div>
             <div id="recyclerTotalsComparison" style="margin-bottom: 16px;"></div>
+            <div id="recyclerWorkbenchGoalBox" style="margin-bottom:14px;"></div>
             <div id="recyclerComponentsGrid" class="target-grid"></div>
           </div>
 
@@ -742,7 +772,7 @@
                   <label style="display:block; font-size:11px; color:var(--text-secondary); margin-bottom:4px;">DIESEL BARRELS COUNT</label>
                   <input id="dieselCountInput" type="number" class="input" value="10" min="1" max="100" style="width: 130px;" />
                 </div>
-                <button id="startExcavatorTimerBtn" class="btn btn-primary">⏱️ Start Excavator Run Timer</button>
+                <button id="startExcavatorTimerBtn" type="button" class="btn btn-primary">⏱️ Start Excavator Run Timer</button>
               </div>
               <div id="dieselYieldResult"></div>
             </div>
@@ -946,8 +976,8 @@
         </div>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;">
-          <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: 280px;" placeholder="https://rustmaps.com/map/4250_1337420  or  4250_1337420" />
-          <button id="bfAnalyzeBtn" class="btn btn-primary" style="font-weight: 700;">🔍 Analyze Map &amp; Find Best Spots</button>
+          <input id="bfMapUrlInput" type="text" class="input" style="flex: 1; min-width: min(280px, 100%);" placeholder="https://rustmaps.com/map/4250_1337420  or  4250_1337420" />
+          <button id="bfAnalyzeBtn" type="button" class="btn btn-primary" style="font-weight: 700;">🔍 Analyze Map &amp; Find Best Spots</button>
           <button id="bfSyncServerBtn" type="button" class="btn btn-sm" style="display:none; border-color:#38bdf8; color:#bae6fd; background:rgba(56,189,248,0.14);">🛰️ Use Live Server Seed</button>
           <button id="openRustPlusPopupModalBtn" type="button" class="btn btn-sm btn-primary" style="background:#2563eb; border-color:#60a5fa;">🚀 Rust+ Connect</button>
         </div>
@@ -1038,23 +1068,23 @@
                 <input id="bfShowDeathsCb" type="checkbox" checked />
                 <span>💀 Deaths</span>
               </label>
-              <button id="bfExpandMapBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;">⤢ Full Width</button>
+              <button id="bfExpandMapBtn" type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;">⤢ Full Width</button>
             </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
             <div id="bfHeatmapPills" class="filter-pills" style="margin-bottom: 0;">
-              <button class="filter-pill active" data-hm="none">🗺️ Clean Map</button>
-              <button class="filter-pill" data-hm="Nodes">⛏️ Ore Nodes</button>
-              <button class="filter-pill" data-hm="Hemp">🌿 Hemp</button>
-              <button class="filter-pill" data-hm="Berries">🫐 Berries</button>
-              <button class="filter-pill" data-hm="Horses">🐎 Horses</button>
-              <button class="filter-pill" data-hm="PlayerSpawns">🏃 Spawn Beach</button>
+              <button type="button" class="filter-pill active" data-hm="none">🗺️ Clean Map</button>
+              <button type="button" class="filter-pill" data-hm="Nodes">⛏️ Ore Nodes</button>
+              <button type="button" class="filter-pill" data-hm="Hemp">🌿 Hemp</button>
+              <button type="button" class="filter-pill" data-hm="Berries">🫐 Berries</button>
+              <button type="button" class="filter-pill" data-hm="Horses">🐎 Horses</button>
+              <button type="button" class="filter-pill" data-hm="PlayerSpawns">🏃 Spawn Beach</button>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <button id="bfZoomOutBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom Out">➖</button>
-              <button id="bfZoomInBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom In">➕</button>
-              <button id="bfZoomFitBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
-              <button id="bfZoomResetBtn" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+              <button id="bfZoomOutBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom Out" aria-label="Zoom out">➖</button>
+              <button id="bfZoomInBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom In" aria-label="Zoom in">➕</button>
+              <button id="bfZoomFitBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
+              <button id="bfZoomResetBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
               <button id="shopMapCenterMeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
               <button id="bfMeasureModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#38bdf8; color:#bae6fd;" title="Click two points on the map to measure distance &amp; travel ETA">📏 Ruler</button>
               <button id="bfDropPinModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#f59e0b; color:#fde68a;" title="Click empty map spots (or Shift+Click anytime) to drop a Shared Squad Pin / Stash">📌 + Pin</button>
@@ -1065,14 +1095,14 @@
           <div id="shopLiveTeamStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
           <div id="shopLiveEventsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
           <div id="bfSharedPinsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;"></div>
-          <div style="position: relative; background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
+          <div class="bf-canvas-frame" style="position: relative; background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
             <canvas id="bfMapCanvas" width="900" height="900" style="width: 100%; height: auto; display: block; cursor: grab;"></canvas>
             <div id="bfMapTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 20; background: rgba(9, 14, 22, 0.94); border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 6px; padding: 8px 10px; text-align: left; font-size: 11.5px; color: #e2e8f0; box-shadow: 0 8px 24px rgba(0,0,0,0.55); max-width: 260px;"></div>
             <div id="bfMapHudReadout" style="display: none; position: absolute; bottom: 8px; left: 8px; pointer-events: none; z-index: 15; background: rgba(9, 14, 22, 0.85); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; color: #cbd5e1;"></div>
             <div id="bfPinEditorPopover" style="display: none; position: absolute; top: 12px; right: 12px; z-index: 30; width: 295px; max-width: calc(100% - 24px); background: rgba(11, 17, 28, 0.97); border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 12px; text-align: left; box-shadow: 0 12px 32px rgba(0,0,0,0.75);">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px;">
                 <strong id="bfPinEditorTitle" style="font-size:12px; color:#fde047; font-family:var(--font-mono);">📌 DROP SHARED SQUAD PIN</strong>
-                <button id="bfPinCancelBtn" type="button" class="btn btn-sm" style="padding:1px 6px;">✕</button>
+                <button id="bfPinCancelBtn" type="button" class="btn btn-sm" aria-label="Close pin editor" style="padding:1px 6px;">✕</button>
               </div>
               <div id="bfPinCatBar" style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:7px;">
                 <button type="button" class="filter-pill active" data-pcat="pin" style="padding:2px 6px; font-size:10.5px;">📍 Pin</button>
@@ -1086,7 +1116,7 @@
               </div>
               <div style="display:flex; gap:6px; margin-bottom:7px; align-items:center;">
                 <input id="bfPinLabelInput" type="text" class="input" style="flex:1; font-size:11.5px;" placeholder="Label (e.g. Stash 24 C4, 2x2 Sulf)" />
-                <input id="bfPinColorInput" type="color" value="#38bdf8" title="Custom pin color" style="width:30px; height:28px; padding:1px; border:1px solid var(--border-subtle); border-radius:4px; background:transparent; cursor:pointer;" />
+                <input id="bfPinColorInput" type="color" value="#38bdf8" title="Custom pin color" aria-label="Custom pin color" style="width:30px; height:28px; padding:1px; border:1px solid var(--border-subtle); border-radius:4px; background:transparent; cursor:pointer;" />
               </div>
               <div id="bfPinCoordsLabel" style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:7px;"></div>
               <div id="bfPinRaidPresetWrap" style="margin-bottom:8px; padding:6px 8px; border-radius:5px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);">
@@ -1101,7 +1131,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
                   <span id="bfPinRaidSummary" style="font-size:10.5px; color:#fecaca; font-family:var(--font-mono);">None tagged</span>
                   <div style="display:flex; gap:4px;">
-                    <button id="bfPinRaidClearBtn" type="button" class="btn btn-sm" style="padding:1px 5px; font-size:10px;">↺</button>
+                    <button id="bfPinRaidClearBtn" type="button" class="btn btn-sm" aria-label="Reset pin raid targets" style="padding:1px 5px; font-size:10px;">↺</button>
                     <button id="bfPinSendRaidBtn" type="button" class="btn btn-sm" style="padding:2px 6px; font-size:10px; border-color:#ef4444; color:#fca5a5;">💥 Queue Raid</button>
                   </div>
                 </div>
@@ -1109,8 +1139,8 @@
               <div style="display:flex; gap:5px; flex-wrap:wrap;">
                 <button id="bfPinSaveBtn" type="button" class="btn btn-sm btn-primary" style="flex:1;">💾 Save Pin</button>
                 <button id="bfPinMoveBtn" type="button" class="btn btn-sm" style="display:none; border-color:#38bdf8; color:#bae6fd;" title="Click new location on map to move this pin">🎯 Move</button>
-                <button id="bfPinFlyBtn" type="button" class="btn btn-sm" style="display:none;" title="Fly map camera to this pin">⌖</button>
-                <button id="bfPinDeleteBtn" type="button" class="btn btn-sm" style="display:none; border-color:#ef4444; color:#fca5a5;">🗑️</button>
+                <button id="bfPinFlyBtn" type="button" class="btn btn-sm" style="display:none;" title="Fly map camera to this pin" aria-label="Fly to pin">⌖</button>
+                <button id="bfPinDeleteBtn" type="button" class="btn btn-sm" aria-label="Delete pin" style="display:none; border-color:#ef4444; color:#fca5a5;">🗑️</button>
               </div>
             </div>
           </div>
@@ -1143,10 +1173,10 @@
         <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips | Rust+) -->
         <div class="panel">
           <div class="bf-subtabs">
-            <button class="bf-subtab-btn active" data-bf-sub="spots">🏆 Build Spots</button>
-            <button class="bf-subtab-btn" data-bf-sub="farming">⛏️ Farming <span id="bfFarmCountBadge" style="opacity:0.75;"></span></button>
-            <button class="bf-subtab-btn" data-bf-sub="route">⚡ Route &amp; Tips</button>
-            <button class="bf-subtab-btn" data-bf-sub="rustplus">📡 Rust+</button>
+            <button type="button" class="bf-subtab-btn active" data-bf-sub="spots">🏆 Build Spots</button>
+            <button type="button" class="bf-subtab-btn" data-bf-sub="farming">⛏️ Farming <span id="bfFarmCountBadge" style="opacity:0.75;"></span></button>
+            <button type="button" class="bf-subtab-btn" data-bf-sub="route">⚡ Route &amp; Tips</button>
+            <button type="button" class="bf-subtab-btn" data-bf-sub="rustplus">📡 Rust+</button>
           </div>
 
           <div id="bfSubSpots" class="bf-subpanel active">
@@ -1200,7 +1230,7 @@
                 </select>
                 <button id="rpShopPollNowBtn" type="button" class="btn btn-primary btn-sm">🔄 Sync Now</button>
                 <button id="rpSyncCloudBtn" type="button" class="btn btn-sm" style="border-color:#38bdf8; color:#bae6fd;">📡 Pairings</button>
-                <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm" title="Clear live Rust+ telemetry">🗑️</button>
+                <button id="rpShopClearLiveBtn" type="button" class="btn btn-sm" title="Clear live Rust+ telemetry" aria-label="Clear live Rust+ telemetry">🗑️</button>
               </div>
 
               <div style="display:flex; flex-direction:column; gap:4px;">
@@ -1325,11 +1355,11 @@
   <!-- ====================================================================
        MODAL: SQUAD SETTINGS & PIN
        ==================================================================== -->
-  <div id="settingsModal" class="modal-backdrop">
+  <div id="settingsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Squad Sync and PIN Settings">
     <div class="modal-card">
       <div class="panel-header">
         <div class="panel-title">⚙️ Squad Sync &amp; PIN Settings</div>
-        <button id="closeSettingsModalBtn" class="btn btn-sm">✕</button>
+        <button id="closeSettingsModalBtn" type="button" class="btn btn-sm" aria-label="Close settings modal">✕</button>
       </div>
       <div style="display: flex; flex-direction: column; gap: 12px;">
         <div>
@@ -1371,17 +1401,17 @@
           <div id="discordTestStatusMsg" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); min-height: 14px;"></div>
         </div>
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
-          <button id="testDiscordWebhookBtn" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Test Discord Ping</button>
-          <button id="saveSettingsBtn" class="btn btn-primary">💾 Save & Sync with Squad</button>
+          <button id="testDiscordWebhookBtn" type="button" class="btn btn-sm" style="border-color:#5865F2; color:#a5b4fc;">📣 Test Discord Ping</button>
+          <button id="saveSettingsBtn" type="button" class="btn btn-primary">💾 Save & Sync with Squad</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="quickJumpModal" class="modal-backdrop">
+  <div id="quickJumpModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Quick jump command palette">
     <div class="modal-card" style="max-width: 560px; padding: 14px;">
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-        <input id="quickJumpInput" type="search" class="input" style="flex:1; font-size:14px;" placeholder="🔍 Jump to anything (Oil Rig, Kevlar, Uzi, Auto-Smelt, Decay, Rust+, Turret...)" />
+        <input id="quickJumpInput" type="search" class="input" aria-label="Quick jump search" style="flex:1; font-size:14px;" placeholder="🔍 Jump to anything (Oil Rig, Kevlar, Uzi, Auto-Smelt, Decay, Rust+, Turret...)" />
         <button id="closeQuickJumpBtn" type="button" class="btn btn-sm">Esc</button>
       </div>
       <div id="quickJumpResults" style="display:flex; flex-direction:column; gap:5px; max-height:340px; overflow-y:auto;"></div>

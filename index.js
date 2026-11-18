@@ -122,48 +122,119 @@ const DEFAULT_STATE = {
   updatedAt: Date.now()
 };
 
-function loadState() {
-  try {
-    if (fs.existsSync(STATE_FILE)) {
-      const raw = fs.readFileSync(STATE_FILE, 'utf8');
-      // Drop legacy Rust+ / live-map data (incl. any saved auth tokens) from older versions
-      const { rustPlus, markers, mapConfig, ...parsed } = JSON.parse(raw);
-      const state = {
-        ...DEFAULT_STATE,
-        ...parsed,
-        discordConfig: { ...DEFAULT_STATE.discordConfig, ...(parsed.discordConfig || {}) },
-        squadKeycards: { ...DEFAULT_STATE.squadKeycards, ...(parsed.squadKeycards || {}) },
-        rustPlusShopConfig: {
-          ...DEFAULT_STATE.rustPlusShopConfig,
-          ...(parsed.rustPlusShopConfig || {}),
-          smartAutomation: {
-            ...DEFAULT_STATE.rustPlusShopConfig.smartAutomation,
-            ...(parsed.rustPlusShopConfig?.smartAutomation || {})
-          }
-        },
-        rustPlusTelemetry: { ...DEFAULT_STATE.rustPlusTelemetry, ...(parsed.rustPlusTelemetry || {}) }
-      };
-      if (rustPlus || markers || mapConfig) saveState(state);
-      return state;
+const STATE_BACKUP_FILE = `${STATE_FILE}.bak`;
+const STATE_TMP_FILE = `${STATE_FILE}.tmp`;
+
+function safeJsonParse(raw) {
+  // Strip prototype-polluting keys from untrusted JSON payloads and persisted files
+  return JSON.parse(raw, (key, value) => {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return undefined;
     }
-  } catch (err) {
-    console.error('[State] Failed to read squad-state.json, using default:', err.message);
+    return value;
+  });
+}
+
+function hydrateStateFromParsed(rawObj) {
+  const parsedObj = rawObj && typeof rawObj === 'object' && !Array.isArray(rawObj) ? rawObj : {};
+  // Drop legacy Rust+ / live-map data (incl. any saved auth tokens) from older versions
+  const { rustPlus, markers, mapConfig, ...parsed } = parsedObj;
+  const state = {
+    ...DEFAULT_STATE,
+    ...parsed,
+    activeTimers: Array.isArray(parsed.activeTimers) ? parsed.activeTimers : [...DEFAULT_STATE.activeTimers],
+    raidQueue: Array.isArray(parsed.raidQueue) ? parsed.raidQueue : [...DEFAULT_STATE.raidQueue],
+    raidStash: { ...DEFAULT_STATE.raidStash, ...(parsed.raidStash && typeof parsed.raidStash === 'object' ? parsed.raidStash : {}) },
+    savedClones: Array.isArray(parsed.savedClones) ? parsed.savedClones : [...DEFAULT_STATE.savedClones],
+    battlemetrics: { ...DEFAULT_STATE.battlemetrics, ...(parsed.battlemetrics && typeof parsed.battlemetrics === 'object' ? parsed.battlemetrics : {}) },
+    discordConfig: { ...DEFAULT_STATE.discordConfig, ...(parsed.discordConfig && typeof parsed.discordConfig === 'object' ? parsed.discordConfig : {}) },
+    squadPins: Array.isArray(parsed.squadPins) ? parsed.squadPins : [],
+    conveyorFilters: Array.isArray(parsed.conveyorFilters) ? parsed.conveyorFilters : [],
+    squadKeycards: { ...DEFAULT_STATE.squadKeycards, ...(parsed.squadKeycards && typeof parsed.squadKeycards === 'object' ? parsed.squadKeycards : {}) },
+    rustPlusShopConfig: {
+      ...DEFAULT_STATE.rustPlusShopConfig,
+      ...(parsed.rustPlusShopConfig && typeof parsed.rustPlusShopConfig === 'object' ? parsed.rustPlusShopConfig : {}),
+      smartAutomation: {
+        ...DEFAULT_STATE.rustPlusShopConfig.smartAutomation,
+        ...(parsed.rustPlusShopConfig?.smartAutomation && typeof parsed.rustPlusShopConfig.smartAutomation === 'object'
+          ? parsed.rustPlusShopConfig.smartAutomation
+          : {})
+      }
+    },
+    rustPlusTelemetry: {
+      ...DEFAULT_STATE.rustPlusTelemetry,
+      ...(parsed.rustPlusTelemetry && typeof parsed.rustPlusTelemetry === 'object' ? parsed.rustPlusTelemetry : {})
+    }
+  };
+  return { state, hadLegacy: Boolean(rustPlus || markers || mapConfig) };
+}
+
+function loadState() {
+  if (fs.existsSync(STATE_FILE)) {
+    try {
+      const raw = fs.readFileSync(STATE_FILE, 'utf8');
+      const { state, hadLegacy } = hydrateStateFromParsed(safeJsonParse(raw));
+      if (hadLegacy) saveState(state);
+      return state;
+    } catch (err) {
+      console.error('[State] Failed to read squad-state.json:', err.message);
+      // Preserve corrupt file for diagnostics before attempting backup recovery
+      try {
+        const corruptPath = path.join(DATA_DIR, `squad-state.corrupt-${Date.now()}.json`);
+        fs.copyFileSync(STATE_FILE, corruptPath);
+      } catch (_) {}
+    }
   }
-  saveState(DEFAULT_STATE);
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+  if (fs.existsSync(STATE_BACKUP_FILE)) {
+    try {
+      const bakRaw = fs.readFileSync(STATE_BACKUP_FILE, 'utf8');
+      const { state } = hydrateStateFromParsed(safeJsonParse(bakRaw));
+      console.warn('[State] Recovered squad state from backup:', STATE_BACKUP_FILE);
+      saveState(state);
+      return state;
+    } catch (bakErr) {
+      console.error('[State] Failed to recover backup squad-state.json.bak:', bakErr.message);
+    }
+  }
+
+  const fresh = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  saveState(fresh);
+  return fresh;
 }
 
 function saveState(state) {
   try {
     state.updatedAt = Date.now();
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+    const serialized = JSON.stringify(state, null, 2);
+    // Keep a rolling backup of the last known good state before atomic replacement
+    if (fs.existsSync(STATE_FILE)) {
+      try { fs.copyFileSync(STATE_FILE, STATE_BACKUP_FILE); } catch (_) {}
+    }
+    fs.writeFileSync(STATE_TMP_FILE, serialized, 'utf8');
+    fs.renameSync(STATE_TMP_FILE, STATE_FILE);
   } catch (err) {
+    try { if (fs.existsSync(STATE_TMP_FILE)) fs.unlinkSync(STATE_TMP_FILE); } catch (_) {}
     console.error('[State] Failed to save squad-state.json:', err.message);
   }
 }
 
 let squadState = loadState();
 const sseClients = new Set();
+
+function writeSseFrame(res, frame) {
+  if (!res || res.destroyed || res.writableEnded || res.writableLength > 512 * 1024) {
+    sseClients.delete(res);
+    try { if (res && !res.destroyed) res.destroy(); } catch (_) {}
+    return;
+  }
+  try {
+    res.write(frame);
+  } catch (_) {
+    sseClients.delete(res);
+    try { if (!res.destroyed) res.destroy(); } catch (_) {}
+  }
+}
 
 function broadcastState(eventType = 'state_update', extra = {}) {
   const payload = JSON.stringify({
@@ -172,12 +243,56 @@ function broadcastState(eventType = 'state_update', extra = {}) {
     ...extra,
     timestamp: Date.now()
   });
+  const frame = `data: ${payload}\n\n`;
   for (const res of sseClients) {
-    try {
-      res.write(`data: ${payload}\n\n`);
-    } catch (_) {
-      sseClients.delete(res);
+    writeSseFrame(res, frame);
+  }
+}
+
+function isAllowedHost(hostname, allowedRootDomains) {
+  const h = String(hostname || '').toLowerCase();
+  return allowedRootDomains.some((dom) => h === dom || h.endsWith(`.${dom}`));
+}
+
+function assertSafeHttpsUrl(urlStr, allowedRootDomains) {
+  const u = new URL(urlStr);
+  if (u.protocol !== 'https:' || u.username || u.password || (u.port && u.port !== '443')) {
+    throw new Error(`Blocked unsafe URL protocol/port/credentials for ${u.hostname}`);
+  }
+  if (!isAllowedHost(u.hostname, allowedRootDomains)) {
+    throw new Error(`Host "${u.hostname}" is not in the allowlist`);
+  }
+  return u;
+}
+
+function isValidDiscordWebhookUrl(urlStr) {
+  try {
+    const u = assertSafeHttpsUrl(String(urlStr || '').trim(), ['discord.com', 'discordapp.com']);
+    return u.pathname.startsWith('/api/webhooks/');
+  } catch (_) {
+    return false;
+  }
+}
+
+function addBoundedSetEntry(setObj, key, maxSize = 1000) {
+  setObj.add(key);
+  if (setObj.size > maxSize) {
+    const oldest = setObj.values().next().value;
+    if (oldest !== undefined) setObj.delete(oldest);
+  }
+}
+
+function pruneMapCache(mapObj, maxSize = 200, ttlMs = 0) {
+  const now = Date.now();
+  if (ttlMs > 0) {
+    for (const [k, v] of mapObj) {
+      if (now - v.time >= ttlMs) mapObj.delete(k);
     }
+  }
+  while (mapObj.size > maxSize) {
+    const oldestKey = mapObj.keys().next().value;
+    if (oldestKey === undefined) break;
+    mapObj.delete(oldestKey);
   }
 }
 
@@ -189,9 +304,42 @@ const BM_CACHE_TTL = 60 * 1000;
 const rustmapsAnalyzeCache = new Map();
 const RUSTMAPS_CACHE_TTL_MS = 6 * 3600 * 1000;
 
+function extractBearerToken(authHeader) {
+  const m = String(authHeader || '').match(/^Bearer\s+(.+)$/i);
+  if (!m) return '';
+  return m[1].replace(/[\r\n]/g, '').trim();
+}
+
+function sanitizeSecretInError(msg, secret) {
+  const text = String(msg || 'Request failed');
+  return secret && text.includes(secret) ? text.replaceAll(secret, '[REDACTED]') : text;
+}
+
 function fetchJsonHttps(urlStr, token = '') {
   return new Promise((resolve, reject) => {
-    const cached = bmCache.get(urlStr);
+    try {
+      const parsed = new URL(urlStr);
+      if (
+        parsed.protocol !== 'https:' ||
+        parsed.hostname !== 'api.battlemetrics.com' ||
+        (parsed.port && parsed.port !== '443') ||
+        parsed.username ||
+        parsed.password
+      ) {
+        return reject(new Error('Blocked non-BattleMetrics upstream URL'));
+      }
+    } catch (_) {
+      return reject(new Error('Invalid BattleMetrics URL'));
+    }
+
+    const cleanToken = String(token || '').replace(/[\r\n]/g, '').trim();
+    const effectiveToken = cleanToken || BM_TOKEN;
+    const tokenScope = cleanToken
+      ? crypto.createHash('sha256').update(cleanToken).digest('hex').slice(0, 12)
+      : 'default';
+    const cacheKey = `${urlStr}::${tokenScope}`;
+
+    const cached = bmCache.get(cacheKey);
     if (cached && Date.now() - cached.time < BM_CACHE_TTL) {
       return resolve(cached.data);
     }
@@ -200,29 +348,47 @@ function fetchJsonHttps(urlStr, token = '') {
       'Accept': 'application/json',
       'User-Agent': 'RustTacticalCompanion/2.1'
     };
-    if (token || BM_TOKEN) {
-      headers['Authorization'] = `Bearer ${token || BM_TOKEN}`;
+    if (effectiveToken) {
+      headers['Authorization'] = `Bearer ${effectiveToken}`;
     }
 
     const req = https.get(urlStr, { headers, timeout: 8000 }, (res) => {
-      let body = '';
-      res.on('data', (chunk) => (body += chunk));
+      const chunks = [];
+      let totalBytes = 0;
+      let aborted = false;
+      res.on('data', (chunk) => {
+        if (aborted) return;
+        totalBytes += chunk.length;
+        if (totalBytes > 4 * 1024 * 1024) {
+          aborted = true;
+          req.destroy();
+          return reject(new Error('BattleMetrics response too large'));
+        }
+        chunks.push(chunk);
+      });
+      res.on('error', (err) => {
+        if (!aborted) reject(new Error(sanitizeSecretInError(err.message, effectiveToken)));
+      });
       res.on('end', () => {
+        if (aborted) return;
+        const body = Buffer.concat(chunks).toString('utf8');
         try {
-          const json = JSON.parse(body);
+          const json = safeJsonParse(body);
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            bmCache.set(urlStr, { time: Date.now(), data: json });
+            pruneMapCache(bmCache, 199, BM_CACHE_TTL);
+            bmCache.set(cacheKey, { time: Date.now(), data: json });
             resolve(json);
           } else {
-            reject(new Error(json?.errors?.[0]?.detail || `BattleMetrics HTTP ${res.statusCode}`));
+            const detail = json?.errors?.[0]?.detail || `BattleMetrics HTTP ${res.statusCode}`;
+            reject(new Error(sanitizeSecretInError(detail, effectiveToken)));
           }
         } catch (err) {
-          reject(new Error(`Invalid JSON from BattleMetrics: ${err.message}`));
+          reject(new Error(`Invalid JSON from BattleMetrics: ${sanitizeSecretInError(err.message, effectiveToken)}`));
         }
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => reject(new Error(sanitizeSecretInError(err.message, effectiveToken))));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('BattleMetrics request timed out'));
@@ -232,27 +398,48 @@ function fetchJsonHttps(urlStr, token = '') {
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks = [];
+    let totalBytes = 0;
+    let settled = false;
+    const fail = (message, statusCode) => {
+      if (settled) return;
+      settled = true;
+      const err = new Error(message);
+      err.statusCode = statusCode;
+      reject(err);
+    };
+
     req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > 2 * 1024 * 1024) {
+      if (settled) return;
+      totalBytes += chunk.length;
+      if (totalBytes > 2 * 1024 * 1024) {
         req.destroy();
-        reject(new Error('Payload too large'));
+        fail('Payload too large', 413);
+        return;
       }
+      chunks.push(chunk);
     });
     req.on('end', () => {
-      if (!body) return resolve({});
+      if (settled) return;
+      const body = Buffer.concat(chunks).toString('utf8');
+      if (!body) {
+        settled = true;
+        return resolve({});
+      }
       try {
-        resolve(JSON.parse(body));
+        const parsed = safeJsonParse(body);
+        settled = true;
+        resolve(parsed);
       } catch (e) {
-        reject(new Error('Invalid JSON payload'));
+        fail('Invalid JSON payload', 400);
       }
     });
-    req.on('error', reject);
+    req.on('error', (err) => fail(err.message || 'Request body error', 400));
   });
 }
 
 function sendJson(res, statusCode, data) {
+  if (res.headersSent || res.writableEnded || res.destroyed) return;
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
@@ -264,8 +451,11 @@ function sendJson(res, statusCode, data) {
 
 function checkPin(req, res) {
   if (!SQUAD_PIN) return true;
-  const provided = req.headers['x-squad-pin'] || '';
-  if (provided !== SQUAD_PIN) {
+  const provided = String(req.headers['x-squad-pin'] || '');
+  // Constant-time comparison via fixed-length SHA-256 digests prevents PIN length/timing leaks
+  const providedHash = crypto.createHash('sha256').update(provided).digest();
+  const expectedHash = crypto.createHash('sha256').update(SQUAD_PIN).digest();
+  if (!crypto.timingSafeEqual(providedHash, expectedHash)) {
     sendJson(res, 403, { error: 'Invalid Squad PIN. Set your Squad PIN in the top bar.' });
     return false;
   }
@@ -289,7 +479,7 @@ function resolveDiscordSettings(overrides = {}) {
 
 function discordApiRequest(method, apiPath, botToken, bodyObj) {
   return new Promise((resolve, reject) => {
-    const cleanToken = String(botToken || '').replace(/^Bot\s+/i, '').trim();
+    const cleanToken = String(botToken || '').replace(/^Bot\s+/i, '').replace(/[\r\n]/g, '').trim();
     if (!cleanToken) return reject(new Error('Missing Discord Bot Token'));
     const payload = bodyObj ? JSON.stringify(bodyObj) : '';
     const headers = {
@@ -313,6 +503,7 @@ function discordApiRequest(method, apiPath, botToken, bodyObj) {
       (res) => {
         let raw = '';
         res.on('data', (c) => (raw += c));
+        res.on('error', reject);
         res.on('end', () => {
           let parsed = null;
           try {
@@ -337,10 +528,10 @@ function discordApiRequest(method, apiPath, botToken, bodyObj) {
 
 function postWebhookEmbed(webhookUrl, payloadObj) {
   return new Promise((resolve, reject) => {
-    if (!webhookUrl || !webhookUrl.startsWith('https://discord')) {
+    if (!isValidDiscordWebhookUrl(webhookUrl)) {
       return reject(new Error('Invalid Discord Webhook URL'));
     }
-    const parsed = new URL(webhookUrl);
+    const parsed = new URL(String(webhookUrl).trim());
     const payload = JSON.stringify(payloadObj);
     const req = https.request(
       {
@@ -355,6 +546,7 @@ function postWebhookEmbed(webhookUrl, payloadObj) {
       },
       (res) => {
         res.on('data', () => {});
+        res.on('error', reject);
         res.on('end', () => {
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(true);
           else reject(new Error(`Discord Webhook HTTP ${res.statusCode}`));
@@ -403,7 +595,7 @@ async function sendDiscordNotification(opts = {}) {
   const sentVia = [];
   let lastErr = null;
 
-  if (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) {
+  if (isValidDiscordWebhookUrl(settings.webhookUrl)) {
     try {
       await postWebhookEmbed(settings.webhookUrl, webhookPayload);
       sentVia.push('Webhook');
@@ -450,7 +642,12 @@ async function sendDiscordNotification(opts = {}) {
 function fetchTextHttps(urlStr, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     if (redirectCount > 5) return reject(new Error('Too many redirects'));
-    const parsed = new URL(urlStr);
+    let parsed;
+    try {
+      parsed = assertSafeHttpsUrl(urlStr, ['rustmaps.com']);
+    } catch (err) {
+      return reject(err);
+    }
     const req = https.request(
       {
         hostname: parsed.hostname,
@@ -464,13 +661,34 @@ function fetchTextHttps(urlStr, redirectCount = 0) {
       },
       (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          const nextUrl = new URL(res.headers.location, urlStr).toString();
+          let nextUrl;
+          try {
+            nextUrl = new URL(res.headers.location, urlStr).toString();
+            assertSafeHttpsUrl(nextUrl, ['rustmaps.com']);
+          } catch (err) {
+            res.resume();
+            return reject(err);
+          }
           res.resume();
           return fetchTextHttps(nextUrl, redirectCount + 1).then(resolve, reject);
         }
-        let body = '';
-        res.on('data', (c) => (body += c));
+        const chunks = [];
+        let totalBytes = 0;
+        let aborted = false;
+        res.on('data', (c) => {
+          if (aborted) return;
+          totalBytes += c.length;
+          if (totalBytes > 10 * 1024 * 1024) {
+            aborted = true;
+            req.destroy();
+            return reject(new Error('Upstream response too large'));
+          }
+          chunks.push(c);
+        });
+        res.on('error', (err) => { if (!aborted) reject(err); });
         res.on('end', () => {
+          if (aborted) return;
+          const body = Buffer.concat(chunks).toString('utf8');
           if (res.statusCode >= 200 && res.statusCode < 300) resolve(body);
           else reject(new Error(`HTTP ${res.statusCode} fetching ${parsed.hostname}`));
         });
@@ -687,7 +905,8 @@ function readVarint(buf, offset) {
   let res = 0n;
   let shift = 0n;
   let pos = offset;
-  while (pos < buf.length) {
+  // Cap at 10 varint bytes (64-bit) so malformed payloads cannot spin or shift unboundedly
+  while (pos < buf.length && shift <= 63n) {
     const b = buf[pos++];
     res |= BigInt(b & 0x7f) << shift;
     if ((b & 0x80) === 0) break;
@@ -709,12 +928,15 @@ function skipWireField(buf, offset, wireType) {
 
 function encodeRustPlusRequest(seq, playerId, playerToken, fieldNum, innerBytesOrObj = []) {
   const out = [];
+  const cleanPlayerId = String(playerId || '0').replace(/[^\d]/g, '') || '0';
+  const parsedToken = parseInt(String(playerToken || '0'), 10);
+  const safeToken = Number.isFinite(parsedToken) ? parsedToken : 0;
   writeVarint(out, (1 << 3) | 0);
   writeVarint(out, seq);
   writeVarint(out, (2 << 3) | 0);
-  writeVarint(out, BigInt(String(playerId || '0')));
+  writeVarint(out, BigInt(cleanPlayerId));
   writeVarint(out, (3 << 3) | 0);
-  writeVarint(out, BigInt(parseInt(String(playerToken || '0'), 10)));
+  writeVarint(out, BigInt(safeToken));
   if (innerBytesOrObj && !Array.isArray(innerBytesOrObj) && innerBytesOrObj.entityId != null && innerBytesOrObj.entityId !== '') {
     writeVarint(out, (4 << 3) | 0);
     writeVarint(out, BigInt(String(innerBytesOrObj.entityId).replace(/[^\d]/g, '') || '0'));
@@ -1253,13 +1475,17 @@ function sendRawWsBinary(socket, buf) {
 function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
   return new Promise((resolve, reject) => {
     const ip = String(cfg.ip || '').trim();
-    const port = parseInt(String(cfg.port || '28082'), 10) || 28082;
+    const parsedPort = parseInt(String(cfg.port || '28082'), 10);
+    const port = parsedPort >= 1 && parsedPort <= 65535 ? parsedPort : 28082;
     const serverId = String(cfg.serverId || '').trim();
     const authToken = String(cfg.authToken || '').trim();
     const playerId = String(cfg.playerId || '').trim();
     const playerToken = String(cfg.playerToken || '').trim();
     if ((!ip && !serverId) || !playerId || !playerToken) {
       return reject(new Error('Pair a server or enter Server IP / ID, SteamID64, and PlayerToken first.'));
+    }
+    if (ip && !/^([a-zA-Z0-9.-]{1,253}|\[[0-9a-fA-F:]+\])$/.test(ip)) {
+      return reject(new Error('Invalid Rust+ Server IP / hostname format.'));
     }
 
     let reqOpts;
@@ -1297,7 +1523,7 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
       reqOpts = {
         hostname: 'companion-rust.facepunch.com',
         port: 443,
-        path: `/game/${ip}/${port}`,
+        path: `/game/${encodeURIComponent(ip)}/${port}`,
         method: 'GET',
         headers: {
           Connection: 'Upgrade',
@@ -1375,6 +1601,10 @@ function withRustPlusSocket(cfg, mode, handlers, timeoutMs = 8500) {
             if (recvBuf.length < 10) return;
             payloadLen = Number(recvBuf.readBigUInt64BE(2));
             hdrLen = 10;
+          }
+          if (!Number.isFinite(payloadLen) || payloadLen < 0 || payloadLen > 32 * 1024 * 1024) {
+            socket.destroy();
+            return;
           }
           const maskLen = masked ? 4 : 0;
           if (recvBuf.length < hdrLen + maskLen + payloadLen) return;
@@ -2044,7 +2274,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     liveEvents.push(evt);
     const evtAlertKey = `${serverKey}:${mk.type}:${mk.id}`;
     if ([2, 5, 6, 8].includes(mk.type) && !sentWorldEventAlerts.has(evtAlertKey)) {
-      sentWorldEventAlerts.add(evtAlertKey);
+      addBoundedSetEntry(sentWorldEventAlerts, evtAlertKey);
       newEvents.push(evt);
     }
   }
@@ -2172,7 +2402,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     if (mappedType === 'alarm' && nextActive && !dev.active) {
       const alarmKey = `${serverKey}:alarm:${eid}:${Math.floor(nowTs / 30000)}`;
       if (!sentSmartAlarmAlerts.has(alarmKey)) {
-        sentSmartAlarmAlerts.add(alarmKey);
+        addBoundedSetEntry(sentSmartAlarmAlerts, alarmKey);
         triggeredAlarms.push({ entityId: eid, name: dev.name || `Alarm #${eid}` });
       }
     }
@@ -2182,7 +2412,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
       if (remSec > 0 && remSec < 21600) {
         const ukKey = `${serverKey}:upkeep:${eid}:${Math.floor(protectionExpiry / 3600)}`;
         if (!sentLowUpkeepAlerts.has(ukKey)) {
-          sentLowUpkeepAlerts.add(ukKey);
+          addBoundedSetEntry(sentLowUpkeepAlerts, ukKey);
           lowUpkeepDevices.push({ entityId: eid, name: dev.name || `TC #${eid}`, remHours: (remSec / 3600).toFixed(1) });
         }
       }
@@ -2257,7 +2487,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
 
   const settings = resolveDiscordSettings();
   const hasTarget = Boolean(
-    (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
+    isValidDiscordWebhookUrl(settings.webhookUrl) ||
       (settings.botToken && (settings.channelId || settings.dmUserId))
   );
   if (hasTarget) {
@@ -2338,8 +2568,11 @@ let rustPlusCloudSyncInterval = null;
 function postJsonHttps(urlStr, bodyObj, headers = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'https:') {
+      return reject(new Error('Only HTTPS endpoints are permitted'));
+    }
     const payload = JSON.stringify(bodyObj || {});
-    const isFacepunch = parsed.hostname.endsWith('facepunch.com');
+    const isFacepunch = isAllowedHost(parsed.hostname, ['facepunch.com']);
     const req = https.request(
       {
         hostname: parsed.hostname,
@@ -2361,9 +2594,23 @@ function postJsonHttps(urlStr, bodyObj, headers = {}) {
         timeout: 12000
       },
       (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
+        const chunks = [];
+        let totalBytes = 0;
+        let aborted = false;
+        res.on('data', (c) => {
+          if (aborted) return;
+          totalBytes += c.length;
+          if (totalBytes > 2 * 1024 * 1024) {
+            aborted = true;
+            req.destroy();
+            return reject(new Error('Upstream JSON response too large'));
+          }
+          chunks.push(c);
+        });
+        res.on('error', (err) => { if (!aborted) reject(err); });
         res.on('end', () => {
+          if (aborted) return;
+          const data = Buffer.concat(chunks).toString('utf8');
           try {
             const parsedJson = data ? JSON.parse(data) : {};
             if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsedJson);
@@ -2555,6 +2802,7 @@ async function registerFacepunchWebPush(authToken) {
             (res) => {
               let data = '';
               res.on('data', (c) => (data += c));
+              res.on('error', reject);
               res.on('end', () => {
                 if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
                 else reject(new Error(`C2DM HTTP ${res.statusCode}`));
@@ -2562,6 +2810,9 @@ async function registerFacepunchWebPush(authToken) {
             }
           );
           req.on('error', reject);
+          req.on('timeout', () => {
+            req.destroy(new Error('C2DM request timed out'));
+          });
           req.write(c2dmPayload);
           req.end();
         });
@@ -2954,26 +3205,45 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
 
-    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let parsedUrl;
+    try {
+      // Fixed base origin prevents malformed/spoofed Host headers and protocol-relative //host URLs
+      parsedUrl = new URL(req.url || '/', 'http://localhost');
+    } catch (_) {
+      return sendJson(res, 400, { error: 'Invalid request URL' });
+    }
+    if (parsedUrl.origin !== 'http://localhost') {
+      return sendJson(res, 400, { error: 'Invalid request URL' });
+    }
     const pathname = parsedUrl.pathname;
 
     // 1. SSE Live Stream
     if (pathname === '/api/events' && req.method === 'GET') {
+      if (req.socket && typeof req.socket.setTimeout === 'function') {
+        req.socket.setTimeout(0);
+      }
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
         'Access-Control-Allow-Origin': '*'
       });
-      res.write(
+      sseClients.add(res);
+      const cleanupSse = () => {
+        sseClients.delete(res);
+      };
+      req.on('close', cleanupSse);
+      res.on('close', cleanupSse);
+      res.on('error', cleanupSse);
+      writeSseFrame(
+        res,
         `data: ${JSON.stringify({
           type: 'connected',
           state: squadState,
           pinRequired: Boolean(SQUAD_PIN)
         })}\n\n`
       );
-      sseClients.add(res);
-      req.on('close', () => sseClients.delete(res));
       return;
     }
 
@@ -2988,37 +3258,69 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' || req.method === 'PUT') {
         if (!checkPin(req, res)) return;
         const body = await readJsonBody(req);
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          return sendJson(res, 400, { error: 'State payload must be a JSON object' });
+        }
         const prevTimersById = new Map((squadState.activeTimers || []).map((t) => [t.id, t]));
         const incomingTimers = Array.isArray(body.activeTimers) ? body.activeTimers : squadState.activeTimers;
-        const mergedTimers = (incomingTimers || []).map((t) => {
-          const prev = prevTimersById.get(t?.id);
-          if (prev && prev.endsAt === t.endsAt) {
-            return {
-              ...t,
-              discordDoneSent: Boolean(t.discordDoneSent || prev.discordDoneSent),
-              discord60sSent: Boolean(t.discord60sSent || prev.discord60sSent)
-            };
-          }
-          return t;
-        });
+        const mergedTimers = (incomingTimers || [])
+          .filter((t) => t && typeof t === 'object')
+          .map((t) => {
+            const prev = prevTimersById.get(t.id);
+            if (prev && prev.endsAt === t.endsAt) {
+              return {
+                ...t,
+                discordDoneSent: Boolean(t.discordDoneSent || prev.discordDoneSent),
+                discord60sSent: Boolean(t.discord60sSent || prev.discord60sSent)
+              };
+            }
+            return t;
+          });
         const preserveRustPlus = !body._syncRustPlus;
+        const mergedShopConfig = preserveRustPlus
+          ? squadState.rustPlusShopConfig
+          : {
+              ...DEFAULT_STATE.rustPlusShopConfig,
+              ...(squadState.rustPlusShopConfig || {}),
+              ...(body.rustPlusShopConfig && typeof body.rustPlusShopConfig === 'object' ? body.rustPlusShopConfig : {}),
+              smartAutomation: normalizeSmartAutomation(
+                body.rustPlusShopConfig?.smartAutomation ?? squadState.rustPlusShopConfig?.smartAutomation
+              )
+            };
         squadState = {
           ...squadState,
           ...body,
+          raidStash: {
+            ...DEFAULT_STATE.raidStash,
+            ...(squadState.raidStash || {}),
+            ...(body.raidStash && typeof body.raidStash === 'object' && !Array.isArray(body.raidStash) ? body.raidStash : {})
+          },
+          battlemetrics: {
+            ...DEFAULT_STATE.battlemetrics,
+            ...(squadState.battlemetrics || {}),
+            ...(body.battlemetrics && typeof body.battlemetrics === 'object' && !Array.isArray(body.battlemetrics) ? body.battlemetrics : {})
+          },
+          squadKeycards: {
+            ...DEFAULT_STATE.squadKeycards,
+            ...(squadState.squadKeycards || {}),
+            ...(body.squadKeycards && typeof body.squadKeycards === 'object' && !Array.isArray(body.squadKeycards) ? body.squadKeycards : {})
+          },
           discordConfig: {
             ...DEFAULT_STATE.discordConfig,
             ...(squadState.discordConfig || {}),
-            ...(body.discordConfig || {})
+            ...(body.discordConfig && typeof body.discordConfig === 'object' && !Array.isArray(body.discordConfig) ? body.discordConfig : {})
           },
-          rustPlusShopConfig: preserveRustPlus
-            ? squadState.rustPlusShopConfig
-            : {
-                ...DEFAULT_STATE.rustPlusShopConfig,
-                ...(squadState.rustPlusShopConfig || {}),
-                ...(body.rustPlusShopConfig || {})
-              },
-          rustPlusTelemetry: preserveRustPlus ? squadState.rustPlusTelemetry : body.rustPlusTelemetry || DEFAULT_STATE.rustPlusTelemetry,
+          rustPlusShopConfig: mergedShopConfig,
+          rustPlusTelemetry: preserveRustPlus
+            ? squadState.rustPlusTelemetry
+            : (body.rustPlusTelemetry && typeof body.rustPlusTelemetry === 'object' && !Array.isArray(body.rustPlusTelemetry)
+                ? body.rustPlusTelemetry
+                : DEFAULT_STATE.rustPlusTelemetry),
           activeTimers: mergedTimers,
+          raidQueue: Array.isArray(body.raidQueue) ? body.raidQueue : squadState.raidQueue,
+          savedClones: Array.isArray(body.savedClones) ? body.savedClones : squadState.savedClones,
+          squadPins: Array.isArray(body.squadPins) ? body.squadPins : squadState.squadPins,
+          conveyorFilters: Array.isArray(body.conveyorFilters) ? body.conveyorFilters : squadState.conveyorFilters,
           updatedAt: Date.now()
         };
         delete squadState._syncRustPlus;
@@ -3030,9 +3332,9 @@ const server = http.createServer(async (req, res) => {
 
     // 5. BattleMetrics Search Proxy
     if (pathname === '/api/battlemetrics/search' && req.method === 'GET') {
-      const q = parsedUrl.searchParams.get('q') || '';
-      const token = req.headers['authorization']?.replace('Bearer ', '') || '';
-      if (!q.trim()) {
+      const q = (parsedUrl.searchParams.get('q') || '').trim().slice(0, 120);
+      const token = extractBearerToken(req.headers['authorization']);
+      if (!q) {
         return sendJson(res, 400, { error: 'Missing search query parameter ?q=' });
       }
       const apiUrl = `https://api.battlemetrics.com/servers?filter[game]=rust&filter[search]=${encodeURIComponent(q)}&page[size]=12`;
@@ -3046,9 +3348,10 @@ const server = http.createServer(async (req, res) => {
 
     // 6. BattleMetrics Server Detail + Auto Map Image Extraction
     if (pathname.startsWith('/api/battlemetrics/server/') && req.method === 'GET') {
-      const serverId = pathname.split('/').pop();
-      const token = req.headers['authorization']?.replace('Bearer ', '') || '';
-      if (!serverId || !/^\d+$/.test(serverId)) {
+      // Match strictly digits directly after /api/battlemetrics/server/ to reject path injection
+      const serverId = pathname.slice('/api/battlemetrics/server/'.length);
+      const token = extractBearerToken(req.headers['authorization']);
+      if (!/^\d{1,20}$/.test(serverId)) {
         return sendJson(res, 400, { error: 'Invalid BattleMetrics Server ID' });
       }
       const now = new Date();
@@ -3087,16 +3390,29 @@ const server = http.createServer(async (req, res) => {
           rustmapsUrl = `https://rustmaps.com/map/${rmMatch[1]}`;
         } else if (seedSizeMatch) {
           rustmapsUrl = `https://rustmaps.com/map/${seedSizeMatch[1]}_${seedSizeMatch[2]}`;
-        } else if (bmMatch || /^\d{5,}$/.test(rawInput)) {
+        } else if (bmMatch || /^\d{5,20}$/.test(rawInput)) {
           const bmId = bmMatch ? bmMatch[1] : rawInput;
-          const token = req.headers['authorization']?.replace('Bearer ', '') || '';
+          const token = extractBearerToken(req.headers['authorization']);
           const bmData = await fetchJsonHttps(`https://api.battlemetrics.com/servers/${bmId}`, token);
           const details = bmData?.data?.attributes?.details || {};
           const rmDirect = details.rust_maps?.url;
-          if (rmDirect && rmDirect.includes('rustmaps.com/map/')) {
-            rustmapsUrl = rmDirect;
+          let parsedRmDirectSlug = '';
+          if (typeof rmDirect === 'string' && rmDirect) {
+            try {
+              const rmDirectUrl = assertSafeHttpsUrl(rmDirect, ['rustmaps.com']);
+              const slugMatch = rmDirectUrl.pathname.match(/^\/map\/([a-zA-Z0-9_-]+)/);
+              if (slugMatch) parsedRmDirectSlug = slugMatch[1];
+            } catch (_) {}
+          }
+          if (parsedRmDirectSlug) {
+            rustmapsUrl = `https://rustmaps.com/map/${parsedRmDirectSlug}`;
           } else if (details.rust_world_size && details.rust_world_seed !== undefined) {
-            rustmapsUrl = `https://rustmaps.com/map/${details.rust_world_size}_${details.rust_world_seed}`;
+            const safeSize = parseInt(String(details.rust_world_size), 10);
+            const safeSeed = parseInt(String(details.rust_world_seed), 10);
+            if (!Number.isFinite(safeSize) || !Number.isFinite(safeSeed)) {
+              return sendJson(res, 404, { error: 'This BattleMetrics server published invalid RustMaps seed/size.' });
+            }
+            rustmapsUrl = `https://rustmaps.com/map/${safeSize}_${safeSeed}`;
           } else {
             return sendJson(res, 404, { error: 'This BattleMetrics server does not publish its RustMaps seed/size.' });
           }
@@ -3135,16 +3451,14 @@ const server = http.createServer(async (req, res) => {
         let buildingBlockArea = null;
         if (mapData.buildingBlockAreaUrl) {
           try {
-            const bbUrl = new URL(mapData.buildingBlockAreaUrl);
-            if (bbUrl.protocol === 'https:' && bbUrl.hostname.endsWith('rustmaps.com')) {
-              const bbRaw = await fetchTextHttps(bbUrl.toString());
-              const bbParsed = JSON.parse(bbRaw);
-              if (bbParsed && (Array.isArray(bbParsed.boxes) || Array.isArray(bbParsed.spheres))) {
-                buildingBlockArea = {
-                  boxes: Array.isArray(bbParsed.boxes) ? bbParsed.boxes : [],
-                  spheres: Array.isArray(bbParsed.spheres) ? bbParsed.spheres : []
-                };
-              }
+            const bbUrl = assertSafeHttpsUrl(mapData.buildingBlockAreaUrl, ['rustmaps.com']);
+            const bbRaw = await fetchTextHttps(bbUrl.toString());
+            const bbParsed = safeJsonParse(bbRaw);
+            if (bbParsed && (Array.isArray(bbParsed.boxes) || Array.isArray(bbParsed.spheres))) {
+              buildingBlockArea = {
+                boxes: Array.isArray(bbParsed.boxes) ? bbParsed.boxes : [],
+                spheres: Array.isArray(bbParsed.spheres) ? bbParsed.spheres : []
+              };
             }
           } catch (_) {
             buildingBlockArea = null;
@@ -3191,6 +3505,7 @@ const server = http.createServer(async (req, res) => {
             };
           })
         };
+        pruneMapCache(rustmapsAnalyzeCache, 99, RUSTMAPS_CACHE_TTL_MS);
         rustmapsAnalyzeCache.set(rustmapsUrl, { time: Date.now(), payload: rmPayload });
         return sendJson(res, 200, rmPayload);
       } catch (err) {
@@ -3201,33 +3516,52 @@ const server = http.createServer(async (req, res) => {
     // 6C. Safe Image Proxy for RustMaps CDN (prevents CORS taint on canvas)
     if (pathname === '/api/rustmaps/image' && req.method === 'GET') {
       const target = parsedUrl.searchParams.get('url') || '';
+      let u;
       try {
-        const u = new URL(target);
-        if (u.protocol !== 'https:' || !u.hostname.endsWith('rustmaps.com')) {
-          return sendJson(res, 403, { error: 'Only rustmaps.com image URLs are allowed' });
-        }
-        const imgReq = https.request(
-          {
-            hostname: u.hostname,
-            path: u.pathname + u.search,
-            method: 'GET',
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            timeout: 12000
-          },
-          (imgRes) => {
-            res.writeHead(imgRes.statusCode || 200, {
-              'Content-Type': imgRes.headers['content-type'] || 'image/png',
-              'Cache-Control': 'public, max-age=3600'
-            });
-            imgRes.pipe(res);
-          }
-        );
-        imgReq.on('error', (err) => sendJson(res, 502, { error: err.message }));
-        imgReq.end();
-        return;
+        u = assertSafeHttpsUrl(target, ['rustmaps.com']);
       } catch (_) {
-        return sendJson(res, 400, { error: 'Invalid image URL' });
+        return sendJson(res, target ? 403 : 400, {
+          error: target ? 'Only rustmaps.com HTTPS image URLs are allowed' : 'Invalid image URL'
+        });
       }
+      const imgReq = https.request(
+        {
+          hostname: u.hostname,
+          path: u.pathname + u.search,
+          method: 'GET',
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          timeout: 12000
+        },
+        (imgRes) => {
+          const status = imgRes.statusCode || 502;
+          const ct = String(imgRes.headers['content-type'] || '').toLowerCase();
+          if (status < 200 || status >= 300 || !ct.startsWith('image/')) {
+            imgRes.resume();
+            return sendJson(res, status >= 400 && status < 500 ? status : 502, {
+              error: `Upstream image error (HTTP ${status})`
+            });
+          }
+          res.writeHead(status, {
+            'Content-Type': ct,
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'public, max-age=3600'
+          });
+          imgRes.on('error', () => {
+            if (!res.destroyed) res.destroy();
+          });
+          imgRes.pipe(res);
+        }
+      );
+      imgReq.on('timeout', () => imgReq.destroy(new Error('Image request timed out')));
+      imgReq.on('error', (err) => {
+        if (!res.headersSent) sendJson(res, 502, { error: err.message });
+        else if (!res.destroyed) res.destroy();
+      });
+      req.on('close', () => {
+        if (!imgReq.destroyed) imgReq.destroy();
+      });
+      imgReq.end();
+      return;
     }
 
     // 7. Discord Bot & Webhook Notification Endpoints
@@ -3250,7 +3584,7 @@ const server = http.createServer(async (req, res) => {
         const eventType = body.eventType === '60s' ? '60s' : 'complete';
         const settings = resolveDiscordSettings();
         const hasTarget = Boolean(
-          (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
+          isValidDiscordWebhookUrl(settings.webhookUrl) ||
             (settings.botToken && (settings.channelId || settings.dmUserId))
         );
         if (!hasTarget) {
@@ -3270,7 +3604,7 @@ const server = http.createServer(async (req, res) => {
         if (sentDiscordAlerts.has(alertKey) || timer?.[flagKey]) {
           return sendJson(res, 200, { ok: true, deduplicated: true });
         }
-        sentDiscordAlerts.add(alertKey);
+        addBoundedSetEntry(sentDiscordAlerts, alertKey);
         if (timer) {
           timer[flagKey] = true;
           saveState(squadState);
@@ -3656,42 +3990,77 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 8. Static File Serving from /public
-    let safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
-    if (safePath === '/' || safePath === '\\') {
-      safePath = '/index.html';
+    let decodedPathname;
+    try {
+      decodedPathname = decodeURIComponent(pathname);
+    } catch (_) {
+      return sendJson(res, 400, { error: 'Invalid URL encoding' });
     }
-    const filePath = path.join(PUBLIC_DIR, safePath);
+    if (decodedPathname.includes('\0')) {
+      return sendJson(res, 400, { error: 'Invalid path' });
+    }
 
-    if (filePath.startsWith(PUBLIC_DIR) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const relReq = decodedPathname.replace(/^[/\\]+/, '') || 'index.html';
+    const resolvedPublic = path.resolve(PUBLIC_DIR);
+    const candidatePath = path.resolve(resolvedPublic, relReq);
+    const rel = path.relative(resolvedPublic, candidatePath);
+    const isInsidePublic = rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+
+    const streamStaticFile = (targetFile, contentType) => {
       res.writeHead(200, {
         'Content-Type': contentType,
         'Cache-Control': 'no-cache, no-store, must-revalidate'
       });
-      fs.createReadStream(filePath).pipe(res);
-    } else {
-      const indexFile = path.join(PUBLIC_DIR, 'index.html');
+      const stream = fs.createReadStream(targetFile);
+      stream.on('error', () => {
+        if (!res.destroyed) res.destroy();
+      });
+      res.on('close', () => {
+        if (!stream.destroyed) stream.destroy();
+      });
+      stream.pipe(res);
+    };
+
+    let served = false;
+    if (isInsidePublic && fs.existsSync(candidatePath) && fs.statSync(candidatePath).isFile()) {
+      try {
+        const realPublic = fs.realpathSync(resolvedPublic);
+        const realTarget = fs.realpathSync(candidatePath);
+        const realRel = path.relative(realPublic, realTarget);
+        if (realRel !== '' && !realRel.startsWith('..') && !path.isAbsolute(realRel)) {
+          const ext = path.extname(realTarget).toLowerCase();
+          streamStaticFile(realTarget, MIME_TYPES[ext] || 'application/octet-stream');
+          served = true;
+        }
+      } catch (_) {}
+    }
+
+    if (!served) {
+      const indexFile = path.join(resolvedPublic, 'index.html');
       if (fs.existsSync(indexFile)) {
-        res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
-        });
-        fs.createReadStream(indexFile).pipe(res);
+        streamStaticFile(indexFile, 'text/html; charset=utf-8');
       } else {
         sendJson(res, 404, { error: 'Not Found' });
       }
     }
   } catch (err) {
     console.error('[Server Error]', err);
-    sendJson(res, 500, { error: 'Internal Server Error', details: err.message });
+    if (res.headersSent) {
+      if (!res.destroyed) res.destroy();
+      return;
+    }
+    const statusCode = Number.isInteger(err.statusCode) ? err.statusCode : 500;
+    sendJson(res, statusCode, {
+      error: statusCode >= 500 ? 'Internal Server Error' : err.message,
+      ...(statusCode >= 500 ? { details: err.message } : {})
+    });
   }
 });
 
 function checkActiveTimersForDiscord() {
   const settings = resolveDiscordSettings();
   const hasTarget = Boolean(
-    (settings.webhookUrl && settings.webhookUrl.startsWith('https://discord')) ||
+    isValidDiscordWebhookUrl(settings.webhookUrl) ||
       (settings.botToken && (settings.channelId || settings.dmUserId))
   );
   if (!hasTarget) return;
@@ -3712,7 +4081,7 @@ function checkActiveTimersForDiscord() {
       t.discordDoneSent = true;
       dirty = true;
       if (!sentDiscordAlerts.has(doneKey) && settings.notifyOnComplete) {
-        sentDiscordAlerts.add(doneKey);
+        addBoundedSetEntry(sentDiscordAlerts, doneKey);
         sendDiscordNotification({
           title: `✅ Timer Ready: ${t.name}`,
           description: `**${t.name}** has finished / respawned! Ready to run now.`,
@@ -3724,7 +4093,7 @@ function checkActiveTimersForDiscord() {
       t.discord60sSent = true;
       dirty = true;
       if (!sentDiscordAlerts.has(warnKey) && settings.notifyOn60s) {
-        sentDiscordAlerts.add(warnKey);
+        addBoundedSetEntry(sentDiscordAlerts, warnKey);
         sendDiscordNotification({
           title: `⏳ 60s Warning: ${t.name}`,
           description: `**${t.name}** finishes in **under 60 seconds**!`,
@@ -3742,11 +4111,7 @@ configureRustPlusCloudSyncPoller();
 
 setInterval(() => {
   for (const res of sseClients) {
-    try {
-      res.write(': heartbeat\n\n');
-    } catch (_) {
-      sseClients.delete(res);
-    }
+    writeSseFrame(res, ': heartbeat\n\n');
   }
 }, 25000);
 

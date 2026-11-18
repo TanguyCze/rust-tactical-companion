@@ -2193,6 +2193,25 @@ window.RUST_DATA = {
     { id: 'blade', shortname: 'metalblade', name: 'Metal Blade', rad: { scrap: 2, hqm: 0, metal: 18, cloth: 0 }, safe: { scrap: 1, hqm: 0, metal: 12, cloth: 0 } }
   ],
 
+  recyclerHaulPresets: {
+    road_barrel: {
+      label: '🛣️ Road Barrel Run',
+      items: { gears: 4, pipe: 5, blade: 6, road_signs: 4, propane: 3, sewing_kit: 6, rope: 8, tarp: 3 }
+    },
+    sewer_green: {
+      label: '🟢 Sewer Branch + Green Card',
+      items: { tech_trash: 2, semi_body: 3, smg_body: 1, gears: 6, spring: 4, pipe: 8, sheet_metal: 4, road_signs: 6, fuse: 2, sewing_kit: 8 }
+    },
+    launch_elite: {
+      label: '🚀 Launch Site / Elite Crates',
+      items: { tech_trash: 6, rifle_body: 4, smg_body: 3, semi_body: 5, computer: 2, cctv: 3, gears: 10, spring: 8, pipe: 12, sheet_metal: 6, heavy_fuse: 1 }
+    },
+    underwater_lab: {
+      label: '🔬 Underwater Lab Run',
+      items: { tech_trash: 5, rifle_body: 2, smg_body: 3, semi_body: 4, computer: 2, cctv: 2, fuse: 3, gears: 8, spring: 6, pipe: 10, road_signs: 8, sewing_kit: 10 }
+    }
+  },
+
   // =========================================================================
   // 8. BUILDING DECAY RATES & GIANT EXCAVATOR DIESEL YIELDS
   // =========================================================================
@@ -2438,7 +2457,7 @@ window.RUST_DATA = {
     { name: 'Semi-Automatic Pistol', shortname: 'pistol.semiauto', cat: 'Weapons', group: 'weapons', tier: 2, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Uzi', shortname: 'smg.uzi', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'SKS', shortname: 'rifle.sks', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'High Caliber Revolver', shortname: 'pistol.highcal', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'High Caliber Revolver', shortname: 'revolver.hc', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Assault Rifle', shortname: 'rifle.ak', cat: 'Weapons', group: 'weapons', tier: 3, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'LR-300 Assault Rifle', shortname: 'rifle.lr300', cat: 'Weapons', group: 'weapons', tier: 3, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'MP5A4', shortname: 'smg.mp5', cat: 'Weapons', group: 'weapons', tier: 3, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
@@ -2446,7 +2465,7 @@ window.RUST_DATA = {
     { name: 'L96 Rifle', shortname: 'rifle.l96', cat: 'Weapons', group: 'weapons', tier: 3, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Spas-12 Shotgun', shortname: 'shotgun.spas12', cat: 'Weapons', group: 'weapons', tier: 3, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Minigun', shortname: 'minigun', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
-    { name: 'Military Flame Thrower', shortname: 'military.flamethrower', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
+    { name: 'Military Flame Thrower', shortname: 'military flamethrower', cat: 'Weapons', group: 'weapons', tier: 3, isNew: true, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Rocket Launcher', shortname: 'rocket.launcher', cat: 'Weapons', group: 'weapons', tier: 3, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Wolf Headdress', shortname: 'hat.wolf', cat: 'T1 Clothes/Armor', group: 'attire', tier: 1, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },
     { name: 'Riot Helmet', shortname: 'riot.helmet', cat: 'T1 Clothes/Armor', group: 'attire', tier: 1, defaultMax: 1, defaultMin: 0, defaultBuf: 0 },

@@ -20,6 +20,23 @@
       .replace(/'/g, '&#39;');
   }
 
+  function safeCssColor(color, fallback = '#38bdf8') {
+    const s = String(color || '').trim();
+    if (/^#[0-9a-fA-F]{3,8}$/.test(s)) return s;
+    if (/^(?:rgb|hsl)a?\(\s*[\d.%\s,]+\)$/i.test(s)) return s;
+    if (/^[a-zA-Z]{3,20}$/.test(s)) return s;
+    return fallback;
+  }
+
+  const cleanupCallbacks = [];
+  window.addEventListener('beforeunload', () => {
+    cleanupCallbacks.forEach((fn) => {
+      try {
+        fn();
+      } catch (_) {}
+    });
+  });
+
   function flashButtonFeedback(btn, label = '✅ Started!', durationMs = 1200) {
     if (!btn) return;
     if (!btn.dataset.origLabel) {
@@ -163,22 +180,32 @@
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
       const parsedSaved = JSON.parse(saved);
-      appState = {
-        ...appState,
-        ...parsedSaved,
-        raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
-        discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
-        squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS, ...(parsedSaved.squadKeycards || {}) },
-        conveyorFilters: Array.isArray(parsedSaved.conveyorFilters) ? parsedSaved.conveyorFilters : [],
-        rustPlusShopConfig: {
-          ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
-          ...(parsedSaved.rustPlusShopConfig || {}),
-          smartAutomation: {
-            ...DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation,
-            ...(parsedSaved.rustPlusShopConfig?.smartAutomation || {})
+      if (parsedSaved && typeof parsedSaved === 'object') {
+        appState = {
+          ...appState,
+          ...parsedSaved,
+          activeTimers: Array.isArray(parsedSaved.activeTimers) ? parsedSaved.activeTimers : appState.activeTimers,
+          raidQueue: Array.isArray(parsedSaved.raidQueue) ? parsedSaved.raidQueue : appState.raidQueue,
+          savedClones: Array.isArray(parsedSaved.savedClones) ? parsedSaved.savedClones : appState.savedClones,
+          squadPins: Array.isArray(parsedSaved.squadPins) ? parsedSaved.squadPins : appState.squadPins,
+          raidStash: { ...DEFAULT_RAID_STASH, ...(parsedSaved.raidStash || {}) },
+          discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(parsedSaved.discordConfig || {}) },
+          squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS, ...(parsedSaved.squadKeycards || {}) },
+          conveyorFilters: Array.isArray(parsedSaved.conveyorFilters) ? parsedSaved.conveyorFilters : [],
+          battlemetrics:
+            parsedSaved.battlemetrics && typeof parsedSaved.battlemetrics === 'object'
+              ? { serverId: '', serverName: '', watchlist: [], ...parsedSaved.battlemetrics }
+              : appState.battlemetrics,
+          rustPlusShopConfig: {
+            ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
+            ...(parsedSaved.rustPlusShopConfig || {}),
+            smartAutomation: {
+              ...DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation,
+              ...(parsedSaved.rustPlusShopConfig?.smartAutomation || {})
+            }
           }
-        }
-      };
+        };
+      }
     }
   } catch (_) {}
 
@@ -229,10 +256,11 @@
     let firstHydrate = true;
     try {
       const es = new EventSource('/api/events');
+      cleanupCallbacks.push(() => es.close());
       es.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
-          if (msg.state) {
+          if (msg.state && typeof msg.state === 'object') {
             const { updatedAt, ...remoteClean } = msg.state;
             let localClean = null;
             if (lastSyncedStateJson) {
@@ -245,9 +273,16 @@
             appState = {
               ...appState,
               ...msg.state,
+              activeTimers: Array.isArray(msg.state.activeTimers) ? msg.state.activeTimers : (Array.isArray(appState.activeTimers) ? appState.activeTimers : []),
+              raidQueue: Array.isArray(msg.state.raidQueue) ? msg.state.raidQueue : (Array.isArray(appState.raidQueue) ? appState.raidQueue : []),
+              savedClones: Array.isArray(msg.state.savedClones) ? msg.state.savedClones : (Array.isArray(appState.savedClones) ? appState.savedClones : []),
               raidStash: { ...DEFAULT_RAID_STASH, ...(appState.raidStash || {}), ...(msg.state.raidStash || {}) },
               discordConfig: { ...DEFAULT_DISCORD_CONFIG, ...(appState.discordConfig || {}), ...(msg.state.discordConfig || {}) },
               squadKeycards: { ...DEFAULT_SQUAD_KEYCARDS, ...(appState.squadKeycards || {}), ...(msg.state.squadKeycards || {}) },
+              battlemetrics:
+                msg.state.battlemetrics && typeof msg.state.battlemetrics === 'object'
+                  ? { serverId: '', serverName: '', watchlist: [], ...(appState.battlemetrics || {}), ...msg.state.battlemetrics }
+                  : (appState.battlemetrics || { serverId: '', serverName: '', watchlist: [] }),
               rustPlusShopConfig: {
                 ...DEFAULT_RUSTPLUS_SHOP_CONFIG,
                 ...(appState.rustPlusShopConfig || {}),
@@ -378,7 +413,7 @@
 
     // Audio toggle
     const audioBtn = document.getElementById('audioToggleBtn');
-    audioBtn.addEventListener('click', () => {
+    audioBtn?.addEventListener('click', () => {
       audioEnabled = !audioEnabled;
       audioBtn.textContent = audioEnabled ? '🔔 AUDIO: ON' : '🔕 AUDIO: OFF';
       if (audioEnabled) playAlertSound('urgent');
@@ -402,7 +437,7 @@
     document.getElementById('openDiscordBotModalBtn')?.addEventListener('click', openSquadSettingsModal);
 
     document.getElementById('closeSettingsModalBtn')?.addEventListener('click', () => {
-      modal.classList.remove('open');
+      modal?.classList.remove('open');
     });
 
     modal?.addEventListener('click', (e) => {
@@ -412,6 +447,14 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && modal?.classList.contains('open')) {
         modal.classList.remove('open');
+        return;
+      }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-6]$/.test(e.key)) {
+        const targetTab = tabs[Number(e.key) - 1]?.getAttribute('data-tab');
+        if (targetTab) {
+          e.preventDefault();
+          switchAppTab(targetTab);
+        }
       }
     });
 
@@ -449,11 +492,13 @@
 
     document.getElementById('saveSettingsBtn')?.addEventListener('click', () => {
       readDiscordFormIntoState();
-      localStorage.setItem(PIN_STORAGE_KEY, document.getElementById('settingSquadPin')?.value || '');
+      try {
+        localStorage.setItem(PIN_STORAGE_KEY, document.getElementById('settingSquadPin')?.value || '');
+      } catch (_) {}
       syncStateToServer();
       syncDiscordAlertBadge();
       renderAll();
-      modal.classList.remove('open');
+      modal?.classList.remove('open');
     });
   }
 
@@ -1061,6 +1106,127 @@
     };
   }
 
+  function renderRaidCraftChain(shoppingListArg) {
+    const craftChainBox = document.getElementById('raidCraftChainBox');
+    if (!craftChainBox) return;
+    if (!appState.raidQueue || appState.raidQueue.length === 0) {
+      craftChainBox.innerHTML = '';
+      return;
+    }
+
+    const shoppingList = shoppingListArg || getQueuedShoppingRequirements().reqTools || {};
+    const RAID_CRAFT_RECIPES = {
+      c4: { explosives: 20, gpDirect: 0 },
+      rocket: { explosives: 10, gpDirect: 150 },
+      explo_ammo: { explosives: 0, gpDirect: 10 },
+      satchel: { explosives: 0, gpDirect: 240 },
+      beancan: { explosives: 0, gpDirect: 60 },
+      hv_rocket: { explosives: 0, gpDirect: 100 },
+      incen_rocket: { explosives: 1, gpDirect: 250 },
+      f1_grenade: { explosives: 0, gpDirect: 30 }
+    };
+    const CRAFT_BOOM_STASH_KEYS = new Set([
+      'c4',
+      'rocket',
+      'explo_ammo',
+      'satchel',
+      'beancan',
+      'hv_rocket',
+      'incen_rocket'
+    ]);
+    const parseWbRank = (wbStr) => {
+      const s = String(wbStr || '').toUpperCase();
+      if (s.includes('T3')) return 3;
+      if (s.includes('T2')) return 2;
+      if (s.includes('T1')) return 1;
+      return 0;
+    };
+    const stash = appState.raidStash || DEFAULT_RAID_STASH;
+    const useMixingTable = Boolean(document.getElementById('raidMixingTableCb')?.checked ?? true);
+
+    let maxQueuedWbRank = 0;
+    let maxNetWbRank = 0;
+    let netExplosives = 0;
+    let netDirectGp = 0;
+    let netSulfur = 0;
+    let netLgf = 0;
+    let netMetal = 0;
+    let netPipes = 0;
+    let netTechTrash = 0;
+    const netBoomPills = [];
+
+    Object.entries(shoppingList).forEach(([toolId, count]) => {
+      const grossQty = Math.max(0, Math.round(Number(count) || 0));
+      if (grossQty <= 0) return;
+      const tool = DATA.raidTools[toolId] || { shortName: toolId, name: toolId, color: '#eab308' };
+      maxQueuedWbRank = Math.max(maxQueuedWbRank, parseWbRank(tool.wb));
+
+      const craftedInStash = CRAFT_BOOM_STASH_KEYS.has(toolId)
+        ? Math.max(0, Math.floor(Number(stash[toolId]) || 0))
+        : 0;
+      const netQty = Math.max(0, grossQty - craftedInStash);
+      if (netQty <= 0) return;
+
+      maxNetWbRank = Math.max(maxNetWbRank, parseWbRank(tool.wb));
+      const recipe = RAID_CRAFT_RECIPES[toolId] || { explosives: 0, gpDirect: 0 };
+      netExplosives += (recipe.explosives || 0) * netQty;
+      netDirectGp += (recipe.gpDirect || 0) * netQty;
+      netSulfur += (tool.sulfur || 0) * netQty;
+      netLgf += (tool.lgf || 0) * netQty;
+      netMetal += (tool.metal || 0) * netQty;
+      netPipes += (tool.pipes || 0) * netQty;
+      netTechTrash += (tool.techTrash || 0) * netQty;
+
+      netBoomPills.push(
+        `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; background:rgba(15,23,42,0.85); border:1px solid ${safeCssColor(tool.color, '#eab308')}; color:#fff; font-family:var(--font-mono); font-size:11px; font-weight:700;">${netQty}× ${escapeHtml(tool.shortName || tool.name)}</span>`
+      );
+    });
+
+    const netGp = netExplosives * 50 + netDirectGp;
+    const handCharcoal = netGp * 3;
+    const mixCharcoal = netGp * 2;
+    const netCharcoal = useMixingTable ? mixCharcoal : handCharcoal;
+    const charcoalSaved = useMixingTable ? handCharcoal - mixCharcoal : 0;
+    const queuedWbTier = maxQueuedWbRank >= 3 ? 'T3' : maxQueuedWbRank === 2 ? 'T2' : maxQueuedWbRank === 1 ? 'T1' : 'T1';
+    const netWbTier = maxNetWbRank >= 3 ? 'T3' : maxNetWbRank === 2 ? 'T2' : maxNetWbRank === 1 ? 'T1' : 'Ready';
+
+    craftChainBox.innerHTML = `
+      <div class="craft-chain-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+          <div style="font-family:var(--font-display); font-weight:700; color:var(--sulfur-yellow); letter-spacing:0.04em;">
+            ⚒️ NET CRAFT CHAIN ${netBoomPills.length === 0 ? '— ALL CRAFTED!' : ''}
+          </div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-family:var(--font-mono); font-size:11px;">
+            <span style="padding:2px 7px; border-radius:4px; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
+              Bench: <strong>${escapeHtml(queuedWbTier)}</strong>${netBoomPills.length > 0 && netWbTier !== queuedWbTier ? ` (Net: ${escapeHtml(netWbTier)})` : ''}
+            </span>
+            <span style="padding:2px 7px; border-radius:4px; background:${useMixingTable ? 'rgba(34,197,94,0.14)' : 'rgba(251,146,60,0.14)'}; border:1px solid ${useMixingTable ? 'rgba(34,197,94,0.4)' : 'rgba(251,146,60,0.4)'}; color:${useMixingTable ? '#86efac' : '#fdba74'};">
+              ${useMixingTable ? '🧪 Mixing Table 1.0× GP' : '🛠️ Hand Craft 1.5× GP'}
+            </span>
+          </div>
+        </div>
+        ${
+          netBoomPills.length > 0
+            ? `<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px;">
+                 <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Still to craft:</span>
+                 ${netBoomPills.join('')}
+               </div>
+               <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; font-family:var(--font-mono); font-size:11.5px; color:#e2e8f0;">
+                 <div>Explosives: <strong style="color:#84cc16;">${netExplosives.toLocaleString()}</strong></div>
+                 <div>Gunpowder: <strong style="color:#cbd5e1;">${netGp.toLocaleString()}</strong></div>
+                 <div>Sulfur: <strong style="color:var(--sulfur-yellow);">${netSulfur.toLocaleString()}</strong></div>
+                 <div>Charcoal: <strong style="color:#f8fafc;">${netCharcoal.toLocaleString()}</strong>${charcoalSaved > 0 ? ` <span style="color:#4ade80; font-size:10.5px;">(−${charcoalSaved.toLocaleString()} saved)</span>` : ''}</div>
+                 <div>LGF / Metal: <strong>${netLgf.toLocaleString()}</strong> / <strong>${netMetal.toLocaleString()}</strong></div>
+                 <div>Pipes / Tech: <strong>${netPipes}</strong> / <strong>${netTechTrash}</strong></div>
+               </div>`
+            : `<div style="font-size:11.5px; color:#4ade80; font-family:var(--font-mono);">
+                 ✅ Already-crafted boom in your Stash covers 100% of the queued targets (0 Explosives / 0 GP / 0 Sulfur remaining to craft).
+               </div>`
+        }
+      </div>
+    `;
+  }
+
   function renderRaidPlanner() {
     const queueContainer = document.getElementById('raidQueueContainer');
     const summaryContainer = document.getElementById('raidTotalSummary');
@@ -1072,6 +1238,7 @@
         '<div class="text-muted text-sm" style="padding:14px; text-align:center; border:1px dashed var(--border-subtle); border-radius:6px;">No targets queued. Click any structure on the left or use + Add above.</div>';
       summaryContainer.innerHTML = '';
       nodeContainer.innerHTML = '';
+      renderRaidCraftChain({});
       if (typeof renderRaidStashReadiness === 'function') renderRaidStashReadiness();
       return;
     }
@@ -1102,19 +1269,20 @@
           shoppingList[tId] = (shoppingList[tId] || 0) + count;
         });
 
+        const cleanQty = Math.max(1, Number(item.qty) || 1);
         return `
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px;">
             <div style="min-width:0; flex:1;">
               <div style="font-weight:700; color:#fff; font-size:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span>${res.target.name}</span>
+                <span>${escapeHtml(res.target.name)}</span>
                 <span class="queue-qty-stepper">
                   <button class="queue-qty-btn raid-qty-dec" data-idx="${idx}" title="Decrease quantity">-</button>
-                  <span class="queue-qty-num">${item.qty}x</span>
+                  <span class="queue-qty-num">${cleanQty}x</span>
                   <button class="queue-qty-btn raid-qty-inc" data-idx="${idx}" title="Increase quantity">+</button>
                 </span>
               </div>
               <div class="text-xs text-muted" style="margin-top:3px;">
-                Loadout: <span style="color:var(--sulfur-yellow)">${res.chosenLabel}</span>
+                Loadout: <span style="color:var(--sulfur-yellow)">${escapeHtml(res.chosenLabel)}</span>
                 • ${formatRaidTime(res.totalTimeSec)}
               </div>
             </div>
@@ -1190,8 +1358,10 @@
       </div>
     `;
 
-    // Farming & Furnace Breakdown (1 Sulfur Node = 300 Sulfur Ore = 300 Smelted Sulfur; Pure Ore Tea +50% = 450)
+    // Farming & Furnace Breakdown (1 Sulfur Node = 300 Sulfur Ore = 300 Smelted Sulfur; Basic +20% = 360; Adv +35% = 405; Pure +50% = 450)
     const nodesNormal = Math.ceil(grandSulfur / 300);
+    const nodesBasicTea = Math.ceil(grandSulfur / 360);
+    const nodesAdvTea = Math.ceil(grandSulfur / 405);
     const nodesPureTea = Math.ceil(grandSulfur / 450);
     const gpNeeded = Math.floor(grandSulfur * 0.45);
     const electricFurnaces = Math.max(1, Math.min(18, Math.ceil(grandSulfur / 1800)));
@@ -1202,12 +1372,17 @@
         <div class="text-xs" style="color:var(--sulfur-yellow); font-weight:700; margin-bottom:6px; letter-spacing:0.05em;">⛏️ FARMING &amp; SMELTING LOGISTICS</div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:8px; font-family:var(--font-mono); font-size:12px;">
           <div>No Tea (300/node): <strong style="color:#fff">${nodesNormal} Sulfur Nodes</strong></div>
-          <div>Pure Ore Tea (450/node): <strong class="text-green">${nodesPureTea} Sulfur Nodes</strong></div>
+          <div>Basic Ore Tea +20% (360): <strong style="color:#93c5fd">${nodesBasicTea} Nodes</strong></div>
+          <div>Adv. Ore Tea +35% (405): <strong style="color:#c084fc">${nodesAdvTea} Nodes</strong></div>
+          <div>Pure Ore Tea +50% (450): <strong class="text-green">${nodesPureTea} Sulfur Nodes</strong></div>
           <div>Smelt (~${electricFurnaces} Elec. Furnaces): <strong>${grandSulfur > 0 ? `~${cookMins}m` : '0m'}</strong></div>
           <div>Est. Gunpowder Batch: <strong>~${gpNeeded.toLocaleString()} GP</strong></div>
         </div>
       </div>
     `;
+
+    renderRaidCraftChain(shoppingList);
+
     if (typeof renderRaidStashReadiness === 'function') renderRaidStashReadiness();
   }
 
@@ -1226,6 +1401,7 @@
 
     // Pure single boom/fire tool finishes (NO melee tools!)
     const unitOptions = validMethods
+      .filter((m) => Number(m.qty) > 0)
       .map((m) => {
         const tool = DATA.raidTools[m.toolId] || { name: m.toolId, sulfur: 0, lgf: 0, wb: '-' };
         const dmgPerUnit = target.hp / m.qty;
@@ -1251,20 +1427,22 @@
     const finishTools = ['explo_ammo', 'beancan', 'molotov'];
 
     heavyTools.forEach((hId) => {
-      const hMethod = validMethods.find((m) => m.toolId === hId);
+      const hMethod = validMethods.find((m) => m.toolId === hId && Number(m.qty) > 0);
       if (!hMethod) return;
       const hDmg = target.hp / hMethod.qty;
       const hTool = DATA.raidTools[hId];
+      if (!hTool || hDmg <= 0) return;
       const maxHeavy = Math.floor(remainingHp / hDmg);
 
       for (let hCount = 1; hCount <= maxHeavy; hCount++) {
         const hpLeft = remainingHp - hCount * hDmg;
         if (hpLeft <= 0.1) continue;
         finishTools.forEach((fId) => {
-          const fMethod = validMethods.find((m) => m.toolId === fId);
+          const fMethod = validMethods.find((m) => m.toolId === fId && Number(m.qty) > 0);
           if (!fMethod) return;
           const fDmg = target.hp / fMethod.qty;
           const fTool = DATA.raidTools[fId];
+          if (!fTool || fDmg <= 0) return;
           const fCount = Math.ceil(hpLeft / fDmg);
           const mixSulfur = hCount * (hTool.sulfur || 0) + fCount * (fTool.sulfur || 0);
           const mixTime = Math.round(
@@ -1800,6 +1978,7 @@
     if (!readinessEl || !affordEl) return;
 
     const includeUncooked = Boolean(document.getElementById('raidIncludeUncookedCb')?.checked ?? true);
+    const useMixingTable = Boolean(document.getElementById('raidMixingTableCb')?.checked ?? true);
     const furnaceChoice = document.getElementById('raidFurnaceCountSelect')?.value || '6';
     const metrics = getStashTotals();
     const { stash, smeltedCraftPool, withOreCraftPool, craftedBoomSulfur, totalReadySulfurEq, totalWithOreSulfurEq } = metrics;
@@ -1841,10 +2020,12 @@
     const nodesNeededNormal = Math.ceil(missingSulfurForPlan / 300);
     const nodesNeededTea = Math.ceil(missingSulfurForPlan / 450);
 
-    // Charcoal math for turning Sulfur + included Ore into Gun Powder (1 Sulfur -> 1.5 Charcoal)
+    // Charcoal math for turning Sulfur + included Ore into Gun Powder (Mixing Table: 1.0x vs Hand Craft: 1.5x)
+    const charcoalPerSulfur = useMixingTable ? 1.0 : 1.5;
     const rawSulfurAvailable = stash.sulfur + (includeUncooked ? stash.sulfur_ore : 0);
     const craftNeededFromRaw = planSulfur > 0 ? Math.min(rawSulfurAvailable, Math.max(0, remainingBoomSulfurNeeded - stash.gunpowder * 2 - stash.explosives * 110)) : rawSulfurAvailable;
-    const estCharcoalNeeded = Math.round(craftNeededFromRaw * 1.5);
+    const estCharcoalNeeded = Math.round(craftNeededFromRaw * charcoalPerSulfur);
+    const charcoalSaved = useMixingTable ? Math.round(craftNeededFromRaw * 0.5) : 0;
     const charcoalGap = Math.max(0, estCharcoalNeeded - stash.charcoal);
 
     // Uncooked Sulfur Ore Smelting Time & Wood Calculation
@@ -1882,13 +2063,19 @@
             <div>🪨 <strong>Uncooked Ore Smelt (${stash.sulfur_ore.toLocaleString()} Ore):</strong> ${smeltLine}</div>
             <button id="startSmeltTimerBtn" type="button" class="btn btn-sm" style="padding:2px 8px; font-size:11px; border-color:rgba(245,158,11,0.6); color:#fcd34d;">⏱️ Start Smelt Timer</button>
           </div>
-          ${estCharcoalNeeded > 0 ? `<div style="margin-top:3px;">🔥 <strong>Charcoal for GP:</strong> Need ${estCharcoalNeeded.toLocaleString()} Charcoal (have ${stash.charcoal.toLocaleString()}${freeCharcoalFromSmelt > 0 ? ` + ${freeCharcoalFromSmelt.toLocaleString()} from smelting` : ''})${netCharcoalGap > 0 ? ` → <strong style="color:#fb923c;">short ${netCharcoalGap.toLocaleString()} Charcoal (~${extraWoodForCharcoal.toLocaleString()} Wood)</strong>` : ' → <strong style="color:#4ade80;">Charcoal covered!</strong>'}</div>` : ''}
+          ${estCharcoalNeeded > 0 ? `<div style="margin-top:3px;">🔥 <strong>Charcoal for GP (${useMixingTable ? 'Mixing Table 1.0×' : 'Hand Craft 1.5×'}):</strong> Need ${estCharcoalNeeded.toLocaleString()} Charcoal${charcoalSaved > 0 ? ` <span style="color:#4ade80;">(−${charcoalSaved.toLocaleString()} saved)</span>` : ''} (have ${stash.charcoal.toLocaleString()}${freeCharcoalFromSmelt > 0 ? ` + ${freeCharcoalFromSmelt.toLocaleString()} from smelting` : ''})${netCharcoalGap > 0 ? ` → <strong style="color:#fb923c;">short ${netCharcoalGap.toLocaleString()} Charcoal (~${extraWoodForCharcoal.toLocaleString()} Wood)</strong>` : ' → <strong style="color:#4ade80;">Charcoal covered!</strong>'}</div>` : ''}
         </div>
       `;
-    } else if (charcoalGap > 0 && rawSulfurAvailable > 0) {
-      smeltInfoHtml = `
+    } else if (estCharcoalNeeded > 0 && rawSulfurAvailable > 0) {
+      smeltInfoHtml = charcoalGap > 0
+        ? `
         <div style="margin-top:6px; font-size:11.5px; color:#fb923c;">
-          🔥 Need <strong>${estCharcoalNeeded.toLocaleString()} Charcoal</strong> to convert your ${rawSulfurAvailable.toLocaleString()} Sulfur into GP (short <strong>${charcoalGap.toLocaleString()} Charcoal</strong> ≈ ${Math.ceil(charcoalGap / 0.75).toLocaleString()} Wood).
+          🔥 <strong>Charcoal for GP (${useMixingTable ? 'Mixing Table 1.0×' : 'Hand Craft 1.5×'}):</strong> Need <strong>${estCharcoalNeeded.toLocaleString()} Charcoal</strong>${charcoalSaved > 0 ? ` <span style="color:#4ade80;">(−${charcoalSaved.toLocaleString()} saved)</span>` : ''} for ${rawSulfurAvailable.toLocaleString()} Sulfur → short <strong>${charcoalGap.toLocaleString()} Charcoal</strong> ≈ ${Math.ceil(charcoalGap / 0.75).toLocaleString()} Wood.
+        </div>
+      `
+        : `
+        <div style="margin-top:6px; font-size:11.5px; color:#4ade80;">
+          🔥 <strong>Charcoal for GP (${useMixingTable ? 'Mixing Table 1.0×' : 'Hand Craft 1.5×'}):</strong> Need ${estCharcoalNeeded.toLocaleString()} Charcoal${charcoalSaved > 0 ? ` (saves ${charcoalSaved.toLocaleString()} vs Hand Craft)` : ''} → covered by ${stash.charcoal.toLocaleString()} Charcoal in stash!
         </div>
       `;
     }
@@ -1981,6 +2168,8 @@
         `;
       })
       .join('');
+
+    if (typeof renderRaidCraftChain === 'function') renderRaidCraftChain();
   }
 
   function classifyRustBoxSlotPixels(ctx, bx0, by0, cw, ch, maxW, maxH) {
@@ -2773,9 +2962,9 @@
             .slice(0, 15)
             .map((ev) => {
               const selectHtml = ev.isBoxBatch
-                ? `<select class="select raid-retag-group-select" data-old-key="${ev.key}" style="padding:2px 5px; font-size:11px;">
+                ? `<select class="select raid-retag-group-select" data-old-key="${escapeHtml(ev.key)}" style="padding:2px 5px; font-size:11px;">
                      ${retagOptions
-                       .map((k) => `<option value="${k}" ${k === ev.key ? 'selected' : ''}>${STASH_ITEM_META[k].name}</option>`)
+                       .map((k) => `<option value="${k}" ${k === ev.key ? 'selected' : ''}>${escapeHtml(STASH_ITEM_META[k].name)}</option>`)
                        .join('')}
                    </select>`
                 : '';
@@ -2783,12 +2972,12 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:4px 8px; background:var(--bg-card); border-radius:4px; font-family:var(--font-mono); font-size:11.5px;">
                   <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                     <strong style="color:#fff;">${ev.mode === 'set' ? '=' : '+'}${ev.qty.toLocaleString()}</strong>
-                    ${selectHtml || `<strong style="color:#fff;">${ev.name}</strong>`}
+                    ${selectHtml || `<strong style="color:#fff;">${escapeHtml(ev.name)}</strong>`}
                     ${ev.isBoxBatch ? `<span class="text-xs text-muted">(${ev.slots} slots)</span>` : ''}
                     ${ev.sulfurEq > 0 ? `<span style="color:var(--sulfur-yellow);">(${ev.sulfurEq.toLocaleString()}S eq.)</span>` : ''}
-                    ${ev.slotLabel ? `<span class="target-tier-tag" style="color:#4ade80;">📍 ${ev.slotLabel}</span>` : ''}
+                    ${ev.slotLabel ? `<span class="target-tier-tag" style="color:#4ade80;">📍 ${escapeHtml(ev.slotLabel)}</span>` : ''}
                   </div>
-                  <button class="btn btn-sm raid-undo-scan-btn" data-scan-id="${ev.id}" type="button" title="Undo this scan">Undo</button>
+                  <button class="btn btn-sm raid-undo-scan-btn" data-scan-id="${escapeHtml(ev.id)}" type="button" title="Undo this scan">Undo</button>
                 </div>
               `;
             })
@@ -3101,7 +3290,7 @@
         statusEl.innerHTML = `
           <div style="padding:10px 12px; border-radius:6px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.55); color:#fecaca; font-family:var(--font-sans); font-size:12px; line-height:1.45;">
             ⚠️ <strong>Browser blocked Live Screen Capture on plain HTTP / local file!</strong> Chrome &amp; Edge require <code>https://</code> or <code>http://localhost</code>.<br/>
-            • Enable <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> with <code>${origin}</code> or paste a chest screenshot with <kbd>Ctrl+V</kbd>!
+            • Enable <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> with <code>${escapeHtml(origin)}</code> or paste a chest screenshot with <kbd>Ctrl+V</kbd>!
           </div>
         `;
       }
@@ -3124,7 +3313,10 @@
     }
 
     const video = document.getElementById('raidLiveScanVideo');
-    if (!video) return;
+    if (!video) {
+      stopRaidLiveScan();
+      return;
+    }
     video.srcObject = raidLiveStream;
     try {
       await video.play();
@@ -3236,6 +3428,10 @@
     });
 
     document.getElementById('raidIncludeUncookedCb')?.addEventListener('change', renderRaidStashReadiness);
+    document.getElementById('raidMixingTableCb')?.addEventListener('change', () => {
+      renderRaidStashReadiness();
+      renderRaidPlanner();
+    });
     document.getElementById('raidFurnaceCountSelect')?.addEventListener('change', renderRaidStashReadiness);
 
     document.getElementById('resetRaidStashBtn')?.addEventListener('click', () => {
@@ -4657,7 +4853,8 @@
     renderTimerPresets();
     renderTimersTick();
     syncDesktopNotifyBtn();
-    setInterval(renderTimersTick, 1000);
+    const timerTickInterval = setInterval(renderTimersTick, 1000);
+    cleanupCallbacks.push(() => clearInterval(timerTickInterval));
 
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) renderTimersTick();
@@ -4667,13 +4864,13 @@
       if (typeof Notification === 'undefined') return;
       if (desktopNotificationsEnabled) {
         desktopNotificationsEnabled = false;
-        localStorage.setItem(DESKTOP_NOTIFY_KEY, '0');
+        try { localStorage.setItem(DESKTOP_NOTIFY_KEY, '0'); } catch (_) {}
         syncDesktopNotifyBtn();
         return;
       }
       if (Notification.permission === 'granted') {
         desktopNotificationsEnabled = true;
-        localStorage.setItem(DESKTOP_NOTIFY_KEY, '1');
+        try { localStorage.setItem(DESKTOP_NOTIFY_KEY, '1'); } catch (_) {}
         syncDesktopNotifyBtn();
         fireTimerNotification('🔔 Rust Companion Ready', 'Desktop timer notifications are active.');
         return;
@@ -4685,7 +4882,7 @@
       }
       Notification.requestPermission().then((perm) => {
         desktopNotificationsEnabled = perm === 'granted';
-        localStorage.setItem(DESKTOP_NOTIFY_KEY, desktopNotificationsEnabled ? '1' : '0');
+        try { localStorage.setItem(DESKTOP_NOTIFY_KEY, desktopNotificationsEnabled ? '1' : '0'); } catch (_) {}
         syncDesktopNotifyBtn();
         if (desktopNotificationsEnabled) {
           fireTimerNotification('🔔 Rust Companion Ready', 'Desktop timer notifications are active.');
@@ -4720,6 +4917,18 @@
       if (preset) {
         startSquadTimer(preset.name, preset.durationSec, preset.color);
       }
+    });
+
+    document.querySelectorAll('.timer-despawn-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sec = Math.max(1, parseInt(btn.getAttribute('data-dsec'), 10) || 0);
+        const label = btn.getAttribute('data-dlabel') || btn.textContent.trim() || 'Despawn Timer';
+        const color = safeCssColor(btn.getAttribute('data-dcolor'), '#eab308');
+        if (sec <= 0) return;
+        startSquadTimer(label, sec, color);
+        flashButtonFeedback(btn);
+        showTacticalToast(`Started ${label} (${Math.round(sec / 60)}m)`, 'ok');
+      });
     });
 
     document.getElementById('timerPresetFilterBar')?.addEventListener('click', (e) => {
@@ -4798,9 +5007,10 @@
   // MODULE 4: PLANT GENETICS CROSSBREEDING SOLVER & BERRY TEA LAB
   // =========================================================================
   function formatGenesCircles(genesStr) {
+    const clean = String(genesStr || '').toUpperCase().replace(/[^GYHWX]/g, '');
     return (
       '<div class="gene-slots">' +
-      genesStr
+      clean
         .split('')
         .map((g) => `<span class="gene-circle gene-${g}">${g}</span>`)
         .join('') +
@@ -5010,35 +5220,40 @@
       addCombo(subset);
     }
 
-    // 2. Combinations with duplicate cloned donors
+    // 2. Combinations with duplicate cloned donors (full 2..8 donor optimization)
     if (allowDupes && n > 0) {
-      const dupePool = pool.slice(0, Math.min(n, 7));
-      const m = dupePool.length;
-      const rec = (startIdx, cur, targetLen) => {
+      const recFromPool = (subPool, startIdx, cur, targetLen) => {
         if (cur.length === targetLen) {
           addCombo([...cur]);
           return;
         }
-        for (let i = startIdx; i < m; i++) {
-          cur.push(dupePool[i]);
-          rec(i, cur, targetLen);
+        for (let i = startIdx; i < subPool.length; i++) {
+          cur.push(subPool[i]);
+          recFromPool(subPool, i, cur, targetLen);
           cur.pop();
         }
       };
-      const maxRepLen = Math.min(maxDonors, m <= 5 ? 5 : 4);
-      for (let len = minDonors; len <= maxRepLen; len++) {
-        rec(0, [], len);
+      for (let len = minDonors; len <= maxDonors; len++) {
+        // Bound combinatorial branching at higher donor counts while keeping top-ranked clones
+        const poolCap = len <= 4 ? 7 : len === 5 ? 6 : len === 6 ? 5 : 4;
+        const subPool = pool.slice(0, Math.min(n, poolCap));
+        recFromPool(subPool, 0, [], len);
       }
-      if (maxDonors >= 5 && m >= 2 && m <= 6) {
-        for (let i = 0; i < m; i++) {
-          for (let j = i; j < m; j++) {
-            const p0 = dupePool[0];
-            const p1 = dupePool[Math.min(1, m - 1)];
-            if (maxDonors >= 6) {
-              addCombo([dupePool[i], dupePool[i], dupePool[j], dupePool[j], p0, p1].slice(0, maxDonors));
+      // Also include pair/triple mixes across top 6 clones for 6-8 donor setups
+      if (maxDonors >= 6 && n >= 2) {
+        const widePool = pool.slice(0, Math.min(n, 6));
+        const p0 = widePool[0];
+        const p1 = widePool[1];
+        for (let i = 0; i < widePool.length; i++) {
+          for (let j = i; j < widePool.length; j++) {
+            if (6 >= minDonors && 6 <= maxDonors) {
+              addCombo([widePool[i], widePool[i], widePool[j], widePool[j], p0, p1]);
             }
-            if (maxDonors >= 8) {
-              addCombo([dupePool[i], dupePool[i], dupePool[j], dupePool[j], p0, p0, p1, p1]);
+            if (7 >= minDonors && 7 <= maxDonors) {
+              addCombo([widePool[i], widePool[i], widePool[j], widePool[j], p0, p0, p1]);
+            }
+            if (8 >= minDonors && 8 <= maxDonors) {
+              addCombo([widePool[i], widePool[i], widePool[j], widePool[j], p0, p0, p1, p1]);
             }
           }
         }
@@ -5050,6 +5265,8 @@
   function findBestSingleStepPlans(centers, donorPool, filters, genSteps = 1) {
     const donorCombos = generateDonorCombos(donorPool, filters.allowDupes, filters.minDonors, filters.maxDonors);
     const allPlans = [];
+    const matchingPlans = [];
+    const filterActive = hasActiveResultFilter(filters);
     const topByOffspring = new Map();
 
     for (const centerGenes of centers) {
@@ -5073,6 +5290,9 @@
           score
         };
         allPlans.push(plan);
+        if (filterActive && matchesResultFilters(sim.offspring, sim.exactChance, filters)) {
+          matchingPlans.push(plan);
+        }
         const prev = topByOffspring.get(sim.offspring);
         if (!prev || score > prev.score) {
           topByOffspring.set(sim.offspring, plan);
@@ -5081,17 +5301,25 @@
     }
 
     allPlans.sort((a, b) => b.score - a.score);
+    let topPlans = allPlans.slice(0, 40);
+    if (filterActive && matchingPlans.length > 0) {
+      matchingPlans.sort((a, b) => b.score - a.score);
+      const seen = new Set(topPlans);
+      for (const mp of matchingPlans.slice(0, 40)) {
+        if (!seen.has(mp)) topPlans.push(mp);
+      }
+    }
     const intermediates = Array.from(topByOffspring.values())
       .sort((a, b) => b.score - a.score)
       .slice(0, 12);
-    return { topPlans: allPlans.slice(0, 40), intermediates };
+    return { topPlans, intermediates };
   }
 
   function formatCloneRef(genes, cloneNumMap, cloneLocMap = lastCloneLocMap) {
     const num = cloneNumMap.get(genes);
     const loc = cloneLocMap?.get(genes);
-    const base = num ? `#${num} ${genes}` : `${genes} (GEN.1)`;
-    return loc ? `${base} [${loc}]` : base;
+    const base = num ? `#${num} ${escapeHtml(genes)}` : `${escapeHtml(genes)} (GEN.1)`;
+    return loc ? `${base} [${escapeHtml(loc)}]` : base;
   }
 
   function renderPlanterStepHtml(plan, badgeText, headingText, cloneNumMap, borderColor = 'rgba(34,197,94,0.45)') {
@@ -5121,9 +5349,9 @@
         cellsHtml.push(`
           <div class="planter-cell center-target">
             <span style="font-size:10px; font-family:var(--font-mono); color:var(--sulfur-yellow); font-weight:700;">${centerTitle}</span>
-            <div style="font-family:var(--font-mono); font-weight:800; color:#fff; letter-spacing:0.08em;">${plan.centerGenes}</div>
-            ${centerLoc ? `<span style="font-size:9.5px; font-family:var(--font-mono); color:#7dd3fc;">📍 ${centerLoc}</span>` : ''}
-            <span style="font-size:10px; color:#4ade80;">→ ${plan.offspring}</span>
+            <div style="font-family:var(--font-mono); font-weight:800; color:#fff; letter-spacing:0.08em;">${escapeHtml(plan.centerGenes)}</div>
+            ${centerLoc ? `<span style="font-size:9.5px; font-family:var(--font-mono); color:#7dd3fc;">📍 ${escapeHtml(centerLoc)}</span>` : ''}
+            <span style="font-size:10px; color:#4ade80;">→ ${escapeHtml(plan.offspring)}</span>
           </div>
         `);
       } else if (dIdx < plan.donors.length) {
@@ -5134,8 +5362,8 @@
         cellsHtml.push(`
           <div class="planter-cell">
             <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary);">${dLabel}</span>
-            <div style="font-family:var(--font-mono); font-weight:700; color:#fff; letter-spacing:0.08em;">${dg}</div>
-            ${dLoc ? `<span style="font-size:9.5px; font-family:var(--font-mono); color:#7dd3fc;">📍 ${dLoc}</span>` : ''}
+            <div style="font-family:var(--font-mono); font-weight:700; color:#fff; letter-spacing:0.08em;">${escapeHtml(dg)}</div>
+            ${dLoc ? `<span style="font-size:9.5px; font-family:var(--font-mono); color:#7dd3fc;">📍 ${escapeHtml(dLoc)}</span>` : ''}
           </div>
         `);
       } else {
@@ -5199,8 +5427,8 @@
                         .join(', ')}
                     </td>
                     <td>
-                      <span class="gene-circle gene-${s.winningGene}" style="width:22px; height:22px; font-size:11px;">${s.winningGene}</span>
-                      ${s.tiedGenes.length > 1 ? `<span style="font-size:10px; color:#facc15; margin-left:4px;">(${s.tiedGenes.join('/')} 50%)</span>` : ''}
+                      <span class="gene-circle gene-${escapeHtml(s.winningGene)}" style="width:22px; height:22px; font-size:11px;">${escapeHtml(s.winningGene)}</span>
+                      ${s.tiedGenes.length > 1 ? `<span style="font-size:10px; color:#facc15; margin-left:4px;">(${escapeHtml(s.tiedGenes.join('/'))} ${Math.round(s.slotChance * 100)}%)</span>` : ''}
                     </td>
                   </tr>
                 `
@@ -5279,25 +5507,25 @@
     if (chosen.gens === 1) {
       detailHtml = renderPlanterStepHtml(
         chosen.plan,
-        `GEN.1 • OPTIMAL ${lastSolvedCrop.toUpperCase()} RESULT`,
+        `GEN.1 • OPTIMAL ${escapeHtml(lastSolvedCrop.toUpperCase())} RESULT`,
         'Resulting Clone:',
         lastCloneNumMap
       );
     } else {
       detailHtml =
         `<div style="padding:10px 12px; margin-bottom:10px; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45); font-size:12.5px; color:#e0f2fe;">
-          🧬 <strong>2-Generation Crossbreed Path (GEN.1 → GEN.2):</strong> Breed <strong>Step 1 → ${chosen.gen1Plan.offspring}</strong>, clone it once grown, then use it in <strong>Step 2 → ${chosen.offspring}</strong> (${Math.round(chosen.exactChance * 100)}% combined odds).
+          🧬 <strong>2-Generation Crossbreed Path (GEN.1 → GEN.2):</strong> Breed <strong>Step 1 → ${escapeHtml(chosen.gen1Plan.offspring)}</strong>, clone it once grown, then use it in <strong>Step 2 → ${escapeHtml(chosen.offspring)}</strong> (${Math.round(chosen.exactChance * 100)}% combined odds).
         </div>` +
         renderPlanterStepHtml(
           chosen.gen1Plan,
-          `STEP 1 (GEN.1) • INTERMEDIATE ${lastSolvedCrop.toUpperCase()}`,
-          `Intermediate Clone (${chosen.gen1Plan.offspring}) → Clone & Move to Step 2:`,
+          `STEP 1 (GEN.1) • INTERMEDIATE ${escapeHtml(lastSolvedCrop.toUpperCase())}`,
+          `Intermediate Clone (${escapeHtml(chosen.gen1Plan.offspring)}) → Clone & Move to Step 2:`,
           lastCloneNumMap,
           'rgba(56,189,248,0.45)'
         ) +
         renderPlanterStepHtml(
           chosen.gen2Plan,
-          `STEP 2 (GEN.2) • FINAL ${lastSolvedCrop.toUpperCase()} CLONE`,
+          `STEP 2 (GEN.2) • FINAL ${escapeHtml(lastSolvedCrop.toUpperCase())} CLONE`,
           'Final Resulting Clone:',
           lastCloneNumMap,
           'rgba(34,197,94,0.6)'
@@ -5330,7 +5558,7 @@
       renderSavedClonesAndTeas();
       container.innerHTML = `
         <div style="padding:16px; background:var(--bg-card); border-radius:6px; color:var(--text-secondary);">
-          Add at least <strong>2 clones</strong> of <strong>${crop}</strong> above (or click <strong>"Load Example Batch"</strong>) to compute optimal 3x3 crossbreeds!
+          Add at least <strong>2 clones</strong> of <strong>${escapeHtml(crop)}</strong> above (or click <strong>"Load Example Batch"</strong>) to compute optimal 3x3 crossbreeds!
         </div>
       `;
       return;
@@ -5358,8 +5586,8 @@
     const existingBannerHtml = existingGod
       ? `<div style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.55); border-radius:8px; padding:12px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
-            <div style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">🏆 YOU ALREADY HAVE THIS ${crop.toUpperCase()} GOD CLONE (#${cloneNumMap.get(existingGod)})!</div>
-            <div style="font-size:12px; color:#e2e8f0; margin-top:2px;">Plant & clone <strong>${existingGod}</strong> — or compare alternative recipes below.</div>
+            <div style="font-family:var(--font-mono); font-size:11px; color:#4ade80; font-weight:700;">🏆 YOU ALREADY HAVE THIS ${escapeHtml(crop.toUpperCase())} GOD CLONE (#${cloneNumMap.get(existingGod)})!</div>
+            <div style="font-size:12px; color:#e2e8f0; margin-top:2px;">Plant &amp; clone <strong>${escapeHtml(existingGod)}</strong> — or compare alternative recipes below.</div>
           </div>
           ${formatGenesCircles(existingGod)}
         </div>`
@@ -5473,9 +5701,9 @@
             <div class="${isUsed ? 'clone-row-used' : ''}" style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); border:1px solid ${c.crop === activeCrop ? 'rgba(34,197,94,0.4)' : 'var(--border-subtle)'}; opacity:${c.crop === activeCrop ? '1' : '0.62'}; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 ${numLabel ? `<span style="font-family:var(--font-mono); font-weight:800; font-size:12px; color:var(--sulfur-yellow); min-width:24px;">${numLabel}</span>` : ''}
-                <span class="target-tier-tag">${c.crop}</span>
+                <span class="target-tier-tag">${escapeHtml(c.crop)}</span>
                 ${formatGenesCircles(c.genes)}
-                <button type="button" class="btn btn-sm edit-clone-loc-btn" data-idx="${c.origIdx}" title="Click to set or edit container position (e.g. Line 5 · Col 6)" style="padding:2px 7px; font-size:10.5px; font-family:var(--font-mono); color:${c.location ? '#7dd3fc' : 'var(--text-muted)'}; border-color:${c.location ? 'rgba(56,189,248,0.45)' : 'var(--border-subtle)'};">${c.location ? `📍 ${c.location}` : '📍 +Pos'}</button>
+                <button type="button" class="btn btn-sm edit-clone-loc-btn" data-idx="${c.origIdx}" title="Click to set or edit container position (e.g. Line 5 · Col 6)" style="padding:2px 7px; font-size:10.5px; font-family:var(--font-mono); color:${c.location ? '#7dd3fc' : 'var(--text-muted)'}; border-color:${c.location ? 'rgba(56,189,248,0.45)' : 'var(--border-subtle)'};">${c.location ? `📍 ${escapeHtml(c.location)}` : '📍 +Pos'}</button>
                 ${isUsed ? `<span style="font-family:var(--font-mono); font-size:10px; font-weight:700; color:var(--sulfur-yellow);">★ USED</span>` : ''}
               </div>
               <button class="btn btn-sm remove-clone-btn" data-idx="${c.origIdx}">✕</button>
@@ -5586,6 +5814,66 @@
 
   function initGeneticsModule() {
     const input = document.getElementById('cloneGeneInput');
+    const previewEl = document.getElementById('cloneGeneLivePreview');
+
+    const renderCloneGeneLivePreview = () => {
+      if (!previewEl) return;
+      const rawText = (input?.value || '').toUpperCase();
+      if (!rawText.trim()) {
+        previewEl.innerHTML = '';
+        return;
+      }
+      const cleaned = rawText.replace(/^[ \t]*#?\d+[.):\s-]+/gm, '');
+      const tokens = cleaned
+        .split(/[\s,;]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const validTokens = tokens.filter((t) => /^[GYHWX]{6}$/.test(t));
+      const activeRaw = tokens.length ? tokens[tokens.length - 1] : '';
+      const activeClean = activeRaw.replace(/[^GYHWX]/g, '').slice(0, 6);
+      const invalidChars = activeRaw.replace(/[GYHWX]/g, '');
+      const gc = geneCounts(activeClean);
+      const goodCount = gc.g + gc.y + gc.h;
+      const badCount = gc.w + gc.x;
+
+      const emptySlotsHtml = Array.from({ length: Math.max(0, 6 - activeClean.length) })
+        .map(() => '<span class="gene-circle" style="opacity:0.28; border-style:dashed;">·</span>')
+        .join('');
+      const activeCirclesHtml = activeClean
+        ? `<div class="gene-slots">${activeClean
+            .split('')
+            .map((g) => `<span class="gene-circle gene-${g}">${g}</span>`)
+            .join('')}${emptySlotsHtml}</div>`
+        : `<div class="gene-slots">${emptySlotsHtml}</div>`;
+
+      const queuedBadges = validTokens.slice(0, 4).map(
+        (t) => `<span style="font-family:var(--font-mono); font-size:11px; padding:1px 6px; border-radius:4px; background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.35); color:#86efac;">${escapeHtml(t)}</span>`
+      );
+      if (validTokens.length > 4) {
+        queuedBadges.push(`<span style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">+${validTokens.length - 4} more</span>`);
+      }
+
+      previewEl.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          ${activeCirclesHtml}
+          <span style="font-family:var(--font-mono); font-size:11.5px; color:#e2e8f0;">
+            Active (${activeClean.length}/6):
+            <strong style="color:#4ade80;">${goodCount} Good</strong> (G:${gc.g} Y:${gc.y} H:${gc.h})
+            • <strong style="color:${badCount > 0 ? '#f87171' : '#94a3b8'};">${badCount} Bad</strong> (W:${gc.w} X:${gc.x})
+          </span>
+          ${invalidChars ? `<span style="font-family:var(--font-mono); font-size:11px; color:#f87171;">Ignored: ${escapeHtml(invalidChars)}</span>` : ''}
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-left:auto;">
+          <span style="font-family:var(--font-mono); font-size:11px; color:${validTokens.length ? '#4ade80' : '#fbbf24'}; font-weight:700;">
+            ${validTokens.length} valid clone${validTokens.length === 1 ? '' : 's'} queued
+          </span>
+          ${queuedBadges.join('')}
+        </div>
+      `;
+    };
+
+    input?.addEventListener('input', renderCloneGeneLivePreview);
+
     document.querySelectorAll('.gene-quick-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (!input) return;
@@ -5597,6 +5885,7 @@
         } else {
           input.value = val + g;
         }
+        renderCloneGeneLivePreview();
       });
     });
 
@@ -5605,6 +5894,7 @@
         input.value = '';
         input.focus();
       }
+      renderCloneGeneLivePreview();
     });
 
     const saveInputClones = () => {
@@ -5635,9 +5925,11 @@
         }
       });
       if (input) input.value = '';
+      renderCloneGeneLivePreview();
       syncStateToServer();
       solveBestCrossbreed();
     };
+    renderCloneGeneLivePreview();
 
     document.getElementById('addCloneBtn')?.addEventListener('click', saveInputClones);
     input?.addEventListener('keydown', (e) => {
@@ -5970,7 +6262,7 @@
               (genes, idx) => `
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:var(--bg-card); padding:6px 10px; border-radius:5px; border:1px solid var(--border-subtle);">
               <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                <input type="text" maxlength="6" class="input scanned-edit-input" data-sidx="${idx}" value="${genes}" style="width:94px; font-family:var(--font-mono); font-weight:700; text-transform:uppercase; padding:4px 6px; letter-spacing:0.1em;" />
+                <input type="text" maxlength="6" class="input scanned-edit-input" data-sidx="${idx}" value="${escapeHtml(genes)}" style="width:94px; font-family:var(--font-mono); font-weight:700; text-transform:uppercase; padding:4px 6px; letter-spacing:0.1em;" />
                 <span class="scanned-circles-preview">${/^[GYHWX]{6}$/.test(genes) ? formatGenesCircles(genes) : '<span style="color:#f87171; font-size:11px;">Need 6 G/Y/H/W/X genes</span>'}</span>
               </div>
               <button class="btn btn-sm remove-scanned-btn" data-sidx="${idx}" type="button">✕</button>
@@ -6437,7 +6729,7 @@
         statusEl.innerHTML = `
           <div style="padding:10px 12px; border-radius:6px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.55); color:#fecaca; font-family:var(--font-sans); font-size:12.5px; line-height:1.45;">
             ⚠️ <strong>Browser blocked Live Screen Capture on plain HTTP / local file!</strong> Chrome &amp; Edge only allow live window sharing on <code>https://</code> or <code>http://localhost</code>.<br/>
-            • <strong>Quick 10s Chrome/Edge Fix for your server:</strong> open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> (or <code>edge://flags/#unsafely-treat-insecure-origin-as-secure</code>), set it to <strong>Enabled</strong>, paste <code>${origin}</code>, and click <strong>Relaunch</strong>.<br/>
+            • <strong>Quick 10s Chrome/Edge Fix for your server:</strong> open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code> (or <code>edge://flags/#unsafely-treat-insecure-origin-as-secure</code>), set it to <strong>Enabled</strong>, paste <code>${escapeHtml(origin)}</code>, and click <strong>Relaunch</strong>.<br/>
             • <strong>Or instant workaround right now:</strong> use <kbd>Win+Shift+S</kbd> in Rust and press <kbd>Ctrl+V</kbd> here — image pasting works even on plain HTTP!
           </div>
         `;
@@ -6461,7 +6753,10 @@
     }
 
     const video = document.getElementById('liveScanVideo');
-    if (!video) return;
+    if (!video) {
+      stopLiveRustScan();
+      return;
+    }
     video.srcObject = liveMediaStream;
     try {
       await video.play();
@@ -6821,6 +7116,57 @@
         </div>
       </div>
     `;
+
+    const goalBox = document.getElementById('recyclerWorkbenchGoalBox');
+    if (goalBox) {
+      const wbTiers = [
+        { tier: 'T1', label: 'T1 Workbench', cost: 75 },
+        { tier: 'T2', label: 'T2 Workbench', cost: 500 },
+        { tier: 'T3', label: 'T3 Workbench', cost: 1250 }
+      ];
+      goalBox.innerHTML = `
+        <div class="wb-goal-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+            <span style="font-family:var(--font-display); font-weight:700; font-size:12.5px; color:#e2e8f0;">🛠️ SCRAP-TO-WORKBENCH GOAL TRACKER</span>
+            <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
+              🔴 Red 75%: <strong style="color:#f87171;">${redScrap.toLocaleString()}</strong>
+              • 🟢 Green 60%: <strong style="color:#4ade80;">${radScrap.toLocaleString()}</strong>
+              • 🛡️ Safe 40%: <strong style="color:var(--sulfur-yellow);">${safeScrap.toLocaleString()}</strong>
+            </span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+            ${wbTiers
+              .map((t) => {
+                const pctGreen = Math.min(100, Math.round((radScrap / t.cost) * 100));
+                const greenDiff = t.cost - radScrap;
+                const redDiff = t.cost - redScrap;
+                const safeDiff = t.cost - safeScrap;
+                const greenStatus =
+                  greenDiff <= 0
+                    ? `<span style="color:#4ade80; font-weight:700;">✅ Ready (+${Math.abs(greenDiff).toLocaleString()})</span>`
+                    : `<span style="color:#fca5a5;">${greenDiff.toLocaleString()} Scrap short</span>`;
+                return `
+                  <div style="padding:7px 9px; border-radius:5px; background:rgba(9,14,22,0.65); border:1px solid ${greenDiff <= 0 ? 'rgba(34,197,94,0.45)' : 'var(--border-subtle)'};">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:11.5px;">
+                      <strong style="color:#fff;">${escapeHtml(t.label)} (${t.cost.toLocaleString()})</strong>
+                      ${greenStatus}
+                    </div>
+                    <div class="wb-goal-bar-track">
+                      <div class="wb-goal-bar-fill" style="width:${pctGreen}%; ${greenDiff <= 0 ? 'background:linear-gradient(90deg, #22c55e, #4ade80);' : ''}"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); gap:6px; flex-wrap:wrap;">
+                      <span>🟢 60%: ${pctGreen}%</span>
+                      <span>🔴 75%: ${redDiff <= 0 ? 'Ready' : `${redDiff.toLocaleString()} short`}</span>
+                      <span>🛡️ 40%: ${safeDiff <= 0 ? 'Ready' : `${safeDiff.toLocaleString()} short`}</span>
+                    </div>
+                  </div>
+                `;
+              })
+              .join('')}
+          </div>
+        </div>
+      `;
+    }
   }
 
   function renderDieselCalculator() {
@@ -7630,6 +7976,38 @@
     document.getElementById('clearRecyclerBtn')?.addEventListener('click', () => {
       Object.keys(recyclerCounts).forEach((k) => (recyclerCounts[k] = 0));
       renderRecyclerCalculator();
+    });
+
+    const FALLBACK_RECYCLER_HAULS = {
+      road_barrel: {
+        label: '🛣️ Road Barrel Run',
+        items: { gears: 4, pipe: 5, blade: 6, road_signs: 4, propane: 3, sewing_kit: 6, rope: 8, tarp: 3 }
+      },
+      sewer_green: {
+        label: '🟢 Sewer Branch + Green Card',
+        items: { tech_trash: 2, semi_body: 3, smg_body: 1, gears: 6, spring: 4, pipe: 8, sheet_metal: 4, road_signs: 6, fuse: 2, sewing_kit: 8 }
+      },
+      launch_elite: {
+        label: '🚀 Launch Site / Elite Crates',
+        items: { tech_trash: 6, rifle_body: 4, smg_body: 3, semi_body: 5, computer: 2, cctv: 3, gears: 10, spring: 8, pipe: 12, sheet_metal: 6, heavy_fuse: 1 }
+      },
+      underwater_lab: {
+        label: '🔬 Underwater Lab Run',
+        items: { tech_trash: 5, rifle_body: 2, smg_body: 3, semi_body: 4, computer: 2, cctv: 2, fuse: 3, gears: 8, spring: 6, pipe: 10, road_signs: 8, sewing_kit: 10 }
+      }
+    };
+    document.querySelectorAll('.rec-haul-btn[data-haul]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-haul');
+        const preset = DATA.recyclerHaulPresets?.[key] || FALLBACK_RECYCLER_HAULS[key];
+        if (!preset || !preset.items) return;
+        Object.keys(recyclerCounts).forEach((k) => (recyclerCounts[k] = 0));
+        Object.entries(preset.items).forEach(([cid, qty]) => {
+          recyclerCounts[cid] = Math.max(0, Math.floor(Number(qty) || 0));
+        });
+        renderRecyclerCalculator();
+        showTacticalToast(`Loaded ${preset.label || btn.textContent.trim()} haul`, 'ok');
+      });
     });
 
     document.getElementById('dieselCountInput')?.addEventListener('input', renderDieselCalculator);
@@ -9505,12 +9883,12 @@
         const s = bfStealthBest;
         const isSel = bfSelectedIdx === -1;
         const risk = bfRiskBadge(s.lowTrafficScore);
-        const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${s.biome})</span>` : '';
+        const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${escapeHtml(s.biome)})</span>` : '';
         stealthSlot.innerHTML = `
           <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-1" style="border-color: rgba(168, 85, 247, 0.55); background: linear-gradient(135deg, rgba(126, 34, 206, 0.16), rgba(15, 23, 42, 0.72));">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
               <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#e9d5ff;">
-                🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.subGrid || s.grid}]</span>${biomeTag}
+                🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
               </div>
               <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
             </div>
@@ -9518,15 +9896,15 @@
               Tier 2 progression (1.5–3 grids off) + low raid risk, calculated <strong>regardless of your filter preferences</strong>.
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
-              <span style="color:#38bdf8;">⚡ Tier 2: ${s.targetName} (${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'})</span>
-              ${s.supportName ? `<span style="color:#86efac;">🟢 Support: ${s.supportName} (${s.supportDist}m)</span>` : ''}
+              <span style="color:#38bdf8;">⚡ Tier 2: ${escapeHtml(s.targetName)} (${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'})</span>
+              ${s.supportName ? `<span style="color:#86efac;">🟢 Support: ${escapeHtml(s.supportName)} (${s.supportDist}m)</span>` : ''}
               <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
               <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
               <span style="color:#86efac;">🧱 No-Build Clear: ${s.noBuildClearance >= 900 ? 'Open Land' : `+${s.noBuildClearance}m`}</span>
               <span style="color:${risk.color};">🛡️ Raid Risk: ${risk.label}</span>
             </div>
             <div style="font-size:12px; color:var(--text-secondary);">
-              Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+              Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
             </div>
             ${bfFormatOffshoreInfo(s)}
           </div>
@@ -9541,7 +9919,7 @@
       if (bfCustomTargetMonument) {
         focusBar.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:rgba(56, 189, 248, 0.14); border:1px solid rgba(56, 189, 248, 0.45); font-size:12px;">
-            <span>🎯 Targeted Monument: <strong style="color:#fff;">${bfCustomTargetMonument.type} [${bfCustomTargetMonument.grid}]</strong></span>
+            <span>🎯 Targeted Monument: <strong style="color:#fff;">${escapeHtml(bfCustomTargetMonument.type)} [${escapeHtml(bfCustomTargetMonument.grid)}]</strong></span>
             <button id="bfClearFocusMonBtn" class="btn btn-secondary" style="padding:3px 8px; font-size:11px;">✕ Reset</button>
           </div>
         `;
@@ -9562,28 +9940,28 @@
         .map((s, idx) => {
           const isSel = idx === bfSelectedIdx;
           const risk = bfRiskBadge(s.lowTrafficScore);
-          const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${s.biome})</span>` : '';
+          const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${escapeHtml(s.biome)})</span>` : '';
           const rankBadge = idx === 0
-            ? (bfCustomTargetMonument ? `🥇 #1 NEAR ${bfCustomTargetMonument.type.toUpperCase()}` : '🥇 #1 BEST FOR YOUR FILTERS')
+            ? (bfCustomTargetMonument ? `🥇 #1 NEAR ${escapeHtml(String(bfCustomTargetMonument.type || '').toUpperCase())}` : '🥇 #1 BEST FOR YOUR FILTERS')
             : `#${idx + 1} OPTION`;
           return `
             <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
-                  ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${s.subGrid || s.grid}]</span>${biomeTag}
+                  ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
                 </div>
                 <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
               </div>
               <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
-                <span style="color:#38bdf8;">⚡ ${s.targetName}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
+                <span style="color:#38bdf8;">⚡ ${escapeHtml(s.targetName)}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
                 <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
-                <span style="color:#93c5fd;">⚓ ${s.boatName}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
+                <span style="color:#93c5fd;">⚓ ${escapeHtml(s.boatName)}: ${s.boatDist < 99999 ? s.boatDist + 'm' : 'N/A'}</span>
                 <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW'} (${s.oreScore}%)</span>
                 <span style="color:#86efac;">🧱 No-Build Clear: ${s.noBuildClearance >= 900 ? 'Open Land' : `+${s.noBuildClearance}m`}</span>
                 <span style="color:${risk.color};">🛡️ Raid Risk: ${risk.label}</span>
               </div>
               <div style="font-size:12px; color:var(--text-secondary);">
-                Nearest hotspot: <strong style="color:#e2e8f0;">${s.nearestTrafficName}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+                Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
               </div>
               ${bfFormatOffshoreInfo(s)}
             </div>
@@ -9628,12 +10006,12 @@
       : 'selected spot';
 
     if (!bfFarmingSpots || bfFarmingSpots.length === 0) {
-      farmEl.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px;">No quarries or resource hotspots detected near ${selLabel} (or heatmaps still loading).</div>`;
+      farmEl.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px;">No quarries or resource hotspots detected near ${escapeHtml(selLabel)} (or heatmaps still loading).</div>`;
       return;
     }
 
     farmEl.innerHTML =
-      `<div style="font-size:11px; color:var(--text-muted); padding:0 2px 6px 2px;">Showing farming spots nearby <strong style="color:#fff;">${selLabel}</strong></div>` +
+      `<div style="font-size:11px; color:var(--text-muted); padding:0 2px 6px 2px;">Showing farming spots nearby <strong style="color:#fff;">${escapeHtml(selLabel)}</strong></div>` +
       bfFarmingSpots
         .map((fm, idx) => {
           const isSel = idx === bfSelectedFarmIdx;
@@ -9641,11 +10019,11 @@
             <div class="monument-item bf-farm-card ${isSel ? 'active' : ''}" data-farm-idx="${idx}" style="padding:10px 12px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <div style="font-family:var(--font-display); font-weight:700; font-size:13.5px; color:#fff;">
-                  ${fm.icon} ${fm.title}
+                  ${escapeHtml(fm.icon)} ${escapeHtml(fm.title)}
                 </div>
-                <span class="keycard-tag keycard-Fuse">[${fm.grid}]${fm.distBase !== null ? ` • ${fm.distBase}m from ${selLabel}` : ''}</span>
+                <span class="keycard-tag keycard-Fuse">[${escapeHtml(fm.grid)}]${fm.distBase !== null ? ` • ${fm.distBase}m from ${escapeHtml(selLabel)}` : ''}</span>
               </div>
-              <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${fm.detail}</div>
+              <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">${escapeHtml(fm.detail)}</div>
             </div>
           `;
         })
@@ -9828,15 +10206,18 @@
     }
     routeEl.innerHTML = steps
       .map(
-        (st, idx) => `
-        <div class="monument-item bf-route-step-card" data-route-idx="${idx}" style="padding:9px 12px; border-left:3px solid ${st.color}; cursor:pointer;" title="Click to focus map on ${st.name}">
+        (st, idx) => {
+          const sCol = safeCssColor(st.color, '#38bdf8');
+          return `
+        <div class="monument-item bf-route-step-card" data-route-idx="${idx}" style="padding:9px 12px; border-left:3px solid ${sCol}; cursor:pointer;" title="Click to focus map on ${escapeHtml(st.name)}">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:${st.color};">${st.step}: <span style="color:#fff;">${st.name}</span></div>
-            <span class="keycard-tag keycard-Fuse">[${st.grid}] • ${st.dist > 0 ? `${st.dist}m` : 'Roads'}</span>
+            <div style="font-family:var(--font-display); font-weight:700; font-size:13px; color:${sCol};">${escapeHtml(st.step)}: <span style="color:#fff;">${escapeHtml(st.name)}</span></div>
+            <span class="keycard-tag keycard-Fuse">[${escapeHtml(st.grid)}] • ${st.dist > 0 ? `${st.dist}m` : 'Roads'}</span>
           </div>
-          <div style="font-size:11.5px; color:var(--text-secondary); margin-top:3px;">${st.note}</div>
+          <div style="font-size:11.5px; color:var(--text-secondary); margin-top:3px;">${escapeHtml(st.note)}</div>
         </div>
-      `
+      `;
+        }
       )
       .join('');
 
@@ -9958,7 +10339,7 @@
         list
           .map(
             (m) =>
-              `<button class="filter-pill bf-recent-pill" data-map-url="${m.url}" style="padding:3px 9px; font-size:11px;">🗺️ ${m.id}</button>`
+              `<button class="filter-pill bf-recent-pill" data-map-url="${escapeHtml(m.url)}" style="padding:3px 9px; font-size:11px;">🗺️ ${escapeHtml(m.id)}</button>`
           )
           .join('');
       recentBar.querySelectorAll('.bf-recent-pill').forEach((btn) => {
@@ -9980,9 +10361,11 @@
         return;
       }
 
-      const oldText = analyzeBtn.textContent;
-      analyzeBtn.textContent = '⏳ Analyzing Map...';
-      analyzeBtn.disabled = true;
+      const oldText = analyzeBtn ? analyzeBtn.textContent : '';
+      if (analyzeBtn) {
+        analyzeBtn.textContent = '⏳ Analyzing Map...';
+        analyzeBtn.disabled = true;
+      }
       if (statusEl) statusEl.textContent = 'Fetching map & monuments from RustMaps...';
 
       try {
@@ -10111,8 +10494,10 @@
         if (statusEl) statusEl.textContent = `⚠️ ${err.message}`;
         if (!silent) alert(err.message);
       } finally {
-        analyzeBtn.textContent = oldText;
-        analyzeBtn.disabled = false;
+        if (analyzeBtn) {
+          analyzeBtn.textContent = oldText;
+          analyzeBtn.disabled = false;
+        }
       }
     }
 
@@ -10595,8 +10980,8 @@
             const distFromSel = selSpot ? Math.round(Math.hypot(hit.wx - selSpot.wx, hit.wy - selSpot.wy)) : null;
             const extraLines = [...hit.lines];
             if (distFromSel !== null) extraLines.push(`📍 ${distFromSel}m from [${selSpot.grid}]`);
-            tooltipEl.innerHTML = `<div style="font-weight:700; color:${hit.color || '#fff'}; margin-bottom:3px;">${hit.title}</div>` +
-              extraLines.map((l) => `<div style="color:#cbd5e1; line-height:1.35;">${l}</div>`).join('');
+            tooltipEl.innerHTML = `<div style="font-weight:700; color:${safeCssColor(hit.color, '#fff')}; margin-bottom:3px;">${escapeHtml(hit.title)}</div>` +
+              extraLines.map((l) => `<div style="color:#cbd5e1; line-height:1.35;">${escapeHtml(l)}</div>`).join('');
             tooltipEl.style.display = 'block';
             const leftPx = Math.min(rect.width - 230, Math.max(8, e.clientX - rect.left + 14));
             const topPx = Math.min(rect.height - 95, Math.max(8, e.clientY - rect.top + 14));
@@ -10640,7 +11025,7 @@
     if (urlInput && !urlInput.value.trim() && recentMaps.length > 0) {
       urlInput.value = recentMaps[0].url;
       if (window.location.protocol !== 'file:') {
-        runAnalyze();
+        runAnalyze({ silent: true });
       }
     }
 
@@ -11111,7 +11496,7 @@
           const rpBtn = rpCount > 0
             ? `<button type="button" class="filter-pill bf-pin-strip-raid-btn" data-pid="${escapeHtml(p.id)}" title="Queue raid breakdown in Raid Calc" style="border-color:#ef4444; color:#fca5a5;">💥 ${rpCount}</button>`
             : '';
-          return `<span style="display:inline-flex; gap:3px; align-items:center;"><button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${p.wx}" data-wy="${p.wy}" style="border-color:${escapeHtml(p.color || '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>${rpBtn}</span>`;
+          return `<span style="display:inline-flex; gap:3px; align-items:center;"><button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${Number(p.wx) || 0}" data-wy="${Number(p.wy) || 0}" style="border-color:${safeCssColor(p.color, '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>${rpBtn}</span>`;
         })
         .join('');
     stripEl.querySelectorAll('.bf-shared-pin-pill').forEach((btn) => {
@@ -11182,12 +11567,15 @@
                 headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
                 body: JSON.stringify({ entityId: eid, active: next })
               });
-              const data = await resp.json();
+              const data = await resp.json().catch(() => ({}));
               if (resp.ok && Array.isArray(data.smartDevices)) {
                 appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
                 renderRustPlusHeaderAndWidgets();
                 renderShopLiveMap();
+              } else if (data.error || resp.status === 403) {
+                alert(data.error || 'Squad PIN required or invalid.');
               }
+            } catch (_) {
             } finally {
               btn.disabled = false;
             }
@@ -11237,7 +11625,7 @@
                 const crateBtn = ev.type === 6
                   ? `<button type="button" class="filter-pill shop-evt-crate-timer" data-grid="${escapeHtml(ev.grid)}" style="border-color:#f59e0b; color:#fde047;">⏱️ Track 15:00 Crate [${escapeHtml(ev.grid)}]</button>`
                   : '';
-                return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${ev.wx}" data-wy="${ev.wy}" style="border-color:${ev.color || '#38bdf8'}; color:#f8fafc;">${ev.icon} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
+                return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${Number(ev.wx) || 0}" data-wy="${Number(ev.wy) || 0}" style="border-color:${safeCssColor(ev.color, '#38bdf8')}; color:#f8fafc;">${escapeHtml(ev.icon)} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
               })
               .join('')
           : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts World Events on some servers. Squad GPS, Shared Pins, 15m Deaths, Team Chat Bot, Clock &amp; Smart Devices stay live.` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
@@ -11315,7 +11703,10 @@
 
   function renderBm24hSparklineHtml(history) {
     if (!Array.isArray(history) || history.length < 2) return '';
-    const vals = history.map((pt) => Number(pt?.attributes?.value ?? pt?.attributes?.mean ?? 0));
+    const vals = history.map((pt) => {
+      const v = Number(pt?.attributes?.value ?? pt?.attributes?.mean ?? 0);
+      return Number.isFinite(v) ? v : 0;
+    });
     const maxV = Math.max(1, ...vals);
     const minV = Math.min(...vals);
     let minIdx = 0;
@@ -11396,6 +11787,46 @@
       }
     }
 
+    const clockBadge = document.getElementById('hudWipeClockBadge');
+    const clockTime = time || appState.rustPlus?.liveTelemetry?.time || null;
+    if (clockBadge) {
+      if (
+        clockTime &&
+        typeof clockTime.time === 'number' &&
+        Number.isFinite(clockTime.time) &&
+        typeof clockTime.sunrise === 'number' &&
+        Number.isFinite(clockTime.sunrise) &&
+        typeof clockTime.sunset === 'number' &&
+        Number.isFinite(clockTime.sunset) &&
+        typeof clockTime.dayLengthMinutes === 'number' &&
+        Number.isFinite(clockTime.dayLengthMinutes) &&
+        clockTime.dayLengthMinutes > 0
+      ) {
+        const rawHour = ((clockTime.time % 24) + 24) % 24;
+        const hrs = Math.floor(rawHour);
+        const mins = Math.floor((rawHour - hrs) * 60);
+        const hhmm = clockTime.formatted || `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+        const isDay = rawHour >= clockTime.sunrise && rawHour < clockTime.sunset;
+        const hoursUntil = isDay
+          ? clockTime.sunset - rawHour
+          : rawHour >= clockTime.sunset
+            ? 24 - rawHour + clockTime.sunrise
+            : clockTime.sunrise - rawHour;
+        const totalSec = Math.max(1, Math.round(hoursUntil * (clockTime.dayLengthMinutes / 24) * 60));
+        const remMins = Math.max(1, Math.round(totalSec / 60));
+        const remCountdown = totalSec >= 60 ? `${Math.floor(totalSec / 60)}m ${String(totalSec % 60).padStart(2, '0')}s` : `${totalSec}s`;
+        clockBadge.style.display = 'inline-flex';
+        clockBadge.classList.toggle('is-night', !isDay);
+        clockBadge.classList.toggle('is-day', isDay);
+        clockBadge.textContent = isDay
+          ? `☀️ Day ${hhmm} (~${remMins}m to Dusk • ${remCountdown})`
+          : `🌙 Night ${hhmm} (~${remMins}m to Dawn • ${remCountdown})`;
+      } else {
+        clockBadge.style.display = 'none';
+        clockBadge.textContent = '';
+      }
+    }
+
     // Live Server Intel Card inside Rust+ subtab (Wipe Age, Queue, Phase Timer, Leader Handoff, 24h BM Pop)
     const intelCard = document.getElementById('rpLiveServerIntelCard');
     if (intelCard) {
@@ -11409,7 +11840,7 @@
         const wipeAge = info?.wipeTime ? formatWipeElapsed(info.wipeTime) : '';
         const qNum = Number(info?.queuedPlayers || 0);
         const phaseFull = time
-          ? `${time.isDay ? '☀️ Day' : '🌙 Night'} ${time.formatted}${time.minutesUntilChange ? ` • ${time.nextPhase} in <strong>${time.minutesUntilChange}m</strong>` : ''}`
+          ? `${time.isDay ? '☀️ Day' : '🌙 Night'} ${escapeHtml(time.formatted)}${time.minutesUntilChange ? ` • ${escapeHtml(time.nextPhase)} in <strong>${Number(time.minutesUntilChange)}m</strong>` : ''}`
           : '';
         const squadRows = members.length
           ? `<div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:6px;">${members
@@ -11439,7 +11870,7 @@
               ${info?.name ? `<button id="rpLoadBmPopBtn" type="button" class="btn btn-sm" style="padding:2px 7px; font-size:10px; border-color:#38bdf8; color:#bae6fd;" ${bmPopIntelCache.loading ? 'disabled' : ''}>${bmPopIntelCache.loading ? '⏳...' : '📊 24h Pop'}</button>` : ''}
             </div>
           </div>
-          ${phaseFull ? `<div style="font-size:10.5px; font-family:var(--font-mono); color:#cbd5e1; margin-top:4px;">${phaseFull}${info?.players !== undefined ? ` • 👥 ${info.players}/${info.maxPlayers || '?'}` : ''}</div>` : ''}
+          ${phaseFull ? `<div style="font-size:10.5px; font-family:var(--font-mono); color:#cbd5e1; margin-top:4px;">${phaseFull}${info?.players !== undefined ? ` • 👥 ${Number(info.players) || 0}/${escapeHtml(info.maxPlayers ?? '?')}` : ''}</div>` : ''}
           ${squadRows}
           ${bmHtml}
         `;
@@ -11641,15 +12072,23 @@
       devList.querySelectorAll('.rp-switch-del-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const eid = btn.getAttribute('data-eid');
-          const resp = await fetch('/api/shops/rustplus/smart-device', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
-            body: JSON.stringify({ action: 'remove', entityId: eid })
-          });
-          const data = await resp.json();
-          if (resp.ok && Array.isArray(data.smartDevices)) {
-            appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
-            renderRustPlusHeaderAndWidgets();
+          btn.disabled = true;
+          try {
+            const resp = await fetch('/api/shops/rustplus/smart-device', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+              body: JSON.stringify({ action: 'remove', entityId: eid })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && Array.isArray(data.smartDevices)) {
+              appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+              renderRustPlusHeaderAndWidgets();
+            } else if (data.error || resp.status === 403) {
+              alert(data.error || 'Squad PIN required or invalid.');
+            }
+          } catch (_) {
+          } finally {
+            btn.disabled = false;
           }
         });
       });
@@ -12237,22 +12676,27 @@
       const name = nameEl?.value.trim() || '';
       const entityType = typeEl?.value || 'switch';
       if (!entityId) return;
-      const resp = await fetch('/api/shops/rustplus/smart-device', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
-        body: JSON.stringify({ action: 'add', entityId, name, entityType })
-      });
-      const data = await resp.json();
-      if (resp.ok && Array.isArray(data.smartDevices)) {
-        if (idEl) idEl.value = '';
-        if (nameEl) nameEl.value = '';
-        appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
-        renderRustPlusHeaderAndWidgets();
-      } else if (data.error) {
-        alert(data.error);
+      try {
+        const resp = await fetch('/api/shops/rustplus/smart-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getSquadPin() ? { 'X-Squad-Pin': getSquadPin() } : {}) },
+          body: JSON.stringify({ action: 'add', entityId, name, entityType })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && Array.isArray(data.smartDevices)) {
+          if (idEl) idEl.value = '';
+          if (nameEl) nameEl.value = '';
+          appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), smartDevices: data.smartDevices };
+          renderRustPlusHeaderAndWidgets();
+        } else if (data.error || resp.status === 403) {
+          alert(data.error || 'Squad PIN required or invalid.');
+        }
+      } catch (err) {
+        alert(err?.message || 'Failed to add smart device.');
       }
     });
 
+    cleanupCallbacks.push(stopClientCloudWaitPoll, stopRaidLiveScan, stopLiveRustScan);
     syncRustPlusShopUiFromState();
     startClientCloudWaitPoll();
   }
