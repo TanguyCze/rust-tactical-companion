@@ -98,6 +98,7 @@ const DEFAULT_STATE = {
     chatBotEnabled: true,
     chatBotAllowSwitchControl: true,
     discordAlertEvents: true,
+    autoEventTimers: true,
     smartAutomation: {
       duskAutoSwitchIds: [],
       alarmDefenseSwitchIds: [],
@@ -117,6 +118,7 @@ const DEFAULT_STATE = {
     mapNotes: [],
     teamChat: [],
     smartDevices: [],
+    vendingMachines: [],
     activityLog: []
   },
   updatedAt: Date.now()
@@ -163,7 +165,8 @@ function hydrateStateFromParsed(rawObj) {
     },
     rustPlusTelemetry: {
       ...DEFAULT_STATE.rustPlusTelemetry,
-      ...(parsed.rustPlusTelemetry && typeof parsed.rustPlusTelemetry === 'object' ? parsed.rustPlusTelemetry : {})
+      ...(parsed.rustPlusTelemetry && typeof parsed.rustPlusTelemetry === 'object' ? parsed.rustPlusTelemetry : {}),
+      vendingMachines: Array.isArray(parsed.rustPlusTelemetry?.vendingMachines) ? parsed.rustPlusTelemetry.vendingMachines : []
     }
   };
   return { state, hadLegacy: Boolean(rustPlus || markers || mapConfig) };
@@ -2120,7 +2123,79 @@ async function processTeamChatBotCommands(teamChat, cfg, telemetry) {
     const arg = parts.slice(1).join(' ').trim();
     let reply = '';
     if (cmd === '!help' || cmd === '!bot') {
-      reply = '🤖 Cmds: !time | !pop | !upkeep | !timers | !switches | !on <name/group> | !off <name/group>';
+      reply = '🤖 !shops <item> | !raid <qty target> | !events | !time | !pop | !upkeep | !timers | !switches | !on/!off <name>';
+    } else if (cmd === '!shops' || cmd === '!shop' || cmd === '!buy') {
+      const shops = Array.isArray(telemetry?.vendingMachines) ? telemetry.vendingMachines : [];
+      if (!shops.length) {
+        reply = '🤖 No Vending Machines cached yet — poll Rust+ or wait for sync.';
+      } else if (!arg) {
+        const inStockShops = shops.filter((s) => !s.outOfStock).length;
+        reply = `🤖 ${shops.length} shops (${inStockShops} stocked). Usage: !shops <item>`;
+      } else {
+        const q = arg.toLowerCase();
+        const hits = [];
+        for (const sh of shops) {
+          for (const o of sh.sellOrders || []) {
+            const iName = String(o.itemName || '');
+            const iShort = String(o.itemShortname || '');
+            if (iName.toLowerCase().includes(q) || iShort.toLowerCase().includes(q)) {
+              const unitCost = o.quantity > 0 ? o.costPerItem / o.quantity : o.costPerItem;
+              hits.push({
+                grid: sh.grid || '?',
+                itemName: iName + (o.itemIsBp ? ' (BP)' : ''),
+                qty: o.quantity,
+                cost: o.costPerItem,
+                currency: o.currencyName || 'Scrap',
+                stock: o.amountInStock,
+                unitCost
+              });
+            }
+          }
+        }
+        hits.sort((a, b) => {
+          const sa = a.stock > 0 ? 0 : 1;
+          const sb = b.stock > 0 ? 0 : 1;
+          if (sa !== sb) return sa - sb;
+          return a.unitCost - b.unitCost;
+        });
+        if (!hits.length) {
+          reply = `🤖 No shops selling "${arg}".`;
+        } else {
+          const formatted = hits
+            .slice(0, 3)
+            .map((h) => `[${h.grid}] ${h.qty}x${h.itemName}=${h.cost} ${h.currency} (${h.stock > 0 ? `x${h.stock}` : 'OUT'})`)
+            .join(' | ');
+          reply = `🤖 ${formatted}`.slice(0, 235);
+        }
+      }
+    } else if (cmd === '!events' || cmd === '!cargo' || cmd === '!heli' || cmd === '!crate') {
+      const evts = Array.isArray(telemetry?.liveEvents) ? telemetry.liveEvents : [];
+      reply = evts.length
+        ? `🤖 Events: ${evts.slice(0, 5).map((e) => `${e.label}[${e.grid}]`).join(' | ')}`.slice(0, 235)
+        : '🤖 No active Cargo / Heli / Crate events right now.';
+    } else if (cmd === '!raid') {
+      const mQty = /^(\d+)\s+(.+)$/.exec(arg);
+      const qty = mQty ? Math.min(50, Math.max(1, parseInt(mQty[1], 10) || 1)) : 1;
+      const targetQ = (mQty ? mQty[2] : arg).toLowerCase().trim();
+      const BOT_RAID_TABLE = [
+        { keys: ['wood door', 'wooden door'], name: 'Wood Door', sulfur: 475, combo: '19 Explo / 2 Molotov (0S)' },
+        { keys: ['sheet', 'metal door'], name: 'Sheet Door', sulfur: 1575, combo: '63 Explo / 1R+8 Explo' },
+        { keys: ['garage'], name: 'Garage Door', sulfur: 3200, combo: '1C4+40 Explo / 3R=4,200S' },
+        { keys: ['armored door', 'hqm door', 'toptier door'], name: 'Armored Door', sulfur: 5150, combo: '2C4+30 Explo / 5R=7,000S' },
+        { keys: ['wood wall'], name: 'Wood Wall', sulfur: 1225, combo: '49 Explo / 4 Molotov (0S)' },
+        { keys: ['stone', 'high stone', 'high external'], name: 'Stone Wall', sulfur: 4300, combo: '1C4+84 Explo / 4R=5,600S' },
+        { keys: ['metal wall', 'sheet wall'], name: 'Metal Wall', sulfur: 8350, combo: '3C4+70 Explo / 8R=11,200S' },
+        { keys: ['armored wall', 'hqm wall', 'hqm'], name: 'Armored Wall', sulfur: 16150, combo: '7C4+30 Explo / 15R=21,000S' },
+        { keys: ['turret', 'auto turret'], name: 'Auto Turret', sulfur: 600, combo: '3 HV Rockets' },
+        { keys: ['window', 'embrasure', 'reinforced'], name: 'Window/Embrasure', sulfur: 2950, combo: '1C4+30 Explo' }
+      ];
+      const hit = targetQ ? BOT_RAID_TABLE.find((r) => r.keys.some((k) => targetQ.includes(k))) : null;
+      if (!targetQ || !hit) {
+        reply = '🤖 Usage: !raid <qty> <sheet|garage|armored door|stone|metal|hqm wall|turret>';
+      } else {
+        const totalSulfur = hit.sulfur * qty;
+        reply = `🤖 Raid ${qty}x ${hit.name}: ${totalSulfur.toLocaleString('en-US')} Sulfur (${hit.combo} ea)`;
+      }
     } else if (cmd === '!time' || cmd === '!day' || cmd === '!night') {
       const t = telemetry?.time;
       reply = t
@@ -2328,6 +2403,50 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     }
   }
 
+  // Decode Live Vending Machines (type === 3)
+  const vendingMachines = [];
+  for (const mk of rawMarkers) {
+    if (mk.type !== 3) continue;
+    const rawOrders = Array.isArray(mk.sellOrders) ? mk.sellOrders.slice(0, 24) : [];
+    const orders = rawOrders.map((so) => {
+      const itemMeta = resolveRustItemInfo(so.itemId);
+      const currMeta = resolveRustItemInfo(so.currencyId);
+      return {
+        itemId: Number(so.itemId || 0),
+        itemName: itemMeta.name,
+        itemShortname: itemMeta.shortname,
+        itemIsBp: Boolean(so.itemIsBlueprint),
+        category: inferShopCategoryFromName(itemMeta.name),
+        quantity: Number(so.quantity || 1),
+        currencyId: Number(so.currencyId || 0),
+        currencyName: currMeta.name,
+        currencyShortname: currMeta.shortname,
+        currencyIsBp: Boolean(so.currencyIsBlueprint),
+        costPerItem: Number(so.costPerItem || 0),
+        amountInStock: Number(so.amountInStock || 0)
+      };
+    });
+    const inStockCount = orders.filter((o) => o.amountInStock > 0).length;
+    const wx = Number((mk.x - mapSize / 2).toFixed(1));
+    const wy = Number((mk.y - mapSize / 2).toFixed(1));
+    const grid = worldGridLabelFromRustPlus(mk.x, mk.y, mapSize);
+    vendingMachines.push({
+      id: String(mk.id),
+      name: String(mk.name || 'Vending Machine').trim().slice(0, 48),
+      wx,
+      wy,
+      grid,
+      outOfStock: Boolean(mk.outOfStock || inStockCount === 0),
+      inStockCount,
+      sellOrders: orders
+    });
+  }
+  vendingMachines.sort((a, b) => {
+    if (a.outOfStock !== b.outOfStock) return a.outOfStock ? 1 : -1;
+    return b.inStockCount - a.inStockCount;
+  });
+  const boundedVendingMachines = vendingMachines.slice(0, 120);
+
   // Cache AppMap JPEG image in RAM if returned
   let prevMapMeta = squadState.rustPlusTelemetry?.mapMeta || null;
   if (snapshot?.map && snapshot.map.jpgImage && snapshot.map.jpgImage.length > 100) {
@@ -2491,10 +2610,32 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     total: rawMarkers.length,
     byType,
     eventsCount: liveEvents.length,
+    shopsCount: boundedVendingMachines.length,
     mode: snapshot?.mode || 'auto',
     markerError: snapshot?.markerError || '',
     updatedAt: nowTs
   };
+
+  // Auto-start 15:00 Locked Crate timers when enabled
+  if ((cfg?.autoEventTimers ?? squadState.rustPlusShopConfig?.autoEventTimers) !== false && newEvents.some((e) => e.type === 6)) {
+    const existingTimers = Array.isArray(squadState.activeTimers) ? [...squadState.activeTimers] : [];
+    for (const ev of newEvents) {
+      if (ev.type !== 6) continue;
+      const tid = `rp-evt-${ev.id}`;
+      if (!existingTimers.some((t) => String(t.id) === tid && !t.paused && Number(t.endsAt || 0) > nowTs)) {
+        existingTimers.unshift({
+          id: tid,
+          name: `Locked Crate [${ev.grid}]`,
+          category: 'Locked Crate',
+          durationSec: 900,
+          endsAt: nowTs + 900 * 1000,
+          startedAt: nowTs,
+          paused: false
+        });
+      }
+    }
+    squadState.activeTimers = existingTimers.slice(0, 40);
+  }
 
   const newActivityEntries = [
     ...triggeredAlarms.map((a) => ({ icon: '🚨', category: 'alarm', text: `${a.name} RAID ALARM TRIGGERED!` })),
@@ -2514,6 +2655,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     mapNotes,
     teamChat,
     smartDevices,
+    vendingMachines: boundedVendingMachines,
     activityLog,
     markerSummary
   };
@@ -2525,7 +2667,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
     mapSize,
     ...(nextServerInfo.name ? { serverName: nextServerInfo.name } : {}),
     lastPolledAt: nowTs,
-    lastStatus: `🟢 Live Rust+ (${snapshot?.mode || 'relay'}) • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • ⚡ ${liveEvents.length} events • 📍 ${rawMarkers.length} markers`
+    lastStatus: `🟢 Live Rust+ (${snapshot?.mode || 'relay'}) • ${nextServerInfo.name || 'Server'} • 👥 ${nextServerInfo.players ?? '?'}/${nextServerInfo.maxPlayers ?? '?'}${timeSummary ? ` • 🕒 ${timeSummary.formatted}` : ''} • ⚡ ${liveEvents.length} events • 🛒 ${boundedVendingMachines.length} shops`
   };
   console.log(`[Rust+] Sync OK (${snapshot?.mode}): server=${nextServerInfo.name || serverKey} markers=${rawMarkers.length} byType=${JSON.stringify(byType)} events=${liveEvents.length} team=${teamMembers.length}`);
   saveState(squadState);
@@ -2569,6 +2711,7 @@ async function applyVendingSnapshotToState(snapshot, cfg) {
   return {
     ok: true,
     eventsCount: liveEvents.length,
+    shopsCount: boundedVendingMachines.length,
     teamCount: teamMembers.length,
     lastStatus: squadState.rustPlusShopConfig.lastStatus
   };
@@ -3846,6 +3989,7 @@ const server = http.createServer(async (req, res) => {
         chatBotEnabled: body.chatBotEnabled !== false,
         chatBotAllowSwitchControl: body.chatBotAllowSwitchControl !== false,
         discordAlertEvents: body.discordAlertEvents !== false,
+        autoEventTimers: body.autoEventTimers !== false,
         smartAutomation: normalizeSmartAutomation(
           body.smartAutomation ?? squadState.rustPlusShopConfig?.smartAutomation
         )
@@ -4081,6 +4225,7 @@ const server = http.createServer(async (req, res) => {
         ...(body.chatBotEnabled !== undefined ? { chatBotEnabled: Boolean(body.chatBotEnabled) } : {}),
         ...(body.chatBotAllowSwitchControl !== undefined ? { chatBotAllowSwitchControl: Boolean(body.chatBotAllowSwitchControl) } : {}),
         ...(body.discordAlertEvents !== undefined ? { discordAlertEvents: Boolean(body.discordAlertEvents) } : {}),
+        ...(body.autoEventTimers !== undefined ? { autoEventTimers: Boolean(body.autoEventTimers) } : {}),
         ...(body.smartAutomation !== undefined ? { smartAutomation: normalizeSmartAutomation(body.smartAutomation) } : {})
       };
       try {

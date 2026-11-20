@@ -113,6 +113,7 @@
     chatBotEnabled: true,
     chatBotAllowSwitchControl: true,
     discordAlertEvents: true,
+    autoEventTimers: true,
     smartAutomation: {
       duskAutoSwitchIds: [],
       alarmDefenseSwitchIds: [],
@@ -133,6 +134,7 @@
     mapNotes: [],
     teamChat: [],
     smartDevices: [],
+    vendingMachines: [],
     activityLog: []
   };
 
@@ -1138,6 +1140,19 @@
     };
   }
 
+  let raidFurnaceCount = 2;
+
+  function formatDurationCompact(totalSec) {
+    const s = Math.max(0, Math.round(Number(totalSec) || 0));
+    if (s <= 0) return '0s';
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const rem = s % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${rem}s`;
+    return `${rem}s`;
+  }
+
   function renderRaidCraftChain(shoppingListArg) {
     const craftChainBox = document.getElementById('raidCraftChainBox');
     if (!craftChainBox) return;
@@ -1148,14 +1163,14 @@
 
     const shoppingList = shoppingListArg || getQueuedShoppingRequirements().reqTools || {};
     const RAID_CRAFT_RECIPES = {
-      c4: { explosives: 20, gpDirect: 0 },
-      rocket: { explosives: 10, gpDirect: 150 },
-      explo_ammo: { explosives: 0, gpDirect: 10 },
-      satchel: { explosives: 0, gpDirect: 240 },
-      beancan: { explosives: 0, gpDirect: 60 },
-      hv_rocket: { explosives: 0, gpDirect: 100 },
-      incen_rocket: { explosives: 1, gpDirect: 250 },
-      f1_grenade: { explosives: 0, gpDirect: 30 }
+      c4: { explosives: 20, gpDirect: 0, craftSec: 7.5 },
+      rocket: { explosives: 10, gpDirect: 150, craftSec: 2.5 },
+      explo_ammo: { explosives: 0, gpDirect: 10, craftSec: 0.375 },
+      satchel: { explosives: 0, gpDirect: 240, craftSec: 3.75 },
+      beancan: { explosives: 0, gpDirect: 60, craftSec: 3.75 },
+      hv_rocket: { explosives: 0, gpDirect: 100, craftSec: 2.5 },
+      incen_rocket: { explosives: 1, gpDirect: 250, craftSec: 2.5 },
+      f1_grenade: { explosives: 0, gpDirect: 30, craftSec: 3.75 }
     };
     const CRAFT_BOOM_STASH_KEYS = new Set([
       'c4',
@@ -1185,6 +1200,7 @@
     let netMetal = 0;
     let netPipes = 0;
     let netTechTrash = 0;
+    let netBoomCraftSec = 0;
     const netBoomPills = [];
 
     Object.entries(shoppingList).forEach(([toolId, count]) => {
@@ -1200,9 +1216,10 @@
       if (netQty <= 0) return;
 
       maxNetWbRank = Math.max(maxNetWbRank, parseWbRank(tool.wb));
-      const recipe = RAID_CRAFT_RECIPES[toolId] || { explosives: 0, gpDirect: 0 };
+      const recipe = RAID_CRAFT_RECIPES[toolId] || { explosives: 0, gpDirect: 0, craftSec: 2.5 };
       netExplosives += (recipe.explosives || 0) * netQty;
       netDirectGp += (recipe.gpDirect || 0) * netQty;
+      netBoomCraftSec += (recipe.craftSec || 2.5) * netQty;
       netSulfur += (tool.sulfur || 0) * netQty;
       netLgf += (tool.lgf || 0) * netQty;
       netMetal += (tool.metal || 0) * netQty;
@@ -1221,6 +1238,27 @@
     const charcoalSaved = useMixingTable ? handCharcoal - mixCharcoal : 0;
     const queuedWbTier = maxQueuedWbRank >= 3 ? 'T3' : maxQueuedWbRank === 2 ? 'T2' : maxQueuedWbRank === 1 ? 'T1' : 'T1';
     const netWbTier = maxNetWbRank >= 3 ? 'T3' : maxNetWbRank === 2 ? 'T2' : maxNetWbRank === 1 ? 'T1' : 'Ready';
+
+    const fCount = Math.max(1, Number(raidFurnaceCount) || 2);
+    const smeltedInStash = Math.max(0, Math.floor(Number(stash.sulfur) || 0));
+    const sulfurToSmelt = Math.max(0, netSulfur - smeltedInStash);
+    const largeMin = sulfurToSmelt / (120 * fCount);
+    const elecMin = sulfurToSmelt / (40 * fCount);
+    const smallMin = sulfurToSmelt / (24 * fCount);
+    const woodForFurnace = Math.ceil(sulfurToSmelt * 1.25);
+    const woodCharcoalYield = Math.round(sulfurToSmelt * 0.9375);
+    const charDiff = netCharcoal - woodCharcoalYield;
+    const extraWoodForChar = charDiff > 0 ? Math.ceil(charDiff / 0.75) : 0;
+    const gpBatches = Math.ceil(netGp / 10);
+    const gpSec = gpBatches * (useMixingTable ? 1.0 : 0.5);
+    const explSec = netExplosives * 1.25;
+    const totalCraftSec = gpSec + explSec + netBoomCraftSec;
+    const fPresets = [1, 2, 3, 6]
+      .map(
+        (n) =>
+          `<button type="button" class="filter-pill raid-furnace-cnt-btn ${fCount === n ? 'active' : ''}" data-fcnt="${n}" style="padding:1px 7px; font-size:10.5px;">${n}×</button>`
+      )
+      .join('');
 
     craftChainBox.innerHTML = `
       <div class="craft-chain-card">
@@ -1250,6 +1288,37 @@
                  <div>Charcoal: <strong style="color:#f8fafc;">${netCharcoal.toLocaleString()}</strong>${charcoalSaved > 0 ? ` <span style="color:#4ade80; font-size:10.5px;">(−${charcoalSaved.toLocaleString()} saved)</span>` : ''}</div>
                  <div>LGF / Metal: <strong>${netLgf.toLocaleString()}</strong> / <strong>${netMetal.toLocaleString()}</strong></div>
                  <div>Pipes / Tech: <strong>${netPipes}</strong> / <strong>${netTechTrash}</strong></div>
+               </div>
+               <div class="raid-smelt-planner">
+                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                   <span style="font-size:11px; font-family:var(--font-mono); font-weight:700; color:#93c5fd;">🔥 SMELTING &amp; T3 CRAFT-TIME PLANNER (${sulfurToSmelt.toLocaleString()} Sulfur ore to smelt)</span>
+                   <div style="display:flex; align-items:center; gap:5px; font-size:10.5px; color:var(--text-muted);">
+                     <span>Furnaces:</span>
+                     ${fPresets}
+                   </div>
+                 </div>
+                 <div class="raid-smelt-grid">
+                   <div class="raid-smelt-cell">
+                     <strong style="color:#fdba74;">🔥 ${fCount}× Large Furnace</strong><br/>
+                     Time: <strong style="color:#fff;">${formatDurationCompact(largeMin * 60)}</strong><br/>
+                     Wood: <strong>${woodForFurnace.toLocaleString()}</strong> → yields ${woodCharcoalYield.toLocaleString()} Char
+                   </div>
+                   <div class="raid-smelt-cell">
+                     <strong style="color:#38bdf8;">⚡ ${fCount}× Electric Furnace</strong><br/>
+                     Time: <strong style="color:#fff;">${formatDurationCompact(elecMin * 60)}</strong> (${fCount * 3} RW)<br/>
+                     <span style="color:#fca5a5;">0 Wood / 0 Charcoal produced!</span>
+                   </div>
+                   <div class="raid-smelt-cell">
+                     <strong style="color:#cbd5e1;">🪨 ${fCount}× Small Furnace</strong><br/>
+                     Time: <strong style="color:#fff;">${formatDurationCompact(smallMin * 60)}</strong><br/>
+                     Charcoal Balance: ${charDiff > 0 ? `<span style="color:#fbbf24;">−${charDiff.toLocaleString()} (+${extraWoodForChar.toLocaleString()} wood)</span>` : `<span style="color:#4ade80;">+${Math.abs(charDiff).toLocaleString()} surplus</span>`}
+                   </div>
+                   <div class="raid-smelt-cell">
+                     <strong style="color:#c4b5fd;">⏱️ Est. Bench Craft Time</strong><br/>
+                     Total: <strong style="color:#fff;">${formatDurationCompact(totalCraftSec)}</strong><br/>
+                     GP ${formatDurationCompact(gpSec)} • Expl ${formatDurationCompact(explSec)} • Boom ${formatDurationCompact(netBoomCraftSec)}
+                   </div>
+                 </div>
                </div>`
             : `<div style="font-size:11.5px; color:#4ade80; font-family:var(--font-mono);">
                  ✅ Already-crafted boom in your Stash covers 100% of the queued targets (0 Explosives / 0 GP / 0 Sulfur remaining to craft).
@@ -1257,6 +1326,13 @@
         }
       </div>
     `;
+
+    craftChainBox.querySelectorAll('.raid-furnace-cnt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        raidFurnaceCount = Math.max(1, parseInt(btn.getAttribute('data-fcnt'), 10) || 2);
+        renderRaidCraftChain(shoppingList);
+      });
+    });
   }
 
   function renderRaidPlanner() {
@@ -8450,6 +8526,10 @@
   let bfTopSpots = [];
   let bfStealthBest = null;
   let bfCoastBest = null;
+  let bfFarmBest = null;
+  let bfInspectedSpot = null;
+  let bfInspectSpotMode = false;
+  let bfLastScoringCtx = null;
   let bfSelectedIdx = 0;
   let bfActiveHeatmaps = new Set();
   let bfHeatmapSourceMode = 'none'; // 'rustmaps' | 'estimated' | 'none'
@@ -8826,10 +8906,16 @@
     return Math.max(0.55, Math.min(1, half / maxCoord));
   }
 
+  function bfGetSpotByIdx(idx) {
+    if (idx === -1) return bfStealthBest;
+    if (idx === -2) return bfCoastBest;
+    if (idx === -3) return bfFarmBest;
+    if (idx === -4) return bfInspectedSpot;
+    return bfTopSpots[idx] || null;
+  }
+
   function getSelectedBuildSpot() {
-    if (bfSelectedIdx === -1) return bfStealthBest;
-    if (bfSelectedIdx === -2) return bfCoastBest;
-    return bfTopSpots[bfSelectedIdx] || null;
+    return bfGetSpotByIdx(bfSelectedIdx);
   }
 
   function bfColLabel(idx) {
@@ -9668,12 +9754,408 @@
     return 62;
   }
 
-  function computeRecommendedBuildSpots() {
-    if (!bfMapData || !bfMapData.size) {
-      bfStealthBest = null;
-      bfCoastBest = null;
-      return [];
+  function bfEvaluateWorldSpotWithContext(wx, wy, sCtx, allowUnbuildable = false) {
+    if (!sCtx || !sCtx.mapSize) return null;
+    const {
+      mapSize,
+      half,
+      targetKey,
+      playstyle,
+      biomePref,
+      wantDeepSea,
+      wantLowTraffic,
+      wantUnderwaterLab,
+      wantFarmOre,
+      oreGrid,
+      hempGrid,
+      berryGrid,
+      spawnGrid,
+      targetMons,
+      trafficMons,
+      allZergHubs,
+      t2Mons,
+      supportMons,
+      recyclerMons,
+      boatHubs,
+      underwaterLabs,
+      largeOils,
+      smallOils,
+      mask,
+      computeTrafficRisk
+    } = sCtx;
+
+    const nx = Math.min(0.999, Math.max(0.001, wx / mapSize + 0.5));
+    const ny = Math.min(0.999, Math.max(0.001, 0.5 - wy / mapSize));
+
+    let coastDist = Math.max(0, half * 0.85 - Math.hypot(wx, wy));
+    let freshWaterDist = 9999;
+    const terrainCheck = bfCheckTerrainFootprint(mask, mapSize, wx, wy);
+    const isWaterPx = bfIsPointWater(mask, mapSize, wx, wy);
+    if (mask) {
+      if (mask.coastDistGrid) {
+        coastDist = bfSampleFieldMeters(mask.coastDistGrid, mask.N, mapSize, wx, wy, coastDist);
+      }
+      if (mask.freshWaterDistGrid) {
+        freshWaterDist = bfSampleFieldMeters(mask.freshWaterDistGrid, mask.N, mapSize, wx, wy, 9999);
+      }
     }
+    const plotCheck = bfIsBasePlotBuildable(wx, wy, 32);
+
+    let buildBlockedReason = '';
+    if (isWaterPx || (mask && coastDist < 34) || (!mask && Math.hypot(wx, wy) > half * 0.86)) {
+      buildBlockedReason = isWaterPx ? 'Water / underwater' : 'Too close to ocean surf (<34m)';
+    } else if (!terrainCheck.buildable) {
+      buildBlockedReason = 'Sheer cliff / hazard / steep terrain';
+    } else if (!plotCheck.ok) {
+      buildBlockedReason = plotCheck.minClearance <= 0 ? 'Inside Monument No-Build zone' : `Too close to monument (${Math.max(0, plotCheck.minClearance)}m)`;
+    }
+    if (!allowUnbuildable && buildBlockedReason) return null;
+
+    let targetDist = Infinity;
+    let nearestTarget = null;
+    for (const tm of targetMons) {
+      const d = Math.hypot(wx - tm.x, wy - tm.y);
+      if (d < targetDist) {
+        targetDist = d;
+        nearestTarget = tm;
+      }
+    }
+    let targetScore = 50;
+    if (nearestTarget) {
+      if (bfIsOffshoreTarget(nearestTarget.type)) {
+        const offshoreProx = targetDist <= 750 ? 100 : Math.max(0, 100 - ((targetDist - 750) / (mapSize * 0.45)) * 100);
+        const launchCoast =
+          coastDist <= 160
+            ? 100
+            : coastDist <= 380
+              ? Math.max(25, 100 - ((coastDist - 160) / 220) * 75)
+              : Math.max(0, 25 - ((coastDist - 380) / 400) * 25);
+        targetScore = offshoreProx * 0.65 + launchCoast * 0.35;
+      } else if (targetDist < 200) {
+        targetScore = Math.max(55, 80 + ((targetDist - 140) / 60) * 20);
+      } else if (targetDist <= 340) {
+        targetScore = 100;
+      } else if (targetDist <= 500) {
+        targetScore = 100 - ((targetDist - 340) / 160) * 14;
+      } else {
+        targetScore = Math.max(0, 86 - ((targetDist - 500) / (mapSize * 0.34)) * 86);
+      }
+    }
+
+    let nearestBoat = null;
+    let boatDist = Infinity;
+    for (const bh of boatHubs) {
+      const d = Math.hypot(wx - bh.x, wy - bh.y);
+      if (d < boatDist) {
+        boatDist = d;
+        nearestBoat = bh;
+      }
+    }
+    let deepSeaScore = 50;
+    if (wantDeepSea || playstyle === 'ocean_oil') {
+      const coastPts =
+        coastDist <= 220
+          ? 100
+          : coastDist <= 420
+            ? 80 - ((coastDist - 220) / 200) * 25
+            : Math.max(0, 55 - ((coastDist - 420) / 600) * 55);
+      const boatPts = nearestBoat
+        ? boatDist <= 750
+          ? 100
+          : Math.max(15, 100 - ((boatDist - 750) / 1200) * 85)
+        : 50;
+      deepSeaScore = coastPts * 0.68 + boatPts * 0.32;
+    }
+
+    const filterTraffic = computeTrafficRisk(wx, wy, nx, ny, trafficMons);
+    const lowTrafficScore = filterTraffic.safetyScore;
+
+    const oreDensity = oreGrid ? bfSampleDensity(oreGrid, nx, ny) : 0.45;
+    const hempDensity = hempGrid ? bfSampleDensity(hempGrid, nx, ny) : 0.45;
+    const berryDensity = berryGrid ? bfSampleDensity(berryGrid, nx, ny) : 0.45;
+    const oreScore = Math.round(oreDensity * 100);
+    const hempScore = Math.round(hempDensity * 100);
+    const berryScore = Math.round(berryDensity * 100);
+    const resourceTrifecta =
+      playstyle === 'farm_tea'
+        ? oreScore * 0.45 + hempScore * 0.25 + berryScore * 0.30
+        : playstyle === 'pvp_monument'
+          ? oreScore * 0.70 + hempScore * 0.20 + berryScore * 0.10
+          : oreScore * 0.50 + hempScore * 0.30 + berryScore * 0.20;
+
+    let nearestRecycler = null;
+    let nearestRecyclerDist = Infinity;
+    let bestRecScore = 30;
+    for (const rm of recyclerMons) {
+      const d = Math.hypot(wx - rm.x, wy - rm.y);
+      const prox = d >= 160 && d <= 380 ? 100 : d < 160 ? 78 : Math.max(0, 100 - ((d - 380) / 760) * 100);
+      const multiBoost = rm.recCount >= 2 ? 1.08 : 1.0;
+      const safeMult = rm.isSafe ? 0.90 : 1.0;
+      const sc = Math.min(100, prox * multiBoost * safeMult);
+      if (sc > bestRecScore) bestRecScore = sc;
+      if (d < nearestRecyclerDist) {
+        nearestRecyclerDist = d;
+        nearestRecycler = rm;
+      }
+    }
+
+    let nearestLab = null;
+    let labDist = Infinity;
+    for (const ul of underwaterLabs) {
+      const d = Math.hypot(wx - ul.x, wy - ul.y);
+      if (d < labDist) {
+        labDist = d;
+        nearestLab = ul;
+      }
+    }
+    let largeOilDist = Infinity;
+    for (const lo of largeOils) {
+      const d = Math.hypot(wx - lo.x, wy - lo.y);
+      if (d < largeOilDist) largeOilDist = d;
+    }
+    let smallOilDist = Infinity;
+    for (const so of smallOils) {
+      const d = Math.hypot(wx - so.x, wy - so.y);
+      if (d < smallOilDist) smallOilDist = d;
+    }
+    const offshoreOilScore =
+      Math.min(largeOilDist, smallOilDist) < 99999
+        ? Math.max(0, 100 - (Math.max(0, Math.min(largeOilDist, smallOilDist) - 450) / 1400) * 100)
+        : 40;
+    const labScore =
+      nearestLab && labDist < 99999 ? Math.max(0, 100 - (Math.max(0, labDist - 350) / 1200) * 100) : 35;
+    const labBonus = wantUnderwaterLab && nearestLab && labDist <= 1400 ? (1 - labDist / 1400) * (playstyle === 'ocean_oil' ? 14 : 9) : 0;
+
+    let bestProgScore = t2Mons.length > 0 ? 0 : 50;
+    let bestProgMon = null;
+    let bestProgDist = Infinity;
+    for (const pm of t2Mons) {
+      const d = Math.hypot(wx - pm.x, wy - pm.y);
+      const distPts =
+        d >= 200 && d <= 360
+          ? 100
+          : d < 200
+            ? Math.max(55, 80 + ((d - 140) / 60) * 20)
+            : d <= 480
+              ? 100 - ((d - 360) / 120) * 15
+              : Math.max(0, 85 - ((d - 480) / (mapSize * 0.26)) * 85);
+      const weighted = distPts * pm.progW;
+      if (weighted > bestProgScore) {
+        bestProgScore = weighted;
+        bestProgMon = pm;
+        bestProgDist = d;
+      }
+    }
+    let nearestSupport = null;
+    let supportDist = Infinity;
+    for (const sm of supportMons) {
+      const d = Math.hypot(wx - sm.x, wy - sm.y);
+      if (d < supportDist) {
+        supportDist = d;
+        nearestSupport = sm;
+      }
+    }
+    const supportBonus = nearestSupport && supportDist <= 600 ? (1 - supportDist / 600) * 8 : 0;
+    const cardLoopBonus =
+      nearestSupport && supportDist <= 750 && bestProgMon && bestProgDist <= 750 ? 4.5 : 0;
+
+    const biome = mask ? bfGetBiomeLabel(mask, mapSize, wx, wy) : '';
+    const biomeScore = bfGetBiomeScore(biome, biomePref, playstyle);
+    const freshWaterScore =
+      freshWaterDist <= 200 ? 100 : freshWaterDist <= 450 ? 78 : Math.max(20, 78 - ((freshWaterDist - 450) / 600) * 58);
+
+    const zergTraffic = computeTrafficRisk(wx, wy, nx, ny, allZergHubs);
+    const stealthSafety = zergTraffic.safetyScore;
+    const resScore = oreDensity * 52 + hempDensity * 28 + berryDensity * 20;
+    const edgeStealthPts = coastDist <= 460 ? 100 : Math.max(25, 100 - ((coastDist - 460) / 800) * 75);
+    const stealthLabBonus = nearestLab && labDist <= 1200 ? (1 - labDist / 1200) * 5 : 0;
+    const stealthTotal = Math.min(
+      100,
+      Math.round(
+        stealthSafety * 0.34 +
+          bestProgScore * 0.30 +
+          resScore * 0.19 +
+          edgeStealthPts * 0.08 +
+          terrainCheck.flatnessScore * 0.05 +
+          biomeScore * 0.04 +
+          supportBonus +
+          stealthLabBonus
+      )
+    );
+
+    const waterfrontPts =
+      coastDist <= 95
+        ? 100
+        : coastDist <= 145
+          ? 100 - ((coastDist - 95) / 50) * 18
+          : coastDist <= 220
+            ? 82 - ((coastDist - 145) / 75) * 42
+            : Math.max(0, 40 - ((coastDist - 220) / 300) * 40);
+    const coastBoatPts = nearestBoat
+      ? boatDist <= 550
+        ? 100
+        : Math.max(15, 100 - ((boatDist - 550) / 1100) * 85)
+      : 50;
+    const hasOffshoreMons = underwaterLabs.length > 0 || largeOils.length > 0 || smallOils.length > 0;
+    const offshoreAccessPts = hasOffshoreMons
+      ? Math.max(labScore, offshoreOilScore) * 0.65 + ((labScore + offshoreOilScore) / 2) * 0.35
+      : Math.max(55, bestProgScore * 0.85);
+    const spawnDensity = spawnGrid ? bfSampleDensity(spawnGrid, nx, ny) : 0;
+    const coastSafety = Math.max(0, Math.min(100, stealthSafety - spawnDensity * 22));
+    const coastTotal = Math.min(
+      100,
+      Math.round(
+        waterfrontPts * 0.24 +
+          offshoreAccessPts * 0.22 +
+          coastBoatPts * 0.16 +
+          coastSafety * 0.14 +
+          bestRecScore * 0.10 +
+          resScore * 0.08 +
+          terrainCheck.flatnessScore * 0.06
+      )
+    );
+
+    const hasFreshWater = Boolean(mask?.freshWaterDistGrid);
+    const farmWaterPts = hasFreshWater ? freshWaterScore : terrainCheck.flatnessScore;
+    const farmResPts = oreScore * 0.42 + hempScore * 0.28 + berryScore * 0.30;
+    const farmTotal = Math.min(
+      100,
+      Math.round(
+        farmWaterPts * 0.26 +
+          farmResPts * 0.36 +
+          terrainCheck.flatnessScore * 0.14 +
+          stealthSafety * 0.14 +
+          bestRecScore * 0.10
+      )
+    );
+
+    let wTarget = nearestTarget ? 0.24 : 0;
+    let wDeep = wantDeepSea ? 0.12 : 0.03;
+    let wTraffic = wantLowTraffic ? 0.24 : 0.08;
+    let wRes = wantFarmOre ? 0.17 : 0.08;
+    let wRec = 0.12;
+    let wBiome = biomePref !== 'any' ? 0.16 : 0.07;
+    let wFlat = 0.08;
+    let wFresh = 0.02;
+    let wOffshore = 0;
+
+    if (playstyle === 'farm_tea') {
+      wTarget = nearestTarget ? 0.14 : 0;
+      wDeep = wantDeepSea ? 0.06 : 0.02;
+      wTraffic = wantLowTraffic ? 0.16 : 0.06;
+      wRes = wantFarmOre ? 0.34 : 0.22;
+      wRec = 0.10;
+      wBiome = biomePref !== 'any' ? 0.16 : 0.08;
+      wFlat = 0.13;
+      wFresh = mask?.freshWaterDistGrid ? 0.12 : 0.02;
+    } else if (playstyle === 'pvp_monument') {
+      wTarget = nearestTarget ? 0.40 : 0;
+      wDeep = wantDeepSea ? 0.08 : 0.02;
+      wTraffic = wantLowTraffic ? 0.08 : 0.02;
+      wRes = wantFarmOre ? 0.16 : 0.09;
+      wRec = 0.18;
+      wBiome = biomePref !== 'any' ? 0.14 : 0.04;
+      wFlat = 0.10;
+    } else if (playstyle === 'ocean_oil') {
+      wTarget = nearestTarget ? 0.18 : 0;
+      wDeep = 0.32;
+      wTraffic = wantLowTraffic ? 0.12 : 0.05;
+      wRes = wantFarmOre ? 0.10 : 0.05;
+      wRec = 0.08;
+      wBiome = biomePref !== 'any' ? 0.12 : 0.03;
+      wFlat = 0.05;
+      wOffshore = 0.22;
+    }
+
+    const offshoreCombined = labScore * 0.55 + offshoreOilScore * 0.45;
+    const wSum = wTarget + wDeep + wTraffic + wRes + wRec + wBiome + wFlat + wFresh + wOffshore || 1;
+    const total = Math.min(
+      100,
+      Math.round(
+        (targetScore * wTarget +
+          deepSeaScore * wDeep +
+          lowTrafficScore * wTraffic +
+          resourceTrifecta * wRes +
+          bestRecScore * wRec +
+          biomeScore * wBiome +
+          terrainCheck.flatnessScore * wFlat +
+          freshWaterScore * wFresh +
+          offshoreCombined * wOffshore) /
+          wSum +
+          labBonus +
+          cardLoopBonus
+      )
+    );
+
+    const grid = bfWorldToGrid(wx, wy, mapSize);
+    const subGrid = bfWorldToSubGrid(wx, wy, mapSize);
+
+    const verdictParts = [];
+    if (terrainCheck.flatnessScore >= 78 && biome) verdictParts.push(`Flat ${biome}`);
+    else if (biome) verdictParts.push(biome);
+    if (nearestTarget && targetDist < 99999) verdictParts.push(`${Math.round(targetDist)}m to ${nearestTarget.type}`);
+    if (nearestRecycler && nearestRecyclerDist <= 650) {
+      verdictParts.push(`${Math.round(nearestRecyclerDist)}m ${nearestRecycler.type} (${nearestRecycler.recCount}× Rec)`);
+    }
+    const highResTags = [];
+    if (oreScore >= 60) highResTags.push('Ore');
+    if (hempScore >= 60) highResTags.push('Hemp');
+    if (berryScore >= 60) highResTags.push('Berries');
+    if (highResTags.length) verdictParts.push(`Rich ${highResTags.join('/')}`);
+    if (freshWaterDist <= 220) verdictParts.push('Fresh Water');
+
+    return {
+      wx,
+      wy,
+      nx,
+      ny,
+      grid,
+      subGrid,
+      biome,
+      buildBlockedReason,
+      score: total,
+      stealthScore: stealthTotal,
+      stealthSafety: Math.round(stealthSafety),
+      coastScore: coastTotal,
+      coastSafety: Math.round(coastSafety),
+      farmScore: farmTotal,
+      bestRecScore,
+      bestProgDist: Math.round(bestProgDist),
+      bestProgName: bestProgMon?.type || 'No T2 on map',
+      supportDist: Math.round(supportDist),
+      supportName: nearestSupport && supportDist <= 650 ? nearestSupport.type : '',
+      stealthTrafficDist: Math.round(zergTraffic.minTrafficDist),
+      stealthTrafficName: zergTraffic.nearestTraffic?.type || 'None',
+      targetScore: Math.round(targetScore),
+      deepSeaScore: Math.round(deepSeaScore),
+      lowTrafficScore: Math.round(lowTrafficScore),
+      oreScore,
+      hempScore,
+      berryScore,
+      recyclerName: nearestRecycler?.type || '',
+      recyclerDist: Math.round(nearestRecyclerDist),
+      recyclerCount: nearestRecycler?.recCount || 0,
+      freshWaterDist: Math.round(freshWaterDist),
+      flatnessScore: terrainCheck.flatnessScore,
+      noBuildClearance: plotCheck.minClearance,
+      targetDist: Math.round(targetDist),
+      targetName: nearestTarget?.type || targetKey,
+      coastDist: Math.round(coastDist),
+      boatDist: Math.round(boatDist),
+      boatName: nearestBoat?.type || 'Coast',
+      minTrafficDist: Math.round(filterTraffic.minTrafficDist),
+      nearestTrafficName: filterTraffic.nearestTraffic?.type || 'None',
+      labDist: Math.round(labDist),
+      labName: nearestLab?.type || '',
+      labRedCard: nearestLab ? nearestLab.hasRedKeycard : null,
+      largeOilDist: Math.round(largeOilDist),
+      smallOilDist: Math.round(smallOilDist),
+      verdict: verdictParts.slice(0, 4).join(' • ')
+    };
+  }
+
+  function bfBuildScoringContext() {
+    if (!bfMapData || !bfMapData.size) return null;
     const mapSize = bfMapData.size;
     const half = mapSize / 2;
     const mons = bfMapData.monuments || [];
@@ -9767,6 +10249,58 @@
       };
     };
 
+    return {
+      mapSize,
+      half,
+      targetKey,
+      playstyle,
+      biomePref,
+      wantDeepSea,
+      wantLowTraffic,
+      wantUnderwaterLab,
+      wantFarmOre,
+      oreGrid,
+      hempGrid,
+      berryGrid,
+      spawnGrid,
+      targetMons,
+      trafficMons,
+      allZergHubs,
+      t2Mons,
+      supportMons,
+      recyclerMons,
+      boatHubs,
+      underwaterLabs,
+      largeOils,
+      smallOils,
+      mask,
+      computeTrafficRisk
+    };
+  }
+
+  function bfEvaluateCustomWorldPoint(wx, wy) {
+    const sCtx = bfLastScoringCtx || bfBuildScoringContext();
+    if (!sCtx) return null;
+    const res = bfEvaluateWorldSpotWithContext(wx, wy, sCtx, true);
+    if (!res) return null;
+    return {
+      ...res,
+      isInspected: true
+    };
+  }
+
+  function computeRecommendedBuildSpots() {
+    if (!bfMapData || !bfMapData.size) {
+      bfStealthBest = null;
+      bfCoastBest = null;
+      bfFarmBest = null;
+      bfLastScoringCtx = null;
+      return [];
+    }
+    const sCtx = bfBuildScoringContext();
+    bfLastScoringCtx = sCtx;
+    const { mapSize } = sCtx;
+
     const STEP_G = 104;
     const candidates = [];
 
@@ -9776,363 +10310,8 @@
         const ny = (gy + 0.5) / STEP_G;
         const wx = (nx - 0.5) * mapSize;
         const wy = (0.5 - ny) * mapSize;
-
-        // 1. Dry land footprint & O(1) Chamfer ocean coastline distance check (~44m x 44m buildable land plot)
-        let coastDist = Math.max(0, half * 0.85 - Math.hypot(wx, wy));
-        let freshWaterDist = 9999;
-        const terrainCheck = bfCheckTerrainFootprint(mask, mapSize, wx, wy);
-        if (!terrainCheck.buildable) continue;
-        if (mask) {
-          if (mask.coastDistGrid) {
-            coastDist = bfSampleFieldMeters(mask.coastDistGrid, mask.N, mapSize, wx, wy, coastDist);
-          }
-          if (mask.freshWaterDistGrid) {
-            freshWaterDist = bfSampleFieldMeters(mask.freshWaterDistGrid, mask.N, mapSize, wx, wy, 9999);
-          }
-          if (coastDist < 34) continue;
-        } else {
-          if (Math.hypot(wx, wy) > half * 0.86) continue;
-        }
-
-        // 2. Skip building-blocked monument/collider zones (+32m base clearance margin)
-        const plotCheck = bfIsBasePlotBuildable(wx, wy, 32);
-        if (!plotCheck.ok) continue;
-
-        // 3. Target Monument Score (smooth land sweet spot vs offshore coastal launch spot)
-        let targetDist = Infinity;
-        let nearestTarget = null;
-        for (const tm of targetMons) {
-          const d = Math.hypot(wx - tm.x, wy - tm.y);
-          if (d < targetDist) {
-            targetDist = d;
-            nearestTarget = tm;
-          }
-        }
-        let targetScore = 50;
-        if (nearestTarget) {
-          if (bfIsOffshoreTarget(nearestTarget.type)) {
-            const offshoreProx = targetDist <= 750 ? 100 : Math.max(0, 100 - ((targetDist - 750) / (mapSize * 0.45)) * 100);
-            const launchCoast =
-              coastDist <= 160
-                ? 100
-                : coastDist <= 380
-                  ? Math.max(25, 100 - ((coastDist - 160) / 220) * 75)
-                  : Math.max(0, 25 - ((coastDist - 380) / 400) * 25);
-            targetScore = offshoreProx * 0.65 + launchCoast * 0.35;
-          } else if (targetDist < 200) {
-            targetScore = Math.max(55, 80 + ((targetDist - 140) / 60) * 20);
-          } else if (targetDist <= 340) {
-            targetScore = 100;
-          } else if (targetDist <= 500) {
-            targetScore = 100 - ((targetDist - 340) / 160) * 14;
-          } else {
-            targetScore = Math.max(0, 86 - ((targetDist - 500) / (mapSize * 0.34)) * 86);
-          }
-        }
-
-        // 4. Deep Sea / Coast + Boat Access Score
-        let nearestBoat = null;
-        let boatDist = Infinity;
-        for (const bh of boatHubs) {
-          const d = Math.hypot(wx - bh.x, wy - bh.y);
-          if (d < boatDist) {
-            boatDist = d;
-            nearestBoat = bh;
-          }
-        }
-        let deepSeaScore = 50;
-        if (wantDeepSea || playstyle === 'ocean_oil') {
-          const coastPts =
-            coastDist <= 220
-              ? 100
-              : coastDist <= 420
-                ? 80 - ((coastDist - 220) / 200) * 25
-                : Math.max(0, 55 - ((coastDist - 420) / 600) * 55);
-          const boatPts = nearestBoat
-            ? boatDist <= 750
-              ? 100
-              : Math.max(15, 100 - ((boatDist - 750) / 1200) * 85)
-            : 50;
-          deepSeaScore = coastPts * 0.68 + boatPts * 0.32;
-        }
-
-        // 5. Low Traffic / Anti-Day-1-Raid Score
-        const filterTraffic = computeTrafficRisk(wx, wy, nx, ny, trafficMons);
-        const lowTrafficScore = filterTraffic.safetyScore;
-
-        // 5B. Real Resource Trifecta (Ore + Hemp + Berries)
-        const oreDensity = oreGrid ? bfSampleDensity(oreGrid, nx, ny) : 0.45;
-        const hempDensity = hempGrid ? bfSampleDensity(hempGrid, nx, ny) : 0.45;
-        const berryDensity = berryGrid ? bfSampleDensity(berryGrid, nx, ny) : 0.45;
-        const oreScore = Math.round(oreDensity * 100);
-        const hempScore = Math.round(hempDensity * 100);
-        const berryScore = Math.round(berryDensity * 100);
-        const resourceTrifecta =
-          playstyle === 'farm_tea'
-            ? oreScore * 0.45 + hempScore * 0.25 + berryScore * 0.30
-            : playstyle === 'pvp_monument'
-              ? oreScore * 0.70 + hempScore * 0.20 + berryScore * 0.10
-              : oreScore * 0.50 + hempScore * 0.30 + berryScore * 0.20;
-
-        // 5C. Nearest Recycler Proximity Score (prefers Radtown 60% recyclers slightly over Safe Zone)
-        let nearestRecycler = null;
-        let nearestRecyclerDist = Infinity;
-        let bestRecScore = 30;
-        for (const rm of recyclerMons) {
-          const d = Math.hypot(wx - rm.x, wy - rm.y);
-          const prox = d >= 160 && d <= 380 ? 100 : d < 160 ? 78 : Math.max(0, 100 - ((d - 380) / 760) * 100);
-          const multiBoost = rm.recCount >= 2 ? 1.08 : 1.0;
-          const safeMult = rm.isSafe ? 0.90 : 1.0;
-          const sc = Math.min(100, prox * multiBoost * safeMult);
-          if (sc > bestRecScore) {
-            bestRecScore = sc;
-          }
-          if (d < nearestRecyclerDist) {
-            nearestRecyclerDist = d;
-            nearestRecycler = rm;
-          }
-        }
-
-        // 6. Offshore Monuments: Underwater Labs + Large/Small Oil Rig
-        let nearestLab = null;
-        let labDist = Infinity;
-        for (const ul of underwaterLabs) {
-          const d = Math.hypot(wx - ul.x, wy - ul.y);
-          if (d < labDist) {
-            labDist = d;
-            nearestLab = ul;
-          }
-        }
-        let largeOilDist = Infinity;
-        for (const lo of largeOils) {
-          const d = Math.hypot(wx - lo.x, wy - lo.y);
-          if (d < largeOilDist) largeOilDist = d;
-        }
-        let smallOilDist = Infinity;
-        for (const so of smallOils) {
-          const d = Math.hypot(wx - so.x, wy - so.y);
-          if (d < smallOilDist) smallOilDist = d;
-        }
-        const offshoreOilScore =
-          Math.min(largeOilDist, smallOilDist) < 99999
-            ? Math.max(0, 100 - (Math.max(0, Math.min(largeOilDist, smallOilDist) - 450) / 1400) * 100)
-            : 40;
-        const labScore =
-          nearestLab && labDist < 99999 ? Math.max(0, 100 - (Math.max(0, labDist - 350) / 1200) * 100) : 35;
-        const labBonus = wantUnderwaterLab && nearestLab && labDist <= 1400 ? (1 - labDist / 1400) * (playstyle === 'ocean_oil' ? 14 : 9) : 0;
-
-        // 7. Preference-independent "Under the Radar + Tier 2 Fast Progress" score
-        let bestProgScore = t2Mons.length > 0 ? 0 : 50;
-        let bestProgMon = null;
-        let bestProgDist = Infinity;
-        for (const pm of t2Mons) {
-          const d = Math.hypot(wx - pm.x, wy - pm.y);
-          const distPts =
-            d >= 200 && d <= 360
-              ? 100
-              : d < 200
-                ? Math.max(55, 80 + ((d - 140) / 60) * 20)
-                : d <= 480
-                  ? 100 - ((d - 360) / 120) * 15
-                  : Math.max(0, 85 - ((d - 480) / (mapSize * 0.26)) * 85);
-          const weighted = distPts * pm.progW;
-          if (weighted > bestProgScore) {
-            bestProgScore = weighted;
-            bestProgMon = pm;
-            bestProgDist = d;
-          }
-        }
-        let nearestSupport = null;
-        let supportDist = Infinity;
-        for (const sm of supportMons) {
-          const d = Math.hypot(wx - sm.x, wy - sm.y);
-          if (d < supportDist) {
-            supportDist = d;
-            nearestSupport = sm;
-          }
-        }
-        const supportBonus = nearestSupport && supportDist <= 600 ? (1 - supportDist / 600) * 8 : 0;
-        const cardLoopBonus =
-          nearestSupport && supportDist <= 750 && bestProgMon && bestProgDist <= 750 ? 4.5 : 0;
-
-        const biome = mask ? bfGetBiomeLabel(mask, mapSize, wx, wy) : '';
-        const biomeScore = bfGetBiomeScore(biome, biomePref, playstyle);
-        const freshWaterScore =
-          freshWaterDist <= 200 ? 100 : freshWaterDist <= 450 ? 78 : Math.max(20, 78 - ((freshWaterDist - 450) / 600) * 58);
-
-        const zergTraffic = computeTrafficRisk(wx, wy, nx, ny, allZergHubs);
-        const stealthSafety = zergTraffic.safetyScore;
-        const resScore = oreDensity * 52 + hempDensity * 28 + berryDensity * 20;
-        const edgeStealthPts = coastDist <= 460 ? 100 : Math.max(25, 100 - ((coastDist - 460) / 800) * 75);
-        const stealthLabBonus = nearestLab && labDist <= 1200 ? (1 - labDist / 1200) * 5 : 0;
-        const stealthTotal = Math.min(
-          100,
-          Math.round(
-            stealthSafety * 0.34 +
-              bestProgScore * 0.30 +
-              resScore * 0.19 +
-              edgeStealthPts * 0.08 +
-              terrainCheck.flatnessScore * 0.05 +
-              biomeScore * 0.04 +
-              supportBonus +
-              stealthLabBonus
-          )
-        );
-
-        const waterfrontPts =
-          coastDist <= 95
-            ? 100
-            : coastDist <= 145
-              ? 100 - ((coastDist - 95) / 50) * 18
-              : coastDist <= 220
-                ? 82 - ((coastDist - 145) / 75) * 42
-                : Math.max(0, 40 - ((coastDist - 220) / 300) * 40);
-        const coastBoatPts = nearestBoat
-          ? boatDist <= 550
-            ? 100
-            : Math.max(15, 100 - ((boatDist - 550) / 1100) * 85)
-          : 50;
-        const hasOffshoreMons = underwaterLabs.length > 0 || largeOils.length > 0 || smallOils.length > 0;
-        const offshoreAccessPts = hasOffshoreMons
-          ? Math.max(labScore, offshoreOilScore) * 0.65 + ((labScore + offshoreOilScore) / 2) * 0.35
-          : Math.max(55, bestProgScore * 0.85);
-        const spawnDensity = spawnGrid ? bfSampleDensity(spawnGrid, nx, ny) : 0;
-        const coastSafety = Math.max(0, Math.min(100, stealthSafety - spawnDensity * 22));
-        const coastTotal = Math.min(
-          100,
-          Math.round(
-            waterfrontPts * 0.24 +
-              offshoreAccessPts * 0.22 +
-              coastBoatPts * 0.16 +
-              coastSafety * 0.14 +
-              bestRecScore * 0.10 +
-              resScore * 0.08 +
-              terrainCheck.flatnessScore * 0.06
-          )
-        );
-
-        // Playstyle-aware weighted scoring
-        let wTarget = nearestTarget ? 0.24 : 0;
-        let wDeep = wantDeepSea ? 0.12 : 0.03;
-        let wTraffic = wantLowTraffic ? 0.24 : 0.08;
-        let wRes = wantFarmOre ? 0.17 : 0.08;
-        let wRec = 0.12;
-        let wBiome = biomePref !== 'any' ? 0.16 : 0.07;
-        let wFlat = 0.08;
-        let wFresh = 0.02;
-        let wOffshore = 0;
-
-        if (playstyle === 'farm_tea') {
-          wTarget = nearestTarget ? 0.14 : 0;
-          wDeep = wantDeepSea ? 0.06 : 0.02;
-          wTraffic = wantLowTraffic ? 0.16 : 0.06;
-          wRes = wantFarmOre ? 0.34 : 0.22;
-          wRec = 0.10;
-          wBiome = biomePref !== 'any' ? 0.16 : 0.08;
-          wFlat = 0.13;
-          wFresh = mask?.freshWaterDistGrid ? 0.12 : 0.02;
-        } else if (playstyle === 'pvp_monument') {
-          wTarget = nearestTarget ? 0.40 : 0;
-          wDeep = wantDeepSea ? 0.08 : 0.02;
-          wTraffic = wantLowTraffic ? 0.08 : 0.02;
-          wRes = wantFarmOre ? 0.16 : 0.09;
-          wRec = 0.18;
-          wBiome = biomePref !== 'any' ? 0.14 : 0.04;
-          wFlat = 0.10;
-        } else if (playstyle === 'ocean_oil') {
-          wTarget = nearestTarget ? 0.18 : 0;
-          wDeep = 0.32;
-          wTraffic = wantLowTraffic ? 0.12 : 0.05;
-          wRes = wantFarmOre ? 0.10 : 0.05;
-          wRec = 0.08;
-          wBiome = biomePref !== 'any' ? 0.12 : 0.03;
-          wFlat = 0.05;
-          wOffshore = 0.22;
-        }
-
-        const offshoreCombined = labScore * 0.55 + offshoreOilScore * 0.45;
-        const wSum = wTarget + wDeep + wTraffic + wRes + wRec + wBiome + wFlat + wFresh + wOffshore || 1;
-        const total = Math.min(
-          100,
-          Math.round(
-            (targetScore * wTarget +
-              deepSeaScore * wDeep +
-              lowTrafficScore * wTraffic +
-              resourceTrifecta * wRes +
-              bestRecScore * wRec +
-              biomeScore * wBiome +
-              terrainCheck.flatnessScore * wFlat +
-              freshWaterScore * wFresh +
-              offshoreCombined * wOffshore) /
-              wSum +
-              labBonus +
-              cardLoopBonus
-          )
-        );
-
-        const grid = bfWorldToGrid(wx, wy, mapSize);
-        const subGrid = bfWorldToSubGrid(wx, wy, mapSize);
-
-        // Concise human-readable tactical verdict
-        const verdictParts = [];
-        if (terrainCheck.flatnessScore >= 78 && biome) verdictParts.push(`Flat ${biome}`);
-        else if (biome) verdictParts.push(biome);
-        if (nearestTarget && targetDist < 99999) verdictParts.push(`${Math.round(targetDist)}m to ${nearestTarget.type}`);
-        if (nearestRecycler && nearestRecyclerDist <= 650) {
-          verdictParts.push(`${Math.round(nearestRecyclerDist)}m ${nearestRecycler.type} (${nearestRecycler.recCount}× Rec)`);
-        }
-        const highResTags = [];
-        if (oreScore >= 60) highResTags.push('Ore');
-        if (hempScore >= 60) highResTags.push('Hemp');
-        if (berryScore >= 60) highResTags.push('Berries');
-        if (highResTags.length) verdictParts.push(`Rich ${highResTags.join('/')}`);
-        if (freshWaterDist <= 220) verdictParts.push('Fresh Water');
-
-        candidates.push({
-          wx,
-          wy,
-          nx,
-          ny,
-          grid,
-          subGrid,
-          biome,
-          score: total,
-          stealthScore: stealthTotal,
-          stealthSafety: Math.round(stealthSafety),
-          coastScore: coastTotal,
-          coastSafety: Math.round(coastSafety),
-          bestProgDist: Math.round(bestProgDist),
-          bestProgName: bestProgMon?.type || 'No T2 on map',
-          supportDist: Math.round(supportDist),
-          supportName: nearestSupport && supportDist <= 650 ? nearestSupport.type : '',
-          stealthTrafficDist: Math.round(zergTraffic.minTrafficDist),
-          stealthTrafficName: zergTraffic.nearestTraffic?.type || 'None',
-          targetScore: Math.round(targetScore),
-          deepSeaScore: Math.round(deepSeaScore),
-          lowTrafficScore: Math.round(lowTrafficScore),
-          oreScore,
-          hempScore,
-          berryScore,
-          recyclerName: nearestRecycler?.type || '',
-          recyclerDist: Math.round(nearestRecyclerDist),
-          recyclerCount: nearestRecycler?.recCount || 0,
-          freshWaterDist: Math.round(freshWaterDist),
-          flatnessScore: terrainCheck.flatnessScore,
-          noBuildClearance: plotCheck.minClearance,
-          targetDist: Math.round(targetDist),
-          targetName: nearestTarget?.type || targetKey,
-          coastDist: Math.round(coastDist),
-          boatDist: Math.round(boatDist),
-          boatName: nearestBoat?.type || 'Coast',
-          minTrafficDist: Math.round(filterTraffic.minTrafficDist),
-          nearestTrafficName: filterTraffic.nearestTraffic?.type || 'None',
-          labDist: Math.round(labDist),
-          labName: nearestLab?.type || '',
-          labRedCard: nearestLab ? nearestLab.hasRedKeycard : null,
-          largeOilDist: Math.round(largeOilDist),
-          smallOilDist: Math.round(smallOilDist),
-          verdict: verdictParts.slice(0, 4).join(' • ')
-        });
+        const cand = bfEvaluateWorldSpotWithContext(wx, wy, sCtx, false);
+        if (cand) candidates.push(cand);
       }
     }
 
@@ -10218,6 +10397,52 @@
       };
     } else {
       bfCoastBest = null;
+    }
+
+    // Pick Best Tea / Farm Base (fresh water + Ore/Hemp/Berries trifecta + flat compound space)
+    const freshPool = candidates.filter((c) => c.freshWaterDist <= 280);
+    const farmSorted = [...(freshPool.length ? freshPool : candidates)].sort((a, b) => b.farmScore - a.farmScore);
+    const topFarmScore = farmSorted[0]?.farmScore ?? 0;
+    const farmCand =
+      farmSorted.find(
+        (c) =>
+          c.farmScore >= topFarmScore - 4 &&
+          (!picked[0] || Math.hypot(c.wx - picked[0].wx, c.wy - picked[0].wy) >= 200) &&
+          (!bfStealthBest || Math.hypot(c.wx - bfStealthBest.wx, c.wy - bfStealthBest.wy) >= 200) &&
+          (!bfCoastBest || Math.hypot(c.wx - bfCoastBest.wx, c.wy - bfCoastBest.wy) >= 200)
+      ) ||
+      farmSorted[0] ||
+      null;
+
+    if (farmCand) {
+      const farmVerdictParts = [];
+      if (farmCand.freshWaterDist <= 320) farmVerdictParts.push(`Fresh Water ${farmCand.freshWaterDist}m`);
+      if (farmCand.flatnessScore >= 75 && farmCand.biome) farmVerdictParts.push(`Flat ${farmCand.biome}`);
+      else if (farmCand.biome) farmVerdictParts.push(farmCand.biome);
+      const resTags = [];
+      if (farmCand.oreScore >= 55) resTags.push('Ore');
+      if (farmCand.hempScore >= 55) resTags.push('Hemp');
+      if (farmCand.berryScore >= 55) resTags.push('Berries');
+      if (resTags.length) farmVerdictParts.push(`Rich ${resTags.join('/')}`);
+      if (farmCand.recyclerName && farmCand.recyclerDist <= 700) {
+        farmVerdictParts.push(`${farmCand.recyclerDist}m ${farmCand.recyclerName}`);
+      } else if (farmCand.bestProgDist < 99999) {
+        farmVerdictParts.push(`${farmCand.bestProgDist}m ${farmCand.bestProgName}`);
+      }
+
+      bfFarmBest = {
+        ...farmCand,
+        isFarmBest: true,
+        score: farmCand.farmScore,
+        lowTrafficScore: farmCand.stealthSafety,
+        targetDist: farmCand.bestProgDist,
+        targetName: farmCand.bestProgName,
+        minTrafficDist: farmCand.stealthTrafficDist,
+        nearestTrafficName: farmCand.stealthTrafficName,
+        verdict: farmVerdictParts.slice(0, 4).join(' • ')
+      };
+    } else {
+      bfFarmBest = null;
     }
 
     return picked;
@@ -10832,6 +11057,103 @@
           selectAction: { type: 'spot', idx: -2 }
         });
       }
+
+      // 4B-3. Best Tea / Farm Base (Fresh Water + Ore/Hemp/Berries compound)
+      if (bfFarmBest) {
+        const { px, py } = toPx(bfFarmBest.wx, bfFarmBest.wy);
+        const isSel = bfSelectedIdx === -3;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, isSel ? 20 : 14, 0, Math.PI * 2);
+        ctx.fillStyle = isSel ? 'rgba(34, 197, 94, 0.42)' : 'rgba(34, 197, 94, 0.24)';
+        ctx.fill();
+        ctx.lineWidth = isSel ? 2.8 : 2;
+        ctx.strokeStyle = '#4ade80';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#15803d';
+        ctx.fill();
+
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💧', px, py + 0.5);
+        ctx.restore();
+
+        deferredSpotLabels.push({
+          text: `💧 [${bfFarmBest.grid}] ${bfFarmBest.score}/100`,
+          px,
+          py,
+          offsetY: -20,
+          color: '#dcfce7',
+          borderColor: 'rgba(74,222,128,0.65)',
+          font: '700 10px "JetBrains Mono", monospace'
+        });
+
+        bfRenderedPins.push({
+          px,
+          py,
+          r: isSel ? 20 : 14,
+          wx: bfFarmBest.wx,
+          wy: bfFarmBest.wy,
+          title: `💧 Best Tea / Farm Base [${bfFarmBest.grid}]`,
+          color: '#4ade80',
+          lines: [`Score: ${bfFarmBest.score}/100 • ${bfFarmBest.freshWaterDist < 9000 ? bfFarmBest.freshWaterDist + 'm to fresh water' : 'Rich Tea/Ore zone'} • Click pin to select`],
+          selectAction: { type: 'spot', idx: -3 }
+        });
+      }
+
+      // 4B-4. User-Inspected Custom Map Grid (🎯 Score Grid)
+      if (bfInspectedSpot) {
+        const { px, py } = toPx(bfInspectedSpot.wx, bfInspectedSpot.wy);
+        const isSel = bfSelectedIdx === -4;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, isSel ? 21 : 15, 0, Math.PI * 2);
+        ctx.fillStyle = isSel ? 'rgba(250, 204, 21, 0.42)' : 'rgba(250, 204, 21, 0.24)';
+        ctx.fill();
+        ctx.lineWidth = isSel ? 3 : 2;
+        ctx.strokeStyle = '#facc15';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#a16207';
+        ctx.fill();
+
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎯', px, py + 0.5);
+        ctx.restore();
+
+        deferredSpotLabels.push({
+          text: `🎯 [${bfInspectedSpot.grid}] ${bfInspectedSpot.score}/100`,
+          px,
+          py,
+          offsetY: -20,
+          color: '#fef08a',
+          borderColor: 'rgba(250,204,21,0.75)',
+          font: '700 10px "JetBrains Mono", monospace'
+        });
+
+        bfRenderedPins.push({
+          px,
+          py,
+          r: isSel ? 21 : 15,
+          wx: bfInspectedSpot.wx,
+          wy: bfInspectedSpot.wy,
+          title: `🎯 Inspected Grid [${bfInspectedSpot.grid}]`,
+          color: '#facc15',
+          lines: [
+            `Score: ${bfInspectedSpot.score}/100${bfInspectedSpot.buildBlockedReason ? ' • ⚠️ ' + bfInspectedSpot.buildBlockedReason : ''}`,
+            'Click pin to select'
+          ],
+          selectAction: { type: 'spot', idx: -4 }
+        });
+      }
     }
 
     // 4C. Selected Spot Progression Route & Nearby Farming Radius
@@ -10930,17 +11252,19 @@
       });
     });
 
-    // 6. Live Rust+ & Shared Squad Pins Overlay (Priority #1 labels)
+    // 6. Live Rust+, Vending Shops & Shared Squad Pins Overlay (Priority #1 labels)
     const rpOn2 = document.getElementById('bfShowRustPlusCb')?.checked !== false;
+    const shopsOn2 = document.getElementById('bfShowShopsCb')?.checked !== false;
     const pinsOn2 = document.getElementById('bfShowPinsCb')?.checked !== false;
     const deathsOn2 = document.getElementById('bfShowDeathsCb')?.checked !== false;
-    if (rpOn2 || pinsOn2 || deathsOn2) {
+    if (rpOn2 || shopsOn2 || pinsOn2 || deathsOn2) {
       drawRustPlusOverlayOnCanvas(ctx, {
         toPx,
         scale,
         mapSize,
         showTeam: rpOn2,
         showEvents: rpOn2,
+        showShops: shopsOn2,
         showDeaths: deathsOn2,
         showPins: pinsOn2,
         pinOut: bfRenderedPins,
@@ -10983,18 +11307,20 @@
 
   function buildBfSpotCopyText(s, riskLabel) {
     const grid = s.subGrid || s.grid || '?';
-    const coastBadge = s.isCoastBest ? ' (Best Coastline)' : '';
+    const badge = s.isInspected ? ' (Inspected)' : s.isFarmBest ? ' (Best Tea/Farm)' : s.isCoastBest ? ' (Best Coastline)' : '';
     const targetPart = `${s.targetName || 'Target'}: ${s.targetDist < 99999 ? `${s.targetDist}m` : 'N/A'}`;
     const biomePart = s.biome ? `Biome: ${s.biome}` : 'Biome: Mixed';
     const recPart = s.recyclerName && s.recyclerDist < 99999 ? ` | Recycler: ${s.recyclerName} (${s.recyclerDist}m)` : '';
     const hempVal = Number(s.hempScore || 0);
     const berryVal = Number(s.berryScore || 0);
-    return `[${grid}]${coastBadge} Score ${s.score}/100 | ${targetPart}${recPart} | ${biomePart} | Ore ${s.oreScore}% / Hemp ${hempVal}% / Berry ${berryVal}% | Coast: ${s.coastDist}m | Raid Risk: ${riskLabel}`;
+    return `[${grid}]${badge} Score ${s.score}/100 | ${targetPart}${recPart} | ${biomePart} | Ore ${s.oreScore}% / Hemp ${hempVal}% / Berry ${berryVal}% | Coast: ${s.coastDist}m | Raid Risk: ${riskLabel}`;
   }
 
   function renderBaseFinderResults() {
+    const inspectedSlot = document.getElementById('bfInspectedSpotSlot');
     const stealthSlot = document.getElementById('bfStealthBestSlot');
     const coastSlot = document.getElementById('bfCoastBestSlot');
+    const farmSlot = document.getElementById('bfFarmBestSlot');
     const listEl = document.getElementById('bfResultsList');
     const renderSpotMetrics = (s, risk, mode = 'default') => {
       const hempVal = Number(s.hempScore || 0);
@@ -11002,9 +11328,11 @@
       const primaryBadge =
         mode === 'coast'
           ? `<span style="color:#22d3ee;">⚓ Boat: ${s.boatDist < 99999 ? `${escapeHtml(s.boatName)} (${s.boatDist}m)` : 'Open Coast'}</span>`
-          : mode === 'stealth'
-            ? `<span style="color:#38bdf8;">⚡ Tier 2: ${s.targetDist < 99999 ? `${escapeHtml(s.targetName)} (${s.targetDist}m)` : 'N/A'}</span>`
-            : `<span style="color:#38bdf8;">⚡ ${escapeHtml(s.targetName)}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>`;
+          : mode === 'farm'
+            ? `<span style="color:#34d399; font-weight:700;">💧 Fresh Water: ${s.freshWaterDist < 9000 ? `${s.freshWaterDist}m` : 'Well/Pond'}</span>`
+            : mode === 'stealth'
+              ? `<span style="color:#38bdf8;">⚡ Tier 2: ${s.targetDist < 99999 ? `${escapeHtml(s.targetName)} (${s.targetDist}m)` : 'N/A'}</span>`
+              : `<span style="color:#38bdf8;">⚡ ${escapeHtml(s.targetName)}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>`;
       const shoreBadge =
         mode === 'coast'
           ? `<span style="color:#2dd4bf; font-weight:700;">🌊 Shore: ${s.coastDist}m</span>`
@@ -11026,6 +11354,47 @@
       `;
     };
 
+    if (inspectedSlot) {
+      if (bfInspectedSpot) {
+        const s = bfInspectedSpot;
+        const isSel = bfSelectedIdx === -4;
+        const risk = bfRiskBadge(s.lowTrafficScore);
+        const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${escapeHtml(s.biome)})</span>` : '';
+        inspectedSlot.innerHTML = `
+          <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-4" style="border-color: rgba(250, 204, 21, 0.65); background: linear-gradient(135deg, rgba(161, 98, 7, 0.2), rgba(15, 23, 42, 0.78));">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fef08a;">
+                🎯 INSPECTED GRID — <span style="color:#fff; font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
+              </div>
+              <div style="display:flex; align-items:center; gap:5px;">
+                <button type="button" class="btn btn-sm bf-pin-base-btn" data-bf-idx="-4" style="padding:2px 7px; font-size:10.5px; border-color:rgba(168,85,247,0.55); color:#e9d5ff;" title="Pin as Shared Squad Base">📌 Pin Base</button>
+                <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="-4" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
+                <button type="button" id="bfClearInspectedBtn" class="btn btn-sm" style="padding:2px 7px; font-size:10.5px;">✕</button>
+                <span class="combo-badge" style="font-size:12px; background:rgba(250,204,21,0.22); border-color:#facc15; color:#fef9c3;">${s.score}/100</span>
+              </div>
+            </div>
+            ${s.buildBlockedReason ? `<div style="font-size:11px; color:#fca5a5; margin-top:4px; font-family:var(--font-mono);">⚠️ Build Warning: ${escapeHtml(s.buildBlockedReason)}</div>` : ''}
+            ${renderSpotMetrics(s, risk, 'default')}
+            <div style="font-size:12px; color:var(--text-secondary);">
+              Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+            </div>
+            ${bfFormatOffshoreInfo(s)}
+          </div>
+        `;
+        inspectedSlot.querySelector('#bfClearInspectedBtn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          bfInspectedSpot = null;
+          if (bfSelectedIdx === -4) bfSelectBuildSpot(0);
+          else {
+            renderBaseFinderResults();
+            scheduleBfMapRender();
+          }
+        });
+      } else {
+        inspectedSlot.innerHTML = '';
+      }
+    }
+
     if (stealthSlot) {
       if (bfStealthBest) {
         const s = bfStealthBest;
@@ -11038,7 +11407,8 @@
               <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#e9d5ff;">
                 🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
               </div>
-              <div style="display:flex; align-items:center; gap:6px;">
+              <div style="display:flex; align-items:center; gap:5px;">
+                <button type="button" class="btn btn-sm bf-pin-base-btn" data-bf-idx="-1" style="padding:2px 7px; font-size:10.5px; border-color:rgba(168,85,247,0.55); color:#e9d5ff;" title="Pin as Shared Squad Base">📌 Pin Base</button>
                 <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="-1" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
                 <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
               </div>
@@ -11070,7 +11440,8 @@
               <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#cffafe;">
                 🌊 BEST COASTLINE BASE — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
               </div>
-              <div style="display:flex; align-items:center; gap:6px;">
+              <div style="display:flex; align-items:center; gap:5px;">
+                <button type="button" class="btn btn-sm bf-pin-base-btn" data-bf-idx="-2" style="padding:2px 7px; font-size:10.5px; border-color:rgba(168,85,247,0.55); color:#e9d5ff;" title="Pin as Shared Squad Base">📌 Pin Base</button>
                 <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="-2" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
                 <span class="combo-badge" style="font-size:12px; background:rgba(6,182,212,0.28); border-color:#22d3ee; color:#ecfeff;">${s.score}/100</span>
               </div>
@@ -11087,6 +11458,39 @@
         `;
       } else {
         coastSlot.innerHTML = '';
+      }
+    }
+
+    if (farmSlot) {
+      if (bfFarmBest) {
+        const s = bfFarmBest;
+        const isSel = bfSelectedIdx === -3;
+        const risk = bfRiskBadge(s.lowTrafficScore);
+        const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${escapeHtml(s.biome)})</span>` : '';
+        farmSlot.innerHTML = `
+          <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-3" style="border-color: rgba(74, 222, 128, 0.55); background: linear-gradient(135deg, rgba(21, 128, 61, 0.18), rgba(15, 23, 42, 0.74));">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#dcfce7;">
+                💧 BEST TEA / FARM BASE — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
+              </div>
+              <div style="display:flex; align-items:center; gap:5px;">
+                <button type="button" class="btn btn-sm bf-pin-base-btn" data-bf-idx="-3" style="padding:2px 7px; font-size:10.5px; border-color:rgba(168,85,247,0.55); color:#e9d5ff;" title="Pin as Shared Squad Base">📌 Pin Base</button>
+                <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="-3" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
+                <span class="combo-badge" style="font-size:12px; background:rgba(34,197,94,0.28); border-color:#4ade80; color:#f0fdf4;">${s.score}/100</span>
+              </div>
+            </div>
+            <div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;">
+              Fresh water sprinkler access + rich Ore / Hemp / Berry nodes &amp; flat compound space, calculated <strong>regardless of your filter preferences</strong>.
+            </div>
+            ${renderSpotMetrics(s, risk, 'farm')}
+            <div style="font-size:12px; color:var(--text-secondary);">
+              Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+            </div>
+            ${bfFormatOffshoreInfo(s)}
+          </div>
+        `;
+      } else {
+        farmSlot.innerHTML = '';
       }
     }
 
@@ -11126,7 +11530,8 @@
                 <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
                   ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
                 </div>
-                <div style="display:flex; align-items:center; gap:6px;">
+                <div style="display:flex; align-items:center; gap:5px;">
+                  <button type="button" class="btn btn-sm bf-pin-base-btn" data-bf-idx="${idx}" style="padding:2px 7px; font-size:10.5px; border-color:rgba(168,85,247,0.55); color:#e9d5ff;" title="Pin as Shared Squad Base">📌 Pin Base</button>
                   <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="${idx}" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
                   <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
                 </div>
@@ -11146,13 +11551,49 @@
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const idx = parseInt(btn.getAttribute('data-bf-idx'), 10);
-        const spot = idx === -1 ? bfStealthBest : idx === -2 ? bfCoastBest : bfTopSpots[idx];
+        const spot = bfGetSpotByIdx(idx);
         if (!spot) return;
         const risk = bfRiskBadge(spot.lowTrafficScore);
         const intelText = buildBfSpotCopyText(spot, risk.label);
         await copyTextToClipboard(intelText);
         flashButtonFeedback(btn, '✓ Copied!');
         showTacticalToast(`Copied Spot Intel: ${intelText}`, 'ok');
+      });
+    });
+
+    document.querySelectorAll('#tab-basefinder .bf-pin-base-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-bf-idx'), 10);
+        const spot = bfGetSpotByIdx(idx);
+        if (!spot) return;
+        const list = Array.isArray(appState.squadPins) ? [...appState.squadPins] : [];
+        const grid = spot.subGrid || spot.grid || '?';
+        const pinLabel = `Main Base [${grid}]`;
+        const myMember = findMyRustPlusTeamMember(appState.rustPlusTelemetry);
+        const author = myMember?.name || appState.squadName || 'Squad';
+        const existingIdx = list.findIndex((p) => String(p.id) === 'main-base-pin');
+        const pinObj = {
+          id: 'main-base-pin',
+          category: 'base',
+          icon: '🏠',
+          color: '#a855f7',
+          label: pinLabel,
+          raidPreset: {},
+          wx: Number(spot.wx.toFixed(1)),
+          wy: Number(spot.wy.toFixed(1)),
+          grid: spot.grid,
+          placedBy: author,
+          updatedAt: Date.now()
+        };
+        if (existingIdx >= 0) list[existingIdx] = pinObj;
+        else list.unshift(pinObj);
+        appState.squadPins = list.slice(0, 60);
+        syncStateToServer();
+        renderSharedPinsStrip();
+        scheduleBfMapRender();
+        flashButtonFeedback(btn, '✓ Pinned!');
+        showTacticalToast(`Pinned 🏠 ${pinLabel} to Shared Squad Pins`, 'ok');
       });
     });
 
@@ -11190,7 +11631,7 @@
     if (!farmEl) return;
     const selSpot = getSelectedBuildSpot();
     const selLabel = selSpot
-      ? (bfSelectedIdx === -1 ? `🥷 Under-Radar [${selSpot.grid}]` : bfSelectedIdx === -2 ? `🌊 Coastline [${selSpot.grid}]` : `#${bfSelectedIdx + 1} [${selSpot.grid}]`)
+      ? (bfSelectedIdx === -1 ? `🥷 Under-Radar [${selSpot.grid}]` : bfSelectedIdx === -2 ? `🌊 Coastline [${selSpot.grid}]` : bfSelectedIdx === -3 ? `💧 Tea/Farm [${selSpot.grid}]` : bfSelectedIdx === -4 ? `🎯 Inspected [${selSpot.grid}]` : `#${bfSelectedIdx + 1} [${selSpot.grid}]`)
       : 'selected spot';
 
     if (!bfFarmingSpots || bfFarmingSpots.length === 0) {
@@ -11630,6 +12071,7 @@
 
         bfMapData = data;
         bfCustomTargetMonument = null;
+        bfInspectedSpot = null;
         bfPrepareNoBuildData(data);
         bfZoom = bfComputeFitZoom();
         bfPanX = 0;
@@ -11741,8 +12183,19 @@
       bfCustomTargetMonument = null;
       rerunBaseFinderScoring();
     });
+    const updateAdvScoringBadge = () => {
+      const cntEl = document.getElementById('bfAdvFilterCount');
+      if (!cntEl) return;
+      const cbs = ['bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb'];
+      const onCount = cbs.filter((id) => Boolean(document.getElementById(id)?.checked)).length;
+      cntEl.textContent = `(${onCount}/${cbs.length})`;
+    };
+    updateAdvScoringBadge();
     ['bfPlaystyleSelect', 'bfBiomePrefSelect', 'bfDeepSeaCb', 'bfLowTrafficCb', 'bfUnderwaterLabCb', 'bfFarmOreCb'].forEach((id) => {
-      document.getElementById(id)?.addEventListener('change', rerunBaseFinderScoring);
+      document.getElementById(id)?.addEventListener('change', () => {
+        updateAdvScoringBadge();
+        rerunBaseFinderScoring();
+      });
     });
     document.getElementById('bfShowSpotsCb')?.addEventListener('change', scheduleBfMapRender);
     document.getElementById('bfShowMonumentsCb')?.addEventListener('change', scheduleBfMapRender);
@@ -11752,6 +12205,7 @@
     });
     document.getElementById('bfShowRouteCb')?.addEventListener('change', scheduleBfMapRender);
     document.getElementById('bfShowRustPlusCb')?.addEventListener('change', scheduleBfMapRender);
+    document.getElementById('bfShowShopsCb')?.addEventListener('change', scheduleBfMapRender);
     document.getElementById('bfShowPinsCb')?.addEventListener('change', scheduleBfMapRender);
     document.getElementById('bfShowDeathsCb')?.addEventListener('change', scheduleBfMapRender);
 
@@ -11777,6 +12231,8 @@
     const pinDropModeBtn = document.getElementById('bfDropPinModeBtn');
     const measureModeBtn = document.getElementById('bfMeasureModeBtn');
     const measureBannerEl = document.getElementById('bfMeasureBanner');
+    const inspectModeBtn = document.getElementById('bfInspectSpotModeBtn');
+    const inspectBannerEl = document.getElementById('bfInspectBanner');
     const pinTitleEl = document.getElementById('bfPinEditorTitle');
     const pinLabelEl = document.getElementById('bfPinLabelInput');
     const pinColorEl = document.getElementById('bfPinColorInput');
@@ -11830,23 +12286,56 @@
       });
     };
 
+    const renderInspectBanner = () => {
+      if (!inspectBannerEl) return;
+      if (!bfInspectSpotMode) {
+        inspectBannerEl.style.display = 'none';
+        return;
+      }
+      inspectBannerEl.style.display = 'flex';
+      inspectBannerEl.innerHTML = `<span>🎯 <strong>Score Grid ON:</strong> Click anywhere on the map to score that grid${bfInspectedSpot ? ` (Last: <strong>[${escapeHtml(bfInspectedSpot.grid)}] ${bfInspectedSpot.score}/100</strong>)` : ''}</span><button type="button" id="bfInspectExitBtn" class="btn btn-sm" style="padding:1px 6px;">✕ Exit</button>`;
+      inspectBannerEl.querySelector('#bfInspectExitBtn')?.addEventListener('click', () => {
+        bfInspectSpotMode = false;
+        syncDropModeBtnUi();
+        renderInspectBanner();
+      });
+    };
+
     const syncDropModeBtnUi = () => {
       if (pinDropModeBtn) {
-        pinDropModeBtn.textContent = bfMovingPinId ? '🎯 Click New Spot' : bfDropPinMode ? '📌 Dropping (ON)' : '📌 + Pin';
-        pinDropModeBtn.style.background = bfDropPinMode || bfMovingPinId ? 'rgba(245, 158, 11, 0.25)' : '';
-        pinDropModeBtn.style.borderColor = bfMovingPinId ? '#38bdf8' : '#f59e0b';
+        pinDropModeBtn.textContent = bfMovingPinId ? '🎯 Click Spot' : bfDropPinMode ? '📌 Dropping' : '📌 +Pin';
+        pinDropModeBtn.classList.toggle('active', Boolean(bfDropPinMode || bfMovingPinId));
+        pinDropModeBtn.style.borderColor = bfMovingPinId ? '#38bdf8' : 'rgba(245,158,11,0.45)';
       }
       if (measureModeBtn) {
         measureModeBtn.textContent = bfMeasureMode ? '📏 Ruler (ON)' : '📏 Ruler';
-        measureModeBtn.style.background = bfMeasureMode ? 'rgba(56, 189, 248, 0.24)' : '';
+        measureModeBtn.classList.toggle('active', bfMeasureMode);
+      }
+      if (inspectModeBtn) {
+        inspectModeBtn.textContent = bfInspectSpotMode ? '🎯 Scoring (ON)' : '🎯 Score Grid';
+        inspectModeBtn.classList.toggle('active', bfInspectSpotMode);
       }
       const cvsEl = document.getElementById('bfMapCanvas');
-      if (cvsEl) cvsEl.style.cursor = bfDropPinMode || bfMovingPinId || bfMeasureMode ? 'crosshair' : 'grab';
+      if (cvsEl) cvsEl.style.cursor = bfDropPinMode || bfMovingPinId || bfMeasureMode || bfInspectSpotMode ? 'crosshair' : 'grab';
     };
+
+    inspectModeBtn?.addEventListener('click', () => {
+      bfInspectSpotMode = !bfInspectSpotMode;
+      if (bfInspectSpotMode) {
+        bfMeasureMode = false;
+        bfMeasurePoints = [];
+        bfDropPinMode = false;
+        bfMovingPinId = '';
+      }
+      syncDropModeBtnUi();
+      renderMeasureBanner();
+      renderInspectBanner();
+    });
 
     measureModeBtn?.addEventListener('click', () => {
       bfMeasureMode = !bfMeasureMode;
       if (bfMeasureMode) {
+        bfInspectSpotMode = false;
         bfDropPinMode = false;
         bfMovingPinId = '';
         bfMeasurePoints = [];
@@ -11855,6 +12344,7 @@
       }
       syncDropModeBtnUi();
       renderMeasureBanner();
+      renderInspectBanner();
       renderBaseFinderMap();
     });
 
@@ -11932,9 +12422,11 @@
       bfMovingPinId = '';
       bfMeasureMode = false;
       bfMeasurePoints = [];
+      bfInspectSpotMode = false;
       bfDropPinMode = !bfDropPinMode;
       syncDropModeBtnUi();
       renderMeasureBanner();
+      renderInspectBanner();
     });
 
     pinCancelBtn?.addEventListener('click', () => {
@@ -12043,7 +12535,7 @@
     const layoutEl = document.getElementById('bfLayoutContainer');
     expandBtn?.addEventListener('click', () => {
       const expanded = layoutEl?.classList.toggle('bf-map-expanded');
-      expandBtn.textContent = expanded ? '⤡ Split View' : '⤢ Full Width';
+      expandBtn.textContent = expanded ? '⤡ Split' : '⤢ Expand';
     });
 
     const bfCanvas = document.getElementById('bfMapCanvas');
@@ -12095,6 +12587,20 @@
           else bfMeasurePoints = [...bfMeasurePoints, { wx: clickWx, wy: clickWy, grid }];
           renderMeasureBanner();
           scheduleBfMapRender();
+          return;
+        }
+
+        if (bfInspectSpotMode) {
+          const evaluated = bfEvaluateCustomWorldPoint(clickWx, clickWy);
+          if (evaluated) {
+            bfInspectedSpot = evaluated;
+            bfSelectBuildSpot(-4);
+            bfSwitchSubtab('spots');
+            renderInspectBanner();
+            if (statusEl) {
+              statusEl.textContent = `🎯 Inspected Grid [${evaluated.grid}] — Score ${evaluated.score}/100${evaluated.buildBlockedReason ? ` (${evaluated.buildBlockedReason})` : ''}`;
+            }
+          }
           return;
         }
 
@@ -12156,6 +12662,15 @@
           if (statusEl) {
             statusEl.textContent = `🎯 Ranked top build spots around ${mon.type} [${mon.grid}] — Best: Grid ${bfTopSpots[0]?.grid || '-'} (${bfTopSpots[0]?.score || 0}/100)`;
           }
+        } else if (nearestActionPin.selectAction.type === 'shop') {
+          const sh = nearestActionPin.selectAction.shop;
+          if (sh) {
+            setBfMapView(sh.wx, sh.wy, 2.2);
+            const inp = document.getElementById('rpShopSearchInput');
+            if (inp) inp.value = sh.grid || sh.name || '';
+            if (typeof renderRustPlusShopsScanner === 'function') renderRustPlusShopsScanner();
+            bfSwitchSubtab('shops');
+          }
         } else if (['event', 'team', 'death'].includes(nearestActionPin.selectAction.type)) {
           setBfMapView(nearestActionPin.wx, nearestActionPin.wy, 1.9);
         }
@@ -12210,7 +12725,7 @@
               if (resParts.length) resText = ` • ${resParts.join(' ')}`;
             }
           }
-          hudEl.innerHTML = `Grid ${escapeHtml(subGrid)}${biomeLbl && !isWaterPx ? ` (${escapeHtml(biomeLbl)})` : ''}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : bfSelectedIdx === -2 ? '🌊' : '#' + (bfSelectedIdx + 1)} [${escapeHtml(selSpot.grid)}]` : ''}${resText} • ${buildStatus}`;
+          hudEl.innerHTML = `Grid ${escapeHtml(subGrid)}${biomeLbl && !isWaterPx ? ` (${escapeHtml(biomeLbl)})` : ''}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : bfSelectedIdx === -2 ? '🌊' : bfSelectedIdx === -3 ? '💧' : bfSelectedIdx === -4 ? '🎯' : '#' + (bfSelectedIdx + 1)} [${escapeHtml(selSpot.grid)}]` : ''}${resText} • ${buildStatus}`;
         }
 
         if (tooltipEl) {
@@ -12458,6 +12973,7 @@
     mapSize,
     showTeam = true,
     showEvents = true,
+    showShops = true,
     showDeaths = true,
     showPins = true,
     pinOut = [],
@@ -12703,6 +13219,71 @@
       });
     }
 
+    // D. Live Rust+ Vending Machines (Shops)
+    if (showShops && Array.isArray(tel.vendingMachines) && tel.vendingMachines.length > 0) {
+      const shopQuery = String(document.getElementById('rpShopSearchInput')?.value || '').trim().toLowerCase();
+      tel.vendingMachines.forEach((sh) => {
+        if (!sh || !Number.isFinite(Number(sh.wx)) || !Number.isFinite(Number(sh.wy))) return;
+        const wx = Number(sh.wx);
+        const wy = Number(sh.wy);
+        const { px, py } = toPx(wx, wy);
+        const orders = Array.isArray(sh.sellOrders) ? sh.sellOrders : [];
+        const hasMatch = Boolean(
+          shopQuery &&
+            (String(sh.name || '').toLowerCase().includes(shopQuery) ||
+              String(sh.grid || '').toLowerCase().includes(shopQuery) ||
+              orders.some(
+                (o) =>
+                  String(o.itemName || '').toLowerCase().includes(shopQuery) ||
+                  String(o.itemShortname || '').toLowerCase().includes(shopQuery)
+              ))
+        );
+        const baseCol = hasMatch ? '#facc15' : sh.outOfStock ? '#64748b' : '#22c55e';
+        const rad = hasMatch ? 12 : 9;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, rad, 0, Math.PI * 2);
+        ctx.fillStyle = hasMatch ? 'rgba(250, 204, 21, 0.34)' : sh.outOfStock ? 'rgba(100, 116, 139, 0.22)' : 'rgba(34, 197, 94, 0.25)';
+        ctx.fill();
+        ctx.lineWidth = hasMatch ? 2.4 : 1.5;
+        ctx.strokeStyle = baseCol;
+        ctx.stroke();
+
+        ctx.font = `${hasMatch ? 12 : 10}px "Inter", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🛒', px, py + 0.5);
+        ctx.restore();
+
+        if (hasMatch) {
+          bfDrawCanvasPillLabel(ctx, `🛒 ${sh.name} [${sh.grid}]`, px, py, {
+            color: '#fef08a',
+            borderColor: '#facc15',
+            font: '700 9.5px "JetBrains Mono", monospace',
+            offsetY: -16,
+            labelBoxes
+          });
+        }
+
+        const topOrders = orders.slice(0, 3).map((o) => {
+          const bp = o.itemIsBp ? ' (BP)' : '';
+          return `${o.quantity}× ${o.itemName}${bp} → ${o.costPerItem} ${o.currencyName} (${o.amountInStock > 0 ? `x${o.amountInStock}` : 'OUT'})`;
+        });
+        const distLine = formatPlayerDistanceBearing(wx, wy, myMember);
+        pinOut.push({
+          px,
+          py,
+          r: rad,
+          wx,
+          wy,
+          title: `🛒 ${sh.name} [${sh.grid}]${sh.outOfStock ? ' (OUT OF STOCK)' : ''}`,
+          color: baseCol,
+          lines: [...(topOrders.length ? topOrders : ['No listed sell orders']), distLine, 'Click shop → Inspect in 🛒 Shops tab'].filter(Boolean),
+          selectAction: { type: 'shop', shop: sh }
+        });
+      });
+    }
+
     // E. Shared Real-Time Squad Map Pins & Stashes (SSE-Synced)
     if (showPins && Array.isArray(appState.squadPins)) {
       appState.squadPins.forEach((sp) => {
@@ -12926,6 +13507,17 @@
 
     if (eventsStrip) {
       const evts = tel.liveEvents || [];
+      const activeIds = new Set(
+        (Array.isArray(appState.activeTimers) ? appState.activeTimers : [])
+          .filter((t) => !t.paused && Number(t.endsAt || 0) > Date.now())
+          .map((t) => String(t.id))
+      );
+      const EVT_TIMER_PRESETS = {
+        6: { sec: 900, cat: 'Locked Crate', label: '15:00 Crate' },
+        5: { sec: 3000, cat: 'Cargo Ship', label: '50:00 Cargo' },
+        8: { sec: 900, cat: 'Patrol Helicopter', label: '15:00 Heli' },
+        2: { sec: 300, cat: 'Raid Counter', label: '5:00 Boom' }
+      };
       if (!hasLiveData && evts.length === 0) {
         eventsStrip.style.display = 'none';
       } else {
@@ -12933,10 +13525,13 @@
         eventsStrip.innerHTML = evts.length
           ? evts
               .map((ev) => {
-                const crateBtn = ev.type === 6
-                  ? `<button type="button" class="filter-pill shop-evt-crate-timer" data-grid="${escapeHtml(ev.grid)}" style="border-color:#f59e0b; color:#fde047;">⏱️ Track 15:00 Crate [${escapeHtml(ev.grid)}]</button>`
+                const tp = EVT_TIMER_PRESETS[ev.type];
+                const tid = `rp-evt-${ev.id}`;
+                const tracked = activeIds.has(tid);
+                const timerBtn = tp
+                  ? `<button type="button" class="filter-pill shop-evt-crate-timer ${tracked ? 'active' : ''}" data-tid="${escapeHtml(tid)}" data-sec="${tp.sec}" data-cat="${escapeHtml(tp.cat)}" data-name="${escapeHtml(`${tp.cat} [${ev.grid}]`)}" style="border-color:#f59e0b; color:${tracked ? '#86efac' : '#fde047'};">${tracked ? `✓ Tracking [${escapeHtml(ev.grid)}]` : `⏱️ Track ${tp.label} [${escapeHtml(ev.grid)}]`}</button>`
                   : '';
-                return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${Number(ev.wx) || 0}" data-wy="${Number(ev.wy) || 0}" style="border-color:${safeCssColor(ev.color, '#38bdf8')}; color:#f8fafc;">${escapeHtml(ev.icon)} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${crateBtn}`;
+                return `<button type="button" class="filter-pill shop-evt-pill" data-wx="${Number(ev.wx) || 0}" data-wy="${Number(ev.wy) || 0}" style="border-color:${safeCssColor(ev.color, '#38bdf8')}; color:#f8fafc;">${escapeHtml(ev.icon)} ${escapeHtml(ev.label)} [${escapeHtml(ev.grid)}]</button>${timerBtn}`;
               })
               .join('')
           : `<span style="font-size:11px; color:var(--text-muted);">${tel.markerSummary ? (tel.markerSummary.eventsCount === 0 && Number(tel.markerSummary.total || 0) <= 3 ? `ℹ️ Server returned ${Number(tel.markerSummary.total || 0)} marker(s) — Facepunch restricts World Events on some servers. Squad GPS, Shared Pins, 15m Deaths, Team Chat Bot, Clock &amp; Smart Devices stay live.` : `No active Cargo / Heli / Crate markers on server right now (decoded ${Number(tel.markerSummary.total || 0)} map markers).`) : 'No active Cargo / Heli / Crate markers on map right now.'}</span>`;
@@ -12947,23 +13542,28 @@
         });
         eventsStrip.querySelectorAll('.shop-evt-crate-timer').forEach((btn) => {
           btn.addEventListener('click', () => {
-            const grid = btn.getAttribute('data-grid') || '';
+            const tid = btn.getAttribute('data-tid') || ('t-' + Date.now());
+            const sec = Math.max(60, parseInt(btn.getAttribute('data-sec'), 10) || 900);
+            const cat = btn.getAttribute('data-cat') || 'World Event';
+            const tName = btn.getAttribute('data-name') || cat;
             const now = Date.now();
+            const existing = (Array.isArray(appState.activeTimers) ? appState.activeTimers : []).filter((t) => String(t.id) !== String(tid));
             appState.activeTimers = [
-              ...(Array.isArray(appState.activeTimers) ? appState.activeTimers : []),
               {
-                id: 't-' + now + '-crate',
-                name: `Locked Crate [${grid}]`,
-                category: 'Locked Crate',
-                durationSec: 900,
-                endsAt: now + 900 * 1000,
+                id: tid,
+                name: tName,
+                category: cat,
+                durationSec: sec,
+                endsAt: now + sec * 1000,
                 startedAt: now,
                 paused: false
-              }
-            ];
+              },
+              ...existing
+            ].slice(0, 40);
             syncStateToServer();
             renderTimersTick();
-            btn.textContent = `✓ Timer Started [${grid}]`;
+            renderShopLiveMap();
+            showTacticalToast(`Started timer: ${tName}`, 'ok');
           });
         });
       }
@@ -13556,6 +14156,121 @@
             .join('')
         : `<span style="color:var(--text-muted);">No logged alarms, deaths, or world events yet.</span>`;
     }
+
+    renderRustPlusShopsScanner();
+  }
+
+  let rpShopCatFilter = 'all';
+
+  function renderRustPlusShopsScanner() {
+    const tel = appState.rustPlusTelemetry || DEFAULT_RUSTPLUS_TELEMETRY;
+    const shops = Array.isArray(tel.vendingMachines) ? tel.vendingMachines : [];
+    const badgeEl = document.getElementById('bfShopCountBadge');
+    if (badgeEl) badgeEl.textContent = shops.length > 0 ? `(${shops.length})` : '';
+
+    const listEl = document.getElementById('rpShopResultsList');
+    const sumEl = document.getElementById('rpShopSummaryBar');
+    if (!listEl) return;
+
+    const query = String(document.getElementById('rpShopSearchInput')?.value || '').trim().toLowerCase();
+    const inStockOnly = document.getElementById('rpShopInStockOnlyCb')?.checked !== false;
+    const sortBy = document.getElementById('rpShopSortSelect')?.value || 'price';
+    const refPoint = findMyRustPlusTeamMember(tel) || getSelectedBuildSpot() || null;
+
+    const rows = [];
+    for (const sh of shops) {
+      const orders = Array.isArray(sh.sellOrders) ? sh.sellOrders : [];
+      const distM = refPoint && typeof refPoint.wx === 'number' && typeof refPoint.wy === 'number'
+        ? Math.round(Math.hypot(sh.wx - refPoint.wx, sh.wy - refPoint.wy))
+        : null;
+      for (const o of orders) {
+        const stock = Number(o.amountInStock || 0);
+        if (inStockOnly && stock <= 0) continue;
+        if (rpShopCatFilter !== 'all' && o.category !== rpShopCatFilter) continue;
+        if (query) {
+          const hay = `${o.itemName} ${o.itemShortname} ${o.currencyName} ${sh.name} ${sh.grid}`.toLowerCase();
+          if (!hay.includes(query)) continue;
+        }
+        const qty = Math.max(1, Number(o.quantity || 1));
+        const cost = Number(o.costPerItem || 0);
+        rows.push({
+          shop: sh,
+          order: o,
+          stock,
+          qty,
+          cost,
+          unitPrice: cost / qty,
+          distM
+        });
+      }
+    }
+
+    rows.sort((a, b) => {
+      if (a.stock > 0 !== b.stock > 0) return a.stock > 0 ? -1 : 1;
+      if (sortBy === 'distance') return (a.distM ?? 99999) - (b.distM ?? 99999);
+      if (sortBy === 'stock') return b.stock - a.stock;
+      if (a.unitPrice !== b.unitPrice) return a.unitPrice - b.unitPrice;
+      return (a.distM ?? 99999) - (b.distM ?? 99999);
+    });
+
+    if (sumEl) {
+      const stockedShops = shops.filter((s) => !s.outOfStock).length;
+      sumEl.textContent = shops.length
+        ? `Showing ${Math.min(60, rows.length)} of ${rows.length} deals across ${shops.length} shops (${stockedShops} stocked)`
+        : 'Connect Rust+ & sync your live server to scan player + NPC Vending Machines.';
+    }
+
+    if (!shops.length) {
+      listEl.innerHTML = `<div style="padding:18px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px; font-size:12px;">No live Vending Machines loaded yet. Open <strong>📡 Rust+</strong> to connect &amp; sync your server!</div>`;
+      return;
+    }
+
+    if (!rows.length) {
+      listEl.innerHTML = `<div style="padding:16px; text-align:center; color:var(--text-muted); border:1px dashed var(--border-subtle); border-radius:6px; font-size:12px;">No vending machine offers match your current filters.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = rows
+      .slice(0, 60)
+      .map((r) => {
+        const { shop, order, stock, qty, cost, distM } = r;
+        const itemIcon = rustItemIconHtml(order.itemShortname, order.itemName, 20);
+        const currIcon = rustItemIconHtml(order.currencyShortname, order.currencyName, 16);
+        const bpBadge = order.itemIsBp ? `<span class="rp-shop-bp-badge">BP</span>` : '';
+        const currBp = order.currencyIsBp ? ' BP' : '';
+        const distTxt = distM !== null ? ` • ${distM}m` : '';
+        return `
+          <div class="rp-shop-card" data-wx="${Number(shop.wx) || 0}" data-wy="${Number(shop.wy) || 0}" title="Click to focus map on ${escapeHtml(shop.name)} [${escapeHtml(shop.grid)}]">
+            <div class="rp-shop-order-row">
+              <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:12.5px; color:#f8fafc;">
+                ${itemIcon}
+                <span><strong style="color:#4ade80;">${qty}×</strong> ${escapeHtml(order.itemName)}</span>
+                ${bpBadge}
+              </div>
+              <div style="display:flex; align-items:center; gap:5px; font-family:var(--font-mono); font-size:11.5px;">
+                <span style="color:#fde047; font-weight:700;">→ ${cost.toLocaleString()}</span>
+                ${currIcon}
+                <span style="color:#cbd5e1;">${escapeHtml(order.currencyName + currBp)}</span>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; color:var(--text-secondary);">
+              <span>🛒 <strong style="color:#e2e8f0;">${escapeHtml(shop.name)}</strong> <span style="font-family:var(--font-mono); color:#7dd3fc;">[${escapeHtml(shop.grid)}]${distTxt}</span></span>
+              <span class="rp-shop-stock-pill ${stock > 0 ? '' : 'out'}">${stock > 0 ? `${stock} in stock` : 'OUT'}</span>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    listEl.querySelectorAll('.rp-shop-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const wx = parseFloat(card.getAttribute('data-wx'));
+        const wy = parseFloat(card.getAttribute('data-wy'));
+        if (Number.isFinite(wx) && Number.isFinite(wy)) {
+          setBfMapView(wx, wy, 2.2);
+        }
+      });
+    });
   }
 
   function initRustPlusModule() {
@@ -13619,6 +14334,7 @@
         chatBotEnabled: document.getElementById('rpChatBotCb')?.checked !== false,
         chatBotAllowSwitchControl: document.getElementById('rpChatAllowSwitchCb')?.checked !== false,
         discordAlertEvents: document.getElementById('rpShopDiscordEventsCb')?.checked !== false,
+        autoEventTimers: document.getElementById('rpAutoEventTimersCb')?.checked !== false,
         smartAutomation: appState.rustPlusShopConfig?.smartAutomation || DEFAULT_RUSTPLUS_SHOP_CONFIG.smartAutomation
       };
     };
@@ -13892,6 +14608,23 @@
     document.getElementById('rpChatBotCb')?.addEventListener('change', saveRustPlusPollSettings);
     document.getElementById('rpChatAllowSwitchCb')?.addEventListener('change', saveRustPlusPollSettings);
     document.getElementById('rpShopDiscordEventsCb')?.addEventListener('change', saveRustPlusPollSettings);
+    document.getElementById('rpAutoEventTimersCb')?.addEventListener('change', saveRustPlusPollSettings);
+
+    document.getElementById('rpShopSearchInput')?.addEventListener('input', () => {
+      renderRustPlusShopsScanner();
+      scheduleBfMapRender();
+    });
+    document.getElementById('rpShopInStockOnlyCb')?.addEventListener('change', renderRustPlusShopsScanner);
+    document.getElementById('rpShopSortSelect')?.addEventListener('change', renderRustPlusShopsScanner);
+    document.querySelectorAll('#rpShopCatPills .filter-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        rpShopCatFilter = btn.getAttribute('data-scat') || 'all';
+        document.querySelectorAll('#rpShopCatPills .filter-pill').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        renderRustPlusShopsScanner();
+      });
+    });
 
     document.getElementById('rpActivityClearBtn')?.addEventListener('click', async () => {
       appState.rustPlusTelemetry = { ...DEFAULT_RUSTPLUS_TELEMETRY, ...(appState.rustPlusTelemetry || {}), activityLog: [] };
@@ -14047,6 +14780,8 @@
     if (swBotCb) swBotCb.checked = cfg.chatBotAllowSwitchControl !== false;
     const evtAlertCb = document.getElementById('rpShopDiscordEventsCb');
     if (evtAlertCb) evtAlertCb.checked = cfg.discordAlertEvents !== false;
+    const autoEvtCb = document.getElementById('rpAutoEventTimersCb');
+    if (autoEvtCb) autoEvtCb.checked = cfg.autoEventTimers !== false;
     const statusEl = document.getElementById('rpShopStatusText');
     if (statusEl && cfg.lastStatus) statusEl.textContent = cfg.lastStatus;
   }

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=20261120b" />
+  <link rel="stylesheet" href="css/styles.css?v=20261120c" />
 </head>
 <body>
 
@@ -1015,71 +1015,81 @@
         </div>
         <div id="bfRecentMapsBar" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;"></div>
 
-        <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px 14px;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">MAIN MONUMENT:</label>
-            <select id="bfTargetMonumentSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
-              <option value="powerplant" selected>⚡ Power Plant (Recommended)</option>
-              <option value="water_treatment">💧 Water Treatment</option>
-              <option value="train_yard">🚂 Train Yard</option>
-              <option value="airfield">✈️ Airfield</option>
-              <option value="arctic_research">❄️ Arctic Research Base</option>
-              <option value="the_dome">🔵 The Dome</option>
-              <option value="radtown">☢️ Radtown</option>
-              <option value="abandoned_military">🪖 Abandoned Military Base</option>
-              <option value="launch_site">🚀 Launch Site</option>
-              <option value="missile_silo">☢️ Missile Silo</option>
-              <option value="military_tunnels">🪖 Military Tunnels</option>
-              <option value="sewer_branch">🟢 Sewer Branch</option>
-              <option value="ferry_terminal">⛴️ Ferry Terminal</option>
-              <option value="harbor">⚓ Harbor</option>
-              <option value="underwater_lab">🔬 Underwater Labs</option>
-              <option value="large_oil_rig">🛢️ Large Oil Rig</option>
-              <option value="small_oil_rig">🛢️ Small Oil Rig</option>
-            </select>
+        <div class="bf-filter-toolbar">
+          <div class="bf-primary-filter-row">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="bfTargetMonumentSelect" style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">MONUMENT:</label>
+              <select id="bfTargetMonumentSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
+                <option value="powerplant" selected>⚡ Power Plant (Recommended)</option>
+                <option value="water_treatment">💧 Water Treatment</option>
+                <option value="train_yard">🚂 Train Yard</option>
+                <option value="airfield">✈️ Airfield</option>
+                <option value="arctic_research">❄️ Arctic Research Base</option>
+                <option value="the_dome">🔵 The Dome</option>
+                <option value="radtown">☢️ Radtown</option>
+                <option value="abandoned_military">🪖 Abandoned Military Base</option>
+                <option value="launch_site">🚀 Launch Site</option>
+                <option value="missile_silo">☢️ Missile Silo</option>
+                <option value="military_tunnels">🪖 Military Tunnels</option>
+                <option value="sewer_branch">🟢 Sewer Branch</option>
+                <option value="ferry_terminal">⛴️ Ferry Terminal</option>
+                <option value="harbor">⚓ Harbor</option>
+                <option value="underwater_lab">🔬 Underwater Labs</option>
+                <option value="large_oil_rig">🛢️ Large Oil Rig</option>
+                <option value="small_oil_rig">🛢️ Small Oil Rig</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="bfPlaystyleSelect" style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">PLAYSTYLE:</label>
+              <select id="bfPlaystyleSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
+                <option value="solo_stealth" selected>🥷 Solo / Duo Stealth</option>
+                <option value="farm_tea">⛏️ Farm &amp; Tea Compound</option>
+                <option value="pvp_monument">⚔️ PvP / Fast Monument Roam</option>
+                <option value="ocean_oil">🌊 Deep Sea / Oil &amp; Labs</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <label for="bfBiomePrefSelect" style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">BIOME:</label>
+              <select id="bfBiomePrefSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
+                <option value="any" selected>🌍 Any (Smart Cover)</option>
+                <option value="forest">🌲 Forest / Temperate</option>
+                <option value="snow">❄️ Snow (Sulfur Meta)</option>
+                <option value="tundra">🏔️ Tundra</option>
+                <option value="desert">🏜️ Desert</option>
+                <option value="jungle">🌴 Jungle</option>
+              </select>
+            </div>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label for="bfPlaystyleSelect" style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">PLAYSTYLE:</label>
-            <select id="bfPlaystyleSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
-              <option value="solo_stealth" selected>🥷 Solo / Duo Stealth</option>
-              <option value="farm_tea">⛏️ Farm &amp; Tea Compound</option>
-              <option value="pvp_monument">⚔️ PvP / Fast Monument Roam</option>
-              <option value="ocean_oil">🌊 Deep Sea / Oil &amp; Labs</option>
-            </select>
-          </div>
+          <details id="bfAdvancedScoringDrawer" class="bf-adv-drawer">
+            <summary class="bf-adv-summary">
+              <span>⚙️ Scoring Modifiers <span id="bfAdvFilterCount" style="color:#7dd3fc;">(4/4)</span> ▾</span>
+              <span style="font-size:11px; color:var(--text-muted); font-weight:400;">Deep Sea • Anti-Raid Safety • Underwater Labs • Ore Priority</span>
+            </summary>
+            <div class="bf-adv-grid">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                <input id="bfDeepSeaCb" type="checkbox" checked />
+                <span>🌊 <strong>Deep Sea / Coast Access</strong> (Ocean + Fishing Village)</span>
+              </label>
 
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label for="bfBiomePrefSelect" style="font-size: 11px; color: var(--text-secondary); font-weight: 700;">BIOME:</label>
-            <select id="bfBiomePrefSelect" class="select" style="padding: 5px 10px; font-size: 12px;">
-              <option value="any" selected>🌍 Any (Smart Cover)</option>
-              <option value="forest">🌲 Forest / Temperate</option>
-              <option value="snow">❄️ Snow (Sulfur Meta)</option>
-              <option value="tundra">🏔️ Tundra</option>
-              <option value="desert">🏜️ Desert</option>
-              <option value="jungle">🌴 Jungle</option>
-            </select>
-          </div>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                <input id="bfLowTrafficCb" type="checkbox" checked />
+                <span>🛡️ <strong>Low Traffic / Anti-Day-1 Raid</strong> (Avoid Outpost, Launch, Silo, Center)</span>
+              </label>
 
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
-            <input id="bfDeepSeaCb" type="checkbox" checked />
-            <span>🌊 <strong>Deep Sea / Coast Access</strong> (Ocean + Fishing Village)</span>
-          </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                <input id="bfUnderwaterLabCb" type="checkbox" checked />
+                <span>🔬 <strong>Prioritize Underwater Labs</strong> (Sub / Boat Ocean Loot)</span>
+              </label>
 
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
-            <input id="bfLowTrafficCb" type="checkbox" checked />
-            <span>🛡️ <strong>Low Traffic / Anti-Day-1 Raid</strong> (Avoid Outpost, Launch, Silo, Center)</span>
-          </label>
-
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
-            <input id="bfUnderwaterLabCb" type="checkbox" checked />
-            <span>🔬 <strong>Prioritize Underwater Labs</strong> (Sub / Boat Ocean Loot)</span>
-          </label>
-
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: pointer;">
-            <input id="bfFarmOreCb" type="checkbox" checked />
-            <span>⛏️ <strong>Prioritize Ore Farming</strong> (Sulfur/Metal Nodes)</span>
-          </label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
+                <input id="bfFarmOreCb" type="checkbox" checked />
+                <span>⛏️ <strong>Prioritize Ore Farming</strong> (Sulfur/Metal Nodes)</span>
+              </label>
+            </div>
+          </details>
         </div>
 
         <div id="bfStatusBar" style="margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);"></div>
@@ -1088,44 +1098,23 @@
       <div id="bfLayoutContainer" class="bf-map-layout">
         <!-- Left: Visual Annotated RustMaps Canvas -->
         <div class="panel">
-          <div class="panel-header" style="margin-bottom: 10px;">
+          <div class="panel-header" style="margin-bottom: 8px; gap: 8px;">
             <div>
               <div class="panel-title">🗺️ Map Overlay &amp; Recommended Build Zones</div>
               <div class="panel-subtitle" id="bfMapMetaLabel">Paste a RustMaps URL above to render the procedural map + grid</div>
             </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowSpotsCb" type="checkbox" checked />
-                <span>🏆 Build Spots</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowMonumentsCb" type="checkbox" checked />
-                <span>🏛️ Monuments</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowNoBuildCb" type="checkbox" checked />
-                <span>🚫 No-Build</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowRouteCb" type="checkbox" checked />
-                <span>🛤️ Route</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowRustPlusCb" type="checkbox" checked />
-                <span>📡 Rust+</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowPinsCb" type="checkbox" checked />
-                <span>📌 Pins</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer;">
-                <input id="bfShowDeathsCb" type="checkbox" checked />
-                <span>💀 Deaths</span>
-              </label>
-              <button id="bfExpandMapBtn" type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;">⤢ Full Width</button>
+            <div class="bf-layer-strip">
+              <label class="bf-layer-chip"><input id="bfShowSpotsCb" type="checkbox" checked /><span>🏆 Spots</span></label>
+              <label class="bf-layer-chip"><input id="bfShowMonumentsCb" type="checkbox" checked /><span>🏛️ Monuments</span></label>
+              <label class="bf-layer-chip"><input id="bfShowNoBuildCb" type="checkbox" checked /><span>🚫 No-Build</span></label>
+              <label class="bf-layer-chip"><input id="bfShowRouteCb" type="checkbox" checked /><span>🛤️ Route</span></label>
+              <label class="bf-layer-chip"><input id="bfShowRustPlusCb" type="checkbox" checked /><span>📡 Rust+</span></label>
+              <label class="bf-layer-chip"><input id="bfShowShopsCb" type="checkbox" checked /><span>🛒 Shops</span></label>
+              <label class="bf-layer-chip"><input id="bfShowPinsCb" type="checkbox" checked /><span>📌 Pins</span></label>
+              <label class="bf-layer-chip"><input id="bfShowDeathsCb" type="checkbox" checked /><span>💀 Deaths</span></label>
             </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
             <div id="bfHeatmapPills" class="filter-pills" style="margin-bottom: 0;">
               <button type="button" class="filter-pill bf-hm-pill active" data-hm="none">🗺️ Clear</button>
               <button type="button" class="filter-pill bf-hm-pill" data-hm="all_farm" title="Overlay Ore Nodes + Hemp + Berries simultaneously">🌾 All Farm</button>
@@ -1135,23 +1124,26 @@
               <button type="button" class="filter-pill bf-hm-pill" data-hm="Horses">🐎 Horses</button>
               <button type="button" class="filter-pill bf-hm-pill" data-hm="PlayerSpawns">🏃 Spawns</button>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-              <button id="bfZoomOutBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom Out" aria-label="Zoom out">➖</button>
-              <button id="bfZoomInBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 12px;" title="Zoom In" aria-label="Zoom in">➕</button>
-              <button id="bfZoomFitBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit All</button>
-              <button id="bfZoomResetBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px;" title="Reset to 100% Island View">🏝️ 100%</button>
-              <button id="shopMapCenterMeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#22d3ee; color:#a5f3fc;" title="Center map on your live Rust+ GPS position">⌖ Me</button>
-              <button id="bfMeasureModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#38bdf8; color:#bae6fd;" title="Click two points on the map to measure distance &amp; travel ETA">📏 Ruler</button>
-              <button id="bfDropPinModeBtn" type="button" class="btn btn-secondary" style="padding: 4px 9px; font-size: 11.5px; border-color:#f59e0b; color:#fde68a;" title="Click empty map spots (or Shift+Click anytime) to drop a Shared Squad Pin / Stash">📌 + Pin</button>
-            </div>
           </div>
           <div id="bfHeatmapLegend" class="bf-hm-legend" style="display:none;"></div>
+          <div id="bfInspectBanner" style="display:none; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px; padding:6px 10px; border-radius:6px; background:rgba(250,204,21,0.12); border:1px solid rgba(250,204,21,0.45); font-size:11.5px; font-family:var(--font-mono); color:#fef08a;"></div>
           <div id="bfMeasureBanner" style="display:none; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px; padding:6px 10px; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45); font-size:11.5px; font-family:var(--font-mono); color:#bae6fd;"></div>
           <div id="shopLiveAlertBanner" style="display:none; margin-bottom:8px;"></div>
           <div id="shopLiveTeamStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
           <div id="shopLiveEventsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>
           <div id="bfSharedPinsStrip" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:8px; align-items:center;"></div>
           <div class="bf-canvas-frame" style="position: relative; background: #091b24; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; text-align: center;">
+            <div class="bf-canvas-hud-dock" aria-label="Map tools and zoom controls">
+              <button id="bfZoomOutBtn" type="button" class="bf-hud-btn" title="Zoom Out" aria-label="Zoom out">➖</button>
+              <button id="bfZoomInBtn" type="button" class="bf-hud-btn" title="Zoom In" aria-label="Zoom in">➕</button>
+              <button id="bfZoomFitBtn" type="button" class="bf-hud-btn" title="Zoom out to show all Oil Rigs &amp; Underwater Labs">🔍 Fit</button>
+              <button id="bfZoomResetBtn" type="button" class="bf-hud-btn" title="Reset to 100% Island View">🏝️ 100%</button>
+              <button id="shopMapCenterMeBtn" type="button" class="bf-hud-btn" style="color:#a5f3fc; border-color:rgba(34,211,238,0.4);" title="Center map on your live Rust+ GPS position">⌖ Me</button>
+              <button id="bfInspectSpotModeBtn" type="button" class="bf-hud-btn" style="color:#fef08a; border-color:rgba(250,204,21,0.42);" title="Click any grid on the map to score that exact spot">🎯 Score Grid</button>
+              <button id="bfMeasureModeBtn" type="button" class="bf-hud-btn" style="color:#bae6fd; border-color:rgba(56,189,248,0.4);" title="Measure distance &amp; travel ETA between 2 points">📏 Ruler</button>
+              <button id="bfDropPinModeBtn" type="button" class="bf-hud-btn" style="color:#fde68a; border-color:rgba(245,158,11,0.45);" title="Click map (or Shift+Click anytime) to drop a Shared Squad Pin">📌 +Pin</button>
+              <button id="bfExpandMapBtn" type="button" class="bf-hud-btn" title="Toggle Full Width Map">⤢ Expand</button>
+            </div>
             <canvas id="bfMapCanvas" width="900" height="900" style="width: 100%; height: auto; display: block; cursor: grab;"></canvas>
             <div id="bfMapTooltip" style="display: none; position: absolute; pointer-events: none; z-index: 20; background: rgba(9, 14, 22, 0.94); border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 6px; padding: 8px 10px; text-align: left; font-size: 11.5px; color: #e2e8f0; box-shadow: 0 8px 24px rgba(0,0,0,0.55); max-width: 260px;"></div>
             <div id="bfMapHudReadout" style="display: none; position: absolute; bottom: 8px; left: 8px; pointer-events: none; z-index: 15; background: rgba(9, 14, 22, 0.85); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; color: #cbd5e1;"></div>
@@ -1205,15 +1197,19 @@
               <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build</span>
               <span><strong style="color:#a855f7;">🥷</strong> Under-Radar</span>
               <span><strong style="color:#22d3ee;">🌊</strong> Coastline</span>
-              <span><strong style="color:#f59e0b;">⛏️</strong> Farm</span>
+              <span><strong style="color:#4ade80;">💧</strong> Tea/Farm</span>
+              <span><strong style="color:#22c55e;">🛒</strong> Shop</span>
               <span><strong style="color:#38bdf8;">⚡</strong> Target</span>
               <span><strong style="color:#fb923c;">🚫</strong> No-Build</span>
-              <span class="bf-legend-toggle-hint">Full Legend (13) ▾</span>
+              <span class="bf-legend-toggle-hint">Full Legend (16) ▾</span>
             </summary>
             <div class="bf-legend-full">
               <span><strong style="color:#4ade80;">● #1–#5</strong> Best Build Grids</span>
+            <span><strong style="color:#facc15;">🎯</strong> Inspected Custom Grid</span>
             <span><strong style="color:#a855f7;">🥷</strong> Best Under-Radar Overall</span>
             <span><strong style="color:#22d3ee;">🌊</strong> Best Coastline Base</span>
+            <span><strong style="color:#4ade80;">💧</strong> Best Tea / Farm Base</span>
+            <span><strong style="color:#22c55e;">🛒</strong> Live Vending Shop</span>
             <span><strong style="color:#f59e0b;">⛏️</strong> Top Farm Zones</span>
             <span><strong style="color:#38bdf8;">⚡</strong> Target Monument</span>
             <span><strong style="color:#fb923c;">💧</strong> Tier 2 Monument</span>
@@ -1228,25 +1224,28 @@
           </details>
         </div>
 
-        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips | Rust+) -->
+        <!-- Right: Clean Tabbed Inspector (Build Spots | Farming | Route & Tips | Shops | Rust+) -->
         <div class="panel">
           <div class="bf-subtabs">
             <button type="button" class="bf-subtab-btn active" data-bf-sub="spots">🏆 Build Spots</button>
             <button type="button" class="bf-subtab-btn" data-bf-sub="farming">⛏️ Farming <span id="bfFarmCountBadge" style="opacity:0.75;"></span></button>
             <button type="button" class="bf-subtab-btn" data-bf-sub="route">⚡ Route &amp; Tips</button>
+            <button type="button" class="bf-subtab-btn" data-bf-sub="shops">🛒 Shops <span id="bfShopCountBadge" style="opacity:0.8;"></span></button>
             <button type="button" class="bf-subtab-btn" data-bf-sub="rustplus">📡 Rust+</button>
           </div>
 
           <div id="bfSubSpots" class="bf-subpanel active">
             <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
-              Click any spot card — or <strong>click any monument on the map</strong> — to rank the best build spots around it.
+              Click any spot card, click <strong>🎯 Score Grid</strong> to grade any map square, or <strong>click any monument</strong> to rank spots around it.
             </div>
             <div id="bfFocusedMonumentBar" style="margin-bottom: 8px;"></div>
+            <div id="bfInspectedSpotSlot" style="margin-bottom: 10px;"></div>
             <div id="bfStealthBestSlot" style="margin-bottom: 10px;"></div>
             <div id="bfCoastBestSlot" style="margin-bottom: 10px;"></div>
+            <div id="bfFarmBestSlot" style="margin-bottom: 10px;"></div>
             <div id="bfResultsList" style="display: flex; flex-direction: column; gap: 10px;">
               <div style="padding: 24px; text-align: center; color: var(--text-muted); border: 1px dashed var(--border-subtle); border-radius: 6px;">
-                Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get your Under-the-Radar, Best Coastline + Top 5 build spots.
+                Paste a RustMaps URL (e.g. <code>https://rustmaps.com/map/4250_1337420</code>) and click <strong>Analyze Map</strong> to get Under-the-Radar, Coastline, Tea/Farm + Top 5 build spots.
               </div>
             </div>
           </div>
@@ -1281,6 +1280,33 @@
             </div>
           </div>
 
+          <div id="bfSubShops" class="bf-subpanel">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+              <input id="rpShopSearchInput" type="search" class="input" style="flex:1; min-width:150px; font-size:12px;" placeholder="🔍 Search item, currency, or grid (Sulfur, AK, Tea, D14...)" />
+              <select id="rpShopSortSelect" class="select" aria-label="Sort shops by" style="font-size:11.5px; padding:5px 8px;">
+                <option value="price">💲 Best Price</option>
+                <option value="distance">📍 Closest</option>
+                <option value="stock">📦 Highest Stock</option>
+              </select>
+              <label style="display:flex; align-items:center; gap:5px; font-size:11.5px; cursor:pointer; white-space:nowrap;">
+                <input id="rpShopInStockOnlyCb" type="checkbox" checked />
+                <span>In Stock</span>
+              </label>
+            </div>
+            <div id="rpShopCatPills" class="filter-pills" style="margin-bottom:8px;">
+              <button type="button" class="filter-pill active" data-scat="all">All</button>
+              <button type="button" class="filter-pill" data-scat="weapons">🔫 Guns</button>
+              <button type="button" class="filter-pill" data-scat="raid">💥 Raid</button>
+              <button type="button" class="filter-pill" data-scat="defense">🛡️ Defense</button>
+              <button type="button" class="filter-pill" data-scat="teas">🧪 Teas</button>
+              <button type="button" class="filter-pill" data-scat="resources">⛏️ Res</button>
+              <button type="button" class="filter-pill" data-scat="tools">🔧 Tools</button>
+              <button type="button" class="filter-pill" data-scat="progression">⚙️ WB/Ind</button>
+            </div>
+            <div id="rpShopSummaryBar" style="font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); margin-bottom:8px;"></div>
+            <div id="rpShopResultsList" style="display:flex; flex-direction:column; gap:8px; max-height:620px; overflow-y:auto;"></div>
+          </div>
+
           <div id="bfSubRustPlus" class="bf-subpanel">
             <div style="display:flex; flex-direction:column; gap:10px;">
               <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
@@ -1309,6 +1335,10 @@
                   <input id="rpShopDiscordEventsCb" type="checkbox" checked />
                   <span>🚨 Alert Discord on Base Smart Alarms, Low Upkeep &amp; Events</span>
                 </label>
+                <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; cursor:pointer;">
+                  <input id="rpAutoEventTimersCb" type="checkbox" checked />
+                  <span>⏱️ Auto-start 15:00 Timer when Rust+ detects a new Locked Crate</span>
+                </label>
               </div>
 
               <div id="rpShopStatusText" style="font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.55); border:1px solid var(--border-subtle);">
@@ -1323,7 +1353,7 @@
                   <span id="rpTeamChatCountBadge" style="font-size:10px; font-family:var(--font-mono); color:#7dd3fc;"></span>
                 </summary>
                 <div style="font-size:10px; font-family:var(--font-mono); color:#c4b5fd; margin-top:4px;">
-                  Bot cmds: <code>!time</code> • <code>!pop</code> • <code>!upkeep</code> • <code>!timers</code> • <code>!switches</code> • <code>!on &lt;name&gt;</code> • <code>!off &lt;name&gt;</code>
+                  Bot cmds: <code>!shops &lt;item&gt;</code> • <code>!raid &lt;qty&gt; &lt;target&gt;</code> • <code>!events</code> • <code>!time</code> • <code>!pop</code> • <code>!upkeep</code> • <code>!timers</code> • <code>!on &lt;name&gt;</code>
                 </div>
                 <div id="rpTeamChatList" style="max-height:135px; overflow-y:auto; margin:6px 0; padding:6px 8px; border-radius:4px; background:rgba(9,14,22,0.75); font-size:11.5px; display:flex; flex-direction:column; gap:4px;"></div>
                 <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;">
@@ -1479,7 +1509,7 @@
 
   <div id="tacticalToastRack" class="tactical-toast-rack" aria-live="polite"></div>
 
-  <script src="js/data.js?v=20261120b"></script>
-  <script src="js/app.js?v=20261120b"></script>
+  <script src="js/data.js?v=20261120c"></script>
+  <script src="js/app.js?v=20261120c"></script>
 </body>
 </html>
