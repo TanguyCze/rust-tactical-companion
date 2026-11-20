@@ -303,6 +303,55 @@ const bmCache = new Map();
 const BM_CACHE_TTL = 60 * 1000;
 const rustmapsAnalyzeCache = new Map();
 const RUSTMAPS_CACHE_TTL_MS = 6 * 3600 * 1000;
+const rustmapsImageCache = new Map();
+const RUSTMAPS_IMG_CACHE_TTL_MS = 3600 * 1000;
+const RUSTMAPS_IMG_MAX_ENTRIES = 64;
+const RUSTMAPS_IMG_MAX_TOTAL_BYTES = 24 * 1024 * 1024;
+const RUSTMAPS_IMG_MAX_SINGLE_BYTES = 4 * 1024 * 1024;
+const RUSTMAPS_IMG_HARD_CAP_BYTES = 12 * 1024 * 1024;
+let rustmapsImageCacheBytes = 0;
+
+function getCachedRustMapsImage(key) {
+  const entry = rustmapsImageCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.time >= RUSTMAPS_IMG_CACHE_TTL_MS) {
+    rustmapsImageCache.delete(key);
+    rustmapsImageCacheBytes = Math.max(0, rustmapsImageCacheBytes - entry.buffer.length);
+    return null;
+  }
+  // Touch LRU order
+  rustmapsImageCache.delete(key);
+  rustmapsImageCache.set(key, entry);
+  return entry;
+}
+
+function setCachedRustMapsImage(key, contentType, buffer) {
+  if (!buffer || buffer.length > RUSTMAPS_IMG_MAX_SINGLE_BYTES) return;
+  const existing = rustmapsImageCache.get(key);
+  if (existing) {
+    rustmapsImageCache.delete(key);
+    rustmapsImageCacheBytes = Math.max(0, rustmapsImageCacheBytes - existing.buffer.length);
+  }
+  const now = Date.now();
+  for (const [k, v] of rustmapsImageCache.entries()) {
+    if (now - v.time >= RUSTMAPS_IMG_CACHE_TTL_MS) {
+      rustmapsImageCache.delete(k);
+      rustmapsImageCacheBytes = Math.max(0, rustmapsImageCacheBytes - v.buffer.length);
+    }
+  }
+  while (
+    rustmapsImageCache.size >= RUSTMAPS_IMG_MAX_ENTRIES ||
+    (rustmapsImageCacheBytes + buffer.length > RUSTMAPS_IMG_MAX_TOTAL_BYTES && rustmapsImageCache.size > 0)
+  ) {
+    const oldestKey = rustmapsImageCache.keys().next().value;
+    if (!oldestKey) break;
+    const oldest = rustmapsImageCache.get(oldestKey);
+    rustmapsImageCache.delete(oldestKey);
+    if (oldest) rustmapsImageCacheBytes = Math.max(0, rustmapsImageCacheBytes - oldest.buffer.length);
+  }
+  rustmapsImageCache.set(key, { time: now, contentType, buffer });
+  rustmapsImageCacheBytes += buffer.length;
+}
 
 function extractBearerToken(authHeader) {
   const m = String(authHeader || '').match(/^Bearer\s+(.+)$/i);
@@ -3471,6 +3520,9 @@ const server = http.createServer(async (req, res) => {
           id: mapData.id,
           seed: mapData.seed,
           size: mapData.size,
+          isCustomMap: Boolean(mapData.isCustomMap),
+          rivers: Number(mapData.rivers || 0),
+          lakes: Number(mapData.lakes || 0),
           imageUrl: mapData.imageUrl || '',
           imageIconUrl: mapData.imageIconUrl || '',
           buildingBlockAreaUrl: mapData.buildingBlockAreaUrl || '',
@@ -3524,6 +3576,19 @@ const server = http.createServer(async (req, res) => {
           error: target ? 'Only rustmaps.com HTTPS image URLs are allowed' : 'Invalid image URL'
         });
       }
+      const cacheKey = u.toString();
+      const cachedImg = getCachedRustMapsImage(cacheKey);
+      if (cachedImg) {
+        res.writeHead(200, {
+          'Content-Type': cachedImg.contentType,
+          'Content-Length': cachedImg.buffer.length,
+          'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Cache': 'HIT'
+        });
+        res.end(cachedImg.buffer);
+        return;
+      }
       const imgReq = https.request(
         {
           hostname: u.hostname,
@@ -3541,15 +3606,60 @@ const server = http.createServer(async (req, res) => {
               error: `Upstream image error (HTTP ${status})`
             });
           }
-          res.writeHead(status, {
-            'Content-Type': ct,
-            'X-Content-Type-Options': 'nosniff',
-            'Cache-Control': 'public, max-age=3600'
+          const chunks = [];
+          let totalBytes = 0;
+          let streamingOversize = false;
+          let aborted = false;
+          imgRes.on('data', (chunk) => {
+            if (aborted) return;
+            totalBytes += chunk.length;
+            if (totalBytes > RUSTMAPS_IMG_HARD_CAP_BYTES) {
+              aborted = true;
+              imgReq.destroy(new Error('Upstream image exceeds 12MB cap'));
+              if (!res.destroyed) res.destroy();
+              return;
+            }
+            if (!streamingOversize && totalBytes > RUSTMAPS_IMG_MAX_SINGLE_BYTES) {
+              streamingOversize = true;
+              res.writeHead(status, {
+                'Content-Type': ct,
+                'X-Content-Type-Options': 'nosniff',
+                'Cache-Control': 'public, max-age=3600',
+                'X-Cache': 'MISS'
+              });
+              for (const prev of chunks) res.write(prev);
+              chunks.length = 0;
+              res.write(chunk);
+            } else if (streamingOversize) {
+              res.write(chunk);
+            } else {
+              chunks.push(chunk);
+            }
           });
           imgRes.on('error', () => {
-            if (!res.destroyed) res.destroy();
+            aborted = true;
+            if (!res.headersSent) sendJson(res, 502, { error: 'Upstream image stream error' });
+            else if (!res.destroyed) res.destroy();
           });
-          imgRes.pipe(res);
+          imgRes.on('end', () => {
+            if (aborted) return;
+            if (streamingOversize) {
+              if (!res.writableEnded) res.end();
+              return;
+            }
+            const fullBuf = Buffer.concat(chunks);
+            if (status === 200) {
+              setCachedRustMapsImage(cacheKey, ct, fullBuf);
+            }
+            res.writeHead(status, {
+              'Content-Type': ct,
+              'Content-Length': fullBuf.length,
+              'X-Content-Type-Options': 'nosniff',
+              'Cache-Control': 'public, max-age=3600',
+              'X-Cache': 'MISS'
+            });
+            res.end(fullBuf);
+          });
         }
       );
       imgReq.on('timeout', () => imgReq.destroy(new Error('Image request timed out')));
