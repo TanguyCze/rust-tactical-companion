@@ -8449,6 +8449,7 @@
   let bfLandMask = null;
   let bfTopSpots = [];
   let bfStealthBest = null;
+  let bfCoastBest = null;
   let bfSelectedIdx = 0;
   let bfActiveHeatmaps = new Set();
   let bfHeatmapSourceMode = 'none'; // 'rustmaps' | 'estimated' | 'none'
@@ -8826,7 +8827,9 @@
   }
 
   function getSelectedBuildSpot() {
-    return bfSelectedIdx === -1 ? bfStealthBest : (bfTopSpots[bfSelectedIdx] || null);
+    if (bfSelectedIdx === -1) return bfStealthBest;
+    if (bfSelectedIdx === -2) return bfCoastBest;
+    return bfTopSpots[bfSelectedIdx] || null;
   }
 
   function bfColLabel(idx) {
@@ -9537,7 +9540,7 @@
     const mapSize = bfMapData.size;
     const mons = bfMapData.monuments || [];
     const results = [];
-    const baseSpot = selectedSpot || bfTopSpots[bfSelectedIdx] || bfTopSpots[0] || null;
+    const baseSpot = selectedSpot || getSelectedBuildSpot() || bfTopSpots[0] || null;
     const distFromBase = (wx, wy) => (baseSpot ? Math.round(Math.hypot(wx - baseSpot.wx, wy - baseSpot.wy)) : null);
     const maxQuarryDist = Math.max(1000, Math.round(mapSize * 0.30));
     const maxFarmDist = Math.max(850, Math.round(mapSize * 0.28));
@@ -9666,7 +9669,11 @@
   }
 
   function computeRecommendedBuildSpots() {
-    if (!bfMapData || !bfMapData.size) return [];
+    if (!bfMapData || !bfMapData.size) {
+      bfStealthBest = null;
+      bfCoastBest = null;
+      return [];
+    }
     const mapSize = bfMapData.size;
     const half = mapSize / 2;
     const mons = bfMapData.monuments || [];
@@ -9972,6 +9979,38 @@
           )
         );
 
+        const waterfrontPts =
+          coastDist <= 95
+            ? 100
+            : coastDist <= 145
+              ? 100 - ((coastDist - 95) / 50) * 18
+              : coastDist <= 220
+                ? 82 - ((coastDist - 145) / 75) * 42
+                : Math.max(0, 40 - ((coastDist - 220) / 300) * 40);
+        const coastBoatPts = nearestBoat
+          ? boatDist <= 550
+            ? 100
+            : Math.max(15, 100 - ((boatDist - 550) / 1100) * 85)
+          : 50;
+        const hasOffshoreMons = underwaterLabs.length > 0 || largeOils.length > 0 || smallOils.length > 0;
+        const offshoreAccessPts = hasOffshoreMons
+          ? Math.max(labScore, offshoreOilScore) * 0.65 + ((labScore + offshoreOilScore) / 2) * 0.35
+          : Math.max(55, bestProgScore * 0.85);
+        const spawnDensity = spawnGrid ? bfSampleDensity(spawnGrid, nx, ny) : 0;
+        const coastSafety = Math.max(0, Math.min(100, stealthSafety - spawnDensity * 22));
+        const coastTotal = Math.min(
+          100,
+          Math.round(
+            waterfrontPts * 0.24 +
+              offshoreAccessPts * 0.22 +
+              coastBoatPts * 0.16 +
+              coastSafety * 0.14 +
+              bestRecScore * 0.10 +
+              resScore * 0.08 +
+              terrainCheck.flatnessScore * 0.06
+          )
+        );
+
         // Playstyle-aware weighted scoring
         let wTarget = nearestTarget ? 0.24 : 0;
         let wDeep = wantDeepSea ? 0.12 : 0.03;
@@ -10060,6 +10099,8 @@
           score: total,
           stealthScore: stealthTotal,
           stealthSafety: Math.round(stealthSafety),
+          coastScore: coastTotal,
+          coastSafety: Math.round(coastSafety),
           bestProgDist: Math.round(bestProgDist),
           bestProgName: bestProgMon?.type || 'No T2 on map',
           supportDist: Math.round(supportDist),
@@ -10124,6 +10165,60 @@
           nearestTrafficName: stealthCand.stealthTrafficName
         }
       : null;
+
+    // Pick Best Coastline Base spot near ocean shoreline with Boat/Sub + Offshore Oil/Lab access
+    const tightCoast = candidates.filter((c) => c.coastDist <= 165);
+    const coastPool = tightCoast.length ? tightCoast : candidates.filter((c) => c.coastDist <= 260);
+    const coastSorted = [...(coastPool.length ? coastPool : candidates)].sort((a, b) => b.coastScore - a.coastScore);
+    const bestCoastScore = coastSorted[0]?.coastScore ?? 0;
+    const coastCand =
+      coastSorted.find(
+        (c) =>
+          c.coastScore >= bestCoastScore - 4 &&
+          (!picked[0] || Math.hypot(c.wx - picked[0].wx, c.wy - picked[0].wy) >= 200) &&
+          (!bfStealthBest || Math.hypot(c.wx - bfStealthBest.wx, c.wy - bfStealthBest.wy) >= 200)
+      ) ||
+      coastSorted[0] ||
+      null;
+
+    if (coastCand) {
+      const coastVerdictParts = [
+        `${coastCand.coastDist}m Waterfront${coastCand.flatnessScore >= 75 && coastCand.biome ? ` (${coastCand.biome})` : ''}`
+      ];
+      if (coastCand.boatDist < 99999) {
+        coastVerdictParts.push(`${coastCand.boatDist}m ${coastCand.boatName}`);
+      }
+      const offshoreTargets = [];
+      if (coastCand.labDist < 99999) offshoreTargets.push({ d: coastCand.labDist, label: 'Underwater Lab' });
+      if (coastCand.largeOilDist < 99999) offshoreTargets.push({ d: coastCand.largeOilDist, label: 'Large Oil' });
+      if (coastCand.smallOilDist < 99999) offshoreTargets.push({ d: coastCand.smallOilDist, label: 'Small Oil' });
+      offshoreTargets.sort((a, b) => a.d - b.d);
+      if (offshoreTargets.length) {
+        coastVerdictParts.push(`${offshoreTargets[0].d}m ${offshoreTargets[0].label}`);
+      }
+      if (coastCand.recyclerName && coastCand.recyclerDist <= 700 && coastCand.recyclerName !== coastCand.boatName) {
+        coastVerdictParts.push(`${coastCand.recyclerDist}m ${coastCand.recyclerName} (${coastCand.recyclerCount}× Rec)`);
+      }
+      const coastResTags = [];
+      if (coastCand.oreScore >= 60) coastResTags.push('Ore');
+      if (coastCand.hempScore >= 60) coastResTags.push('Hemp');
+      if (coastCand.berryScore >= 60) coastResTags.push('Berries');
+      if (coastResTags.length) coastVerdictParts.push(`Rich ${coastResTags.join('/')}`);
+
+      bfCoastBest = {
+        ...coastCand,
+        isCoastBest: true,
+        score: coastCand.coastScore,
+        lowTrafficScore: coastCand.coastSafety,
+        targetDist: coastCand.boatDist < 99999 ? coastCand.boatDist : coastCand.bestProgDist,
+        targetName: coastCand.boatDist < 99999 ? coastCand.boatName : coastCand.bestProgName,
+        minTrafficDist: coastCand.stealthTrafficDist,
+        nearestTrafficName: coastCand.stealthTrafficName,
+        verdict: coastVerdictParts.slice(0, 4).join(' • ')
+      };
+    } else {
+      bfCoastBest = null;
+    }
 
     return picked;
   }
@@ -10690,6 +10785,53 @@
           selectAction: { type: 'spot', idx: -1 }
         });
       }
+
+      // 4B-2. Best Coastline Base (Ocean shoreline + Boat/Lab/Oil access)
+      if (bfCoastBest) {
+        const { px, py } = toPx(bfCoastBest.wx, bfCoastBest.wy);
+        const isSel = bfSelectedIdx === -2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, isSel ? 20 : 14, 0, Math.PI * 2);
+        ctx.fillStyle = isSel ? 'rgba(6, 182, 212, 0.42)' : 'rgba(6, 182, 212, 0.24)';
+        ctx.fill();
+        ctx.lineWidth = isSel ? 2.8 : 2;
+        ctx.strokeStyle = '#22d3ee';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#0e7490';
+        ctx.fill();
+
+        ctx.font = '11px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🌊', px, py + 0.5);
+        ctx.restore();
+
+        deferredSpotLabels.push({
+          text: `🌊 [${bfCoastBest.grid}] ${bfCoastBest.score}/100`,
+          px,
+          py,
+          offsetY: -20,
+          color: '#cffafe',
+          borderColor: 'rgba(34,211,238,0.65)',
+          font: '700 10px "JetBrains Mono", monospace'
+        });
+
+        bfRenderedPins.push({
+          px,
+          py,
+          r: isSel ? 20 : 14,
+          wx: bfCoastBest.wx,
+          wy: bfCoastBest.wy,
+          title: `🌊 Best Coastline Base [${bfCoastBest.grid}]`,
+          color: '#22d3ee',
+          lines: [`Score: ${bfCoastBest.score}/100 • ${bfCoastBest.coastDist}m to ocean • Click pin to select`],
+          selectAction: { type: 'spot', idx: -2 }
+        });
+      }
     }
 
     // 4C. Selected Spot Progression Route & Nearby Farming Radius
@@ -10841,27 +10983,39 @@
 
   function buildBfSpotCopyText(s, riskLabel) {
     const grid = s.subGrid || s.grid || '?';
+    const coastBadge = s.isCoastBest ? ' (Best Coastline)' : '';
     const targetPart = `${s.targetName || 'Target'}: ${s.targetDist < 99999 ? `${s.targetDist}m` : 'N/A'}`;
     const biomePart = s.biome ? `Biome: ${s.biome}` : 'Biome: Mixed';
     const recPart = s.recyclerName && s.recyclerDist < 99999 ? ` | Recycler: ${s.recyclerName} (${s.recyclerDist}m)` : '';
     const hempVal = Number(s.hempScore || 0);
     const berryVal = Number(s.berryScore || 0);
-    return `[${grid}] Score ${s.score}/100 | ${targetPart}${recPart} | ${biomePart} | Ore ${s.oreScore}% / Hemp ${hempVal}% / Berry ${berryVal}% | Coast: ${s.coastDist}m | Raid Risk: ${riskLabel}`;
+    return `[${grid}]${coastBadge} Score ${s.score}/100 | ${targetPart}${recPart} | ${biomePart} | Ore ${s.oreScore}% / Hemp ${hempVal}% / Berry ${berryVal}% | Coast: ${s.coastDist}m | Raid Risk: ${riskLabel}`;
   }
 
   function renderBaseFinderResults() {
     const stealthSlot = document.getElementById('bfStealthBestSlot');
+    const coastSlot = document.getElementById('bfCoastBestSlot');
     const listEl = document.getElementById('bfResultsList');
-    const renderSpotMetrics = (s, risk, isStealth = false) => {
+    const renderSpotMetrics = (s, risk, mode = 'default') => {
       const hempVal = Number(s.hempScore || 0);
       const berryVal = Number(s.berryScore || 0);
+      const primaryBadge =
+        mode === 'coast'
+          ? `<span style="color:#22d3ee;">⚓ Boat: ${s.boatDist < 99999 ? `${escapeHtml(s.boatName)} (${s.boatDist}m)` : 'Open Coast'}</span>`
+          : mode === 'stealth'
+            ? `<span style="color:#38bdf8;">⚡ Tier 2: ${s.targetDist < 99999 ? `${escapeHtml(s.targetName)} (${s.targetDist}m)` : 'N/A'}</span>`
+            : `<span style="color:#38bdf8;">⚡ ${escapeHtml(s.targetName)}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>`;
+      const shoreBadge =
+        mode === 'coast'
+          ? `<span style="color:#2dd4bf; font-weight:700;">🌊 Shore: ${s.coastDist}m</span>`
+          : `<span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>`;
       return `
         ${s.verdict ? `<div class="bf-spot-verdict">🎯 ${escapeHtml(s.verdict)}</div>` : ''}
         <div class="bf-spot-subscores">
-          <span style="color:#38bdf8;">⚡ ${isStealth ? 'Tier 2' : escapeHtml(s.targetName)}: ${isStealth ? (s.targetDist < 99999 ? `${escapeHtml(s.targetName)} (${s.targetDist}m)` : 'N/A') : (s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A')}</span>
-          ${isStealth && s.supportName ? `<span style="color:#86efac;">🟢 Support: ${escapeHtml(s.supportName)} (${s.supportDist}m)</span>` : ''}
+          ${primaryBadge}
+          ${mode === 'stealth' && s.supportName ? `<span style="color:#86efac;">🟢 Support: ${escapeHtml(s.supportName)} (${s.supportDist}m)</span>` : ''}
           ${s.recyclerName && s.recyclerDist < 99999 ? `<span style="color:#a3e635;">♻️ ${escapeHtml(s.recyclerName)} (${s.recyclerDist}m)</span>` : ''}
-          <span style="color:#2dd4bf;">🌊 Coast: ${s.coastDist}m</span>
+          ${shoreBadge}
           <span style="color:#fbbf24;">⛏️ Ore: ${s.oreScore}%</span>
           <span style="color:#4ade80;">🌿 Hemp: ${hempVal}%</span>
           <span style="color:#e879f9;">🫐 Berry: ${berryVal}%</span>
@@ -10892,7 +11046,7 @@
             <div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;">
               Tier 2 progression (1.5–3 grids off) + low raid risk, calculated <strong>regardless of your filter preferences</strong>.
             </div>
-            ${renderSpotMetrics(s, risk, true)}
+            ${renderSpotMetrics(s, risk, 'stealth')}
             <div style="font-size:12px; color:var(--text-secondary);">
               Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
             </div>
@@ -10901,6 +11055,38 @@
         `;
       } else {
         stealthSlot.innerHTML = '';
+      }
+    }
+
+    if (coastSlot) {
+      if (bfCoastBest) {
+        const s = bfCoastBest;
+        const isSel = bfSelectedIdx === -2;
+        const risk = bfRiskBadge(s.lowTrafficScore);
+        const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${escapeHtml(s.biome)})</span>` : '';
+        coastSlot.innerHTML = `
+          <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-2" style="border-color: rgba(34, 211, 238, 0.55); background: linear-gradient(135deg, rgba(8, 145, 178, 0.18), rgba(15, 23, 42, 0.74));">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#cffafe;">
+                🌊 BEST COASTLINE BASE — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="-2" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
+                <span class="combo-badge" style="font-size:12px; background:rgba(6,182,212,0.28); border-color:#22d3ee; color:#ecfeff;">${s.score}/100</span>
+              </div>
+            </div>
+            <div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;">
+              Waterfront boat/sub launch + Oil Rig / Underwater Lab access &amp; flat buildable shore, calculated <strong>regardless of your filter preferences</strong>.
+            </div>
+            ${renderSpotMetrics(s, risk, 'coast')}
+            <div style="font-size:12px; color:var(--text-secondary);">
+              Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
+            </div>
+            ${bfFormatOffshoreInfo(s)}
+          </div>
+        `;
+      } else {
+        coastSlot.innerHTML = '';
       }
     }
 
@@ -10945,7 +11131,7 @@
                   <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
                 </div>
               </div>
-              ${renderSpotMetrics(s, risk, false)}
+              ${renderSpotMetrics(s, risk, 'default')}
               <div style="font-size:12px; color:var(--text-secondary);">
                 Nearest hotspot: <strong style="color:#e2e8f0;">${escapeHtml(s.nearestTrafficName)}</strong> (${s.minTrafficDist < 99999 ? s.minTrafficDist + 'm away' : 'none'})
               </div>
@@ -10960,7 +11146,7 @@
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const idx = parseInt(btn.getAttribute('data-bf-idx'), 10);
-        const spot = idx === -1 ? bfStealthBest : bfTopSpots[idx];
+        const spot = idx === -1 ? bfStealthBest : idx === -2 ? bfCoastBest : bfTopSpots[idx];
         if (!spot) return;
         const risk = bfRiskBadge(spot.lowTrafficScore);
         const intelText = buildBfSpotCopyText(spot, risk.label);
@@ -11004,7 +11190,7 @@
     if (!farmEl) return;
     const selSpot = getSelectedBuildSpot();
     const selLabel = selSpot
-      ? (bfSelectedIdx === -1 ? `🥷 Under-Radar [${selSpot.grid}]` : `#${bfSelectedIdx + 1} [${selSpot.grid}]`)
+      ? (bfSelectedIdx === -1 ? `🥷 Under-Radar [${selSpot.grid}]` : bfSelectedIdx === -2 ? `🌊 Coastline [${selSpot.grid}]` : `#${bfSelectedIdx + 1} [${selSpot.grid}]`)
       : 'selected spot';
 
     if (!bfFarmingSpots || bfFarmingSpots.length === 0) {
@@ -12024,7 +12210,7 @@
               if (resParts.length) resText = ` • ${resParts.join(' ')}`;
             }
           }
-          hudEl.innerHTML = `Grid ${escapeHtml(subGrid)}${biomeLbl && !isWaterPx ? ` (${escapeHtml(biomeLbl)})` : ''}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : '#' + (bfSelectedIdx + 1)} [${escapeHtml(selSpot.grid)}]` : ''}${resText} • ${buildStatus}`;
+          hudEl.innerHTML = `Grid ${escapeHtml(subGrid)}${biomeLbl && !isWaterPx ? ` (${escapeHtml(biomeLbl)})` : ''}${selDist !== null ? ` • ${selDist}m from ${bfSelectedIdx === -1 ? '🥷' : bfSelectedIdx === -2 ? '🌊' : '#' + (bfSelectedIdx + 1)} [${escapeHtml(selSpot.grid)}]` : ''}${resText} • ${buildStatus}`;
         }
 
         if (tooltipEl) {
