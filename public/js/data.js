@@ -2846,5 +2846,173 @@ window.RUST_DATA = {
         }
       ]
     }
-  ]
+  ],
+
+  // =========================================================================
+  // 14. BASE BUILD COST & PROGRESSIVE TC UPKEEP CONFIG (2026 VANILLA RUST)
+  // =========================================================================
+  upkeepConfig: {
+    brackets: [
+      { maxBlocks: 15, minBlocks: 1, rate: 0.10, label: '1–15 blocks', pctLabel: '10%' },
+      { maxBlocks: 50, minBlocks: 16, rate: 0.15, label: '16–50 blocks', pctLabel: '15%' },
+      { maxBlocks: 125, minBlocks: 51, rate: 0.20, label: '51–125 blocks', pctLabel: '20%' },
+      { maxBlocks: Infinity, minBlocks: 126, rate: 0.333, label: '126+ blocks', pctLabel: '33.3%' }
+    ],
+    tierMeta: {
+      wood: { label: 'Wood', color: '#d97706' },
+      stone: { label: 'Stone', color: '#94a3b8' },
+      metal: { label: 'Metal', color: '#38bdf8' },
+      armored: { label: 'HQM', color: '#a855f7' }
+    },
+    blocks: [
+      {
+        id: 'foundation',
+        name: 'Foundation (Sq / Tri)',
+        icon: '🧱',
+        countsAsBlock: true,
+        defaultTier: 'stone',
+        tiers: ['wood', 'stone', 'metal', 'armored'],
+        costs: {
+          wood: { wood: 200 },
+          stone: { stone: 300 },
+          metal: { metal: 200 },
+          armored: { hqm: 25 }
+        }
+      },
+      {
+        id: 'wall',
+        name: 'Wall / Doorframe',
+        icon: '🪨',
+        countsAsBlock: true,
+        defaultTier: 'stone',
+        tiers: ['wood', 'stone', 'metal', 'armored'],
+        costs: {
+          wood: { wood: 200 },
+          stone: { stone: 300 },
+          metal: { metal: 200 },
+          armored: { hqm: 25 }
+        }
+      },
+      {
+        id: 'floor_roof',
+        name: 'Floor / Roof',
+        icon: '📐',
+        countsAsBlock: true,
+        defaultTier: 'stone',
+        tiers: ['wood', 'stone', 'metal', 'armored'],
+        costs: {
+          wood: { wood: 100 },
+          stone: { stone: 150 },
+          metal: { metal: 100 },
+          armored: { hqm: 13 }
+        }
+      },
+      {
+        id: 'door_single',
+        name: 'Single Door',
+        icon: '🚪',
+        countsAsBlock: false,
+        defaultTier: 'metal',
+        tiers: ['wood', 'metal', 'armored'],
+        costs: {
+          wood: { wood: 300 },
+          metal: { metal: 150 },
+          armored: { hqm: 20, gears: 5 }
+        }
+      },
+      {
+        id: 'door_double',
+        name: 'Double Door',
+        icon: '⛩️',
+        countsAsBlock: false,
+        defaultTier: 'metal',
+        tiers: ['wood', 'metal', 'armored'],
+        costs: {
+          wood: { wood: 350 },
+          metal: { metal: 200 },
+          armored: { hqm: 25, gears: 5 }
+        }
+      },
+      {
+        id: 'garage_door',
+        name: 'Garage Door',
+        icon: '🚧',
+        countsAsBlock: false,
+        defaultTier: 'metal',
+        tiers: ['metal'],
+        costs: {
+          metal: { metal: 300, gears: 2 }
+        }
+      },
+      {
+        id: 'armored_door',
+        name: 'Armored Door',
+        icon: '🔐',
+        countsAsBlock: false,
+        defaultTier: 'armored',
+        tiers: ['armored'],
+        costs: {
+          armored: { hqm: 20, gears: 5 }
+        }
+      },
+      {
+        id: 'high_ext_wall',
+        name: 'High External Wall',
+        icon: '🏰',
+        countsAsBlock: false,
+        defaultTier: 'stone',
+        tiers: ['wood', 'stone'],
+        costs: {
+          wood: { wood: 1500 },
+          stone: { stone: 1500 }
+        }
+      }
+    ],
+    presets: {
+      starter_2x1: {
+        label: 'Starter 2×1 + Airlock',
+        blocks: {
+          foundation: { qty: 3, tier: 'stone' },
+          wall: { qty: 8, tier: 'stone' },
+          floor_roof: { qty: 3, tier: 'stone' },
+          door_single: { qty: 2, tier: 'metal' },
+          door_double: { qty: 1, tier: 'metal' }
+        }
+      },
+      honeycomb_2x2: {
+        label: 'Honeycomb 2×2',
+        blocks: {
+          foundation: { qty: 10, tier: 'stone' },
+          wall: { qty: 24, tier: 'stone' },
+          floor_roof: { qty: 10, tier: 'metal' },
+          door_single: { qty: 2, tier: 'metal' },
+          garage_door: { qty: 5, tier: 'metal' }
+        }
+      },
+      roof_bunker: {
+        label: 'Solo/Duo Roof Bunker',
+        blocks: {
+          foundation: { qty: 9, tier: 'armored' },
+          wall: { qty: 20, tier: 'metal' },
+          floor_roof: { qty: 12, tier: 'armored' },
+          door_single: { qty: 2, tier: 'metal' },
+          garage_door: { qty: 4, tier: 'metal' },
+          armored_door: { qty: 1, tier: 'armored' }
+        }
+      },
+      clan_3x3: {
+        label: 'Clan 3×3 Core + Compound',
+        blocks: {
+          foundation: { qty: 24, tier: 'metal' },
+          wall: { qty: 64, tier: 'metal' },
+          floor_roof: { qty: 42, tier: 'metal' },
+          door_single: { qty: 4, tier: 'metal' },
+          door_double: { qty: 2, tier: 'armored' },
+          garage_door: { qty: 12, tier: 'metal' },
+          armored_door: { qty: 4, tier: 'armored' },
+          high_ext_wall: { qty: 18, tier: 'stone' }
+        }
+      }
+    }
+  }
 };

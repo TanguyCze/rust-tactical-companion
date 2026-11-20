@@ -57,6 +57,31 @@
     }, durationMs);
   }
 
+  async function copyTextToClipboard(text) {
+    const str = String(text ?? '');
+    if (!str) return false;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(str);
+        return true;
+      }
+    } catch (_) {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = str;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return Boolean(ok);
+    } catch (_) {
+      return false;
+    }
+  }
+
   // =========================================================================
   // APPLICATION STATE & SQUAD REAL-TIME SYNC
   // =========================================================================
@@ -587,6 +612,7 @@
         { label: '♻️ Component Recycler & Decay Calculator', tag: 'TAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="main"]')?.click(); } },
         { label: '⚡ Base Electricity & Battery Planner', tag: 'SUBTAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="elec"]')?.click(); } },
         { label: '📦 Industrial Conveyor Filters & Shift+Paste JSON', tag: 'SUBTAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="conveyor"]')?.click(); } },
+        { label: '🧱 Base Cost & TC Upkeep Calculator', tag: 'SUBTAB', action: () => { switchAppTab('tab-recycler'); document.querySelector('.rc-subtab-btn[data-rc-sub="upkeep"]')?.click(); } },
         { label: '🌱 Genetics Solver, Compost & Berry Teas', tag: 'TAB', action: () => { switchAppTab('tab-genetics'); } },
         { label: '⏱️ Squad Timers & Event Countdown Alarms', tag: 'TAB', action: () => { switchAppTab('tab-timers'); } }
       ];
@@ -887,23 +913,29 @@
         : `<div class="text-xs text-muted" style="padding:10px; background:var(--bg-card); border-radius:6px; border:1px solid var(--border-subtle);">No mixed combos available at ${activeWbLabel} for ${target.name} — switch Workbench filter to All/T3 or use pure methods below.</div>`;
 
     const lowestSulfur = methods.length > 0 ? methods[0].sulfur : Infinity;
+    const maxSulfur = methods.length > 0 ? Math.max(...methods.map((x) => Number(x.sulfur) || 0), 1) : 1;
     const methodsRows =
       methods.length > 0
         ? methods
             .map((m) => {
               const tool = DATA.raidTools[m.toolId] || { name: m.toolId, wb: '-' };
               const isCheapest = (m.sulfur || 0) === lowestSulfur;
+              const methodSulfur = Number(m.sulfur) || 0;
+              const barPct = methodSulfur <= 0 ? 0 : Math.max(4, Math.min(100, Math.round((methodSulfur / maxSulfur) * 100)));
               return `
                 <tr class="${isCheapest ? 'method-best-row' : ''}">
-                  <td style="font-weight:700; color:#fff;">${m.qty}x ${tool.name}</td>
+                  <td style="font-weight:700; color:#fff;">${m.qty}x ${escapeHtml(tool.name)}</td>
                   <td style="color:${m.sulfur === 0 ? '#4ade80' : 'var(--sulfur-yellow)'}; font-weight:700;">
-                    ${m.sulfur === 0 ? `0 Sulfur (${m.lgf || 0} LGF)` : m.sulfur.toLocaleString()}
+                    <div>${m.sulfur === 0 ? `0 Sulfur (${m.lgf || 0} LGF)` : m.sulfur.toLocaleString()}</div>
+                    <div class="raid-cost-bar-track" title="${barPct}% of max sulfur method (${maxSulfur.toLocaleString()} S)">
+                      <div class="raid-cost-bar-fill ${isCheapest ? 'is-best' : ''}" style="width:${barPct}%"></div>
+                    </div>
                   </td>
                   <td>${formatRaidTime(m.timeSec)}</td>
-                  <td><span class="target-tier-tag">${tool.wb}</span></td>
-                  <td class="text-xs text-muted" style="font-family:var(--font-body)">${m.notes || ''}</td>
+                  <td><span class="target-tier-tag">${escapeHtml(tool.wb)}</span></td>
+                  <td class="text-xs text-muted" style="font-family:var(--font-body)">${escapeHtml(m.notes || '')}</td>
                   <td>
-                    <button class="btn btn-sm add-single-method-btn" data-target="${target.id}" data-method-idx="${m._origIdx}">
+                    <button class="btn btn-sm add-single-method-btn" data-target="${escapeHtml(target.id)}" data-method-idx="${m._origIdx}">
                       + Add
                     </button>
                   </td>
@@ -911,7 +943,7 @@
               `;
             })
             .join('')
-        : `<tr><td colspan="6" class="text-xs text-muted">No practical boom/fire tools at ${activeWbLabel}. Try T2/T3.</td></tr>`;
+        : `<tr><td colspan="6" class="text-xs text-muted">No practical boom/fire tools at ${escapeHtml(activeWbLabel)}. Try T2/T3.</td></tr>`;
 
     const softSideHtml = target.softSideNote
       ? `<div class="soft-side-callout"><strong>ℹ️ Eco / Soft-Side Note (Unranked):</strong> ${target.softSideNote}</div>`
@@ -1270,6 +1302,21 @@
         });
 
         const cleanQty = Math.max(1, Number(item.qty) || 1);
+        const modeOptions = [
+          { value: 'combo', label: '⚡ Optimal' },
+          { value: 'explo_only', label: '🔫 Explo Ammo' },
+          { value: 'cheapest_single', label: '💰 Cheapest Single' },
+          { value: 'fastest', label: '⏱️ Fastest' },
+          { value: 't1', label: '🔧 Max T1/T2' }
+        ];
+        const currentMode = String(item.mode || 'combo');
+        const hasStdMode = modeOptions.some((o) => o.value === currentMode);
+        const modeSelectHtml = `
+          <select class="select queue-mode-select" data-idx="${idx}" aria-label="Loadout mode">
+            ${!hasStdMode ? `<option value="${escapeHtml(currentMode)}" selected>📌 ${escapeHtml(res.chosenLabel || currentMode)}</option>` : ''}
+            ${modeOptions.map((o) => `<option value="${o.value}" ${o.value === currentMode ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+          </select>
+        `;
         return `
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:6px;">
             <div style="min-width:0; flex:1;">
@@ -1280,6 +1327,7 @@
                   <span class="queue-qty-num">${cleanQty}x</span>
                   <button class="queue-qty-btn raid-qty-inc" data-idx="${idx}" title="Increase quantity">+</button>
                 </span>
+                ${modeSelectHtml}
               </div>
               <div class="text-xs text-muted" style="margin-top:3px;">
                 Loadout: <span style="color:var(--sulfur-yellow)">${escapeHtml(res.chosenLabel)}</span>
@@ -1302,6 +1350,17 @@
 
     queueContainer.innerHTML = rowsHtml;
 
+    queueContainer.querySelectorAll('.queue-mode-select').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const idx = Number(sel.getAttribute('data-idx'));
+        const qItem = appState.raidQueue[idx];
+        if (!qItem) return;
+        qItem.mode = sel.value || 'combo';
+        renderRaidPlanner();
+        renderRaidStashReadiness();
+        syncStateToServer();
+      });
+    });
     queueContainer.querySelectorAll('.raid-qty-dec').forEach((btn) => {
       btn.addEventListener('click', () => changeRaidQueueQty(Number(btn.getAttribute('data-idx')), -1));
     });
@@ -4148,21 +4207,46 @@
           </div>`
         : '';
 
+      const needCallout = m.cardsNeeded.length > 0 ? m.cardsNeeded.map((c) => `${c} Card`).join(' + ') : 'None';
+      const fuseCallout = `${m.fusesNeeded || 0} Fuse`;
+      const givesCallout = m.cardsFound.length > 0 ? m.cardsFound.map((c) => `${c} Card`).join(' + ') : 'Elite Loot';
+      const calloutString = `[${activeGrid}] ${m.name} — Need: ${needCallout} + ${fuseCallout} -> Gives: ${givesCallout} | Respawn ${m.respawnMin}m`;
+
+      const nextChainMonuments = m.cardsFound.length > 0
+        ? DATA.monuments
+            .filter((other) => other.id !== m.id && Array.isArray(other.cardsNeeded) && other.cardsNeeded.some((c) => m.cardsFound.includes(c)))
+            .sort((a, b) => (a.tier || 0) - (b.tier || 0))
+        : [];
+      const cardChainHtml = nextChainMonuments.length > 0
+        ? `<div id="monCardChainStrip" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 10px 0; padding:6px 8px; border-radius:6px; background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22);">
+            <span style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#bae6fd;">🔑 CARD CHAIN NEXT:</span>
+            ${nextChainMonuments.map((nm) => {
+              const matchedCards = (nm.cardsNeeded || []).filter((c) => m.cardsFound.includes(c));
+              const primaryCard = matchedCards[0] || m.cardsFound[0] || 'Green';
+              return `<button type="button" class="filter-pill mon-chain-jump-btn" data-mid="${escapeHtml(nm.id)}" style="padding:2px 8px; font-size:10.5px;">→ ${escapeHtml(nm.name)} <span class="keycard-tag keycard-${escapeHtml(primaryCard)}" style="margin-left:3px; padding:0 4px; font-size:9.5px;">${escapeHtml(nm.cardsNeeded.join('+'))}</span></button>`;
+            }).join('')}
+          </div>`
+        : `<div id="monCardChainStrip" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 10px 0; padding:6px 8px; border-radius:6px; background:rgba(15,23,42,0.45); border:1px solid rgba(148,163,184,0.18);">
+            <span style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#fde68a;">🏁 CARD CHAIN NEXT:</span>
+            <span style="font-size:11px; color:var(--text-secondary);">Endgame tier — spends cards for Elite / Locked Crate loot.</span>
+          </div>`;
+
       detailEl.innerHTML = `
         <div style="background:linear-gradient(155deg, rgba(205,65,43,0.14), var(--bg-card)); border:1px solid var(--rust-orange); border-radius:8px; padding:14px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
             <div>
               <div style="font-family:var(--font-display); font-size:18px; font-weight:700; color:#fff;">
-                🏛️ ${m.name} <span style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow);">${gridBadgeText}</span>
+                🏛️ ${escapeHtml(m.name)} <span style="font-family:var(--font-mono); font-size:12px; color:var(--sulfur-yellow);">${escapeHtml(gridBadgeText)}</span>
               </div>
               <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">
-                Tier ${m.tier} Monument • Radiation: <strong style="color:#fff;">${m.radRequired}</strong>
-                ${m.rusthelpUrl ? ` • <a href="${m.rusthelpUrl}" target="_blank" rel="noopener" style="color:#60a5fa; text-decoration:none; font-weight:600;">📖 RustHelp Wiki ↗</a>` : ''}
+                Tier ${m.tier} Monument • Radiation: <strong style="color:#fff;">${escapeHtml(m.radRequired)}</strong>
+                ${m.rusthelpUrl ? ` • <a href="${escapeHtml(m.rusthelpUrl)}" target="_blank" rel="noopener" style="color:#60a5fa; text-decoration:none; font-weight:600;">📖 RustHelp Wiki ↗</a>` : ''}
               </div>
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-              ${realMatches.length > 0 ? `<button class="btn btn-sm" id="monFocusMapBtn" style="border-color:#38bdf8; color:#bae6fd;">📍 Ping on Map</button>` : ''}
-              <button class="btn btn-primary btn-sm" id="startMonumentTimerBtn" data-mid="${m.id}">
+              <button type="button" class="btn btn-sm" id="monCopyCalloutBtn" style="border-color:#94a3b8; color:#e2e8f0;">📋 Copy Callout</button>
+              ${realMatches.length > 0 ? `<button type="button" class="btn btn-sm" id="monFocusMapBtn" style="border-color:#38bdf8; color:#bae6fd;">📍 Ping on Map</button>` : ''}
+              <button type="button" class="btn btn-primary btn-sm" id="startMonumentTimerBtn" data-mid="${escapeHtml(m.id)}">
                 ${m.safeZone ? `🚨 Safe Zone Hostile (${m.respawnMin}m)` : `⏱️ Completed! Start ${m.respawnMin}m Timer`}
               </button>
             </div>
@@ -4174,6 +4258,7 @@
             <div><span style="font-size:11px; color:var(--text-secondary);">GET:</span> ${foundBadges}</div>
           </div>
 
+          ${cardChainHtml}
           ${utilitiesHtml}
           ${powerGridHtml}
 
@@ -4186,12 +4271,26 @@
           </div>
 
           <ul class="step-list">
-            ${m.steps.map((s, idx) => `<li><strong style="color:var(--sulfur-yellow);">#${idx + 1}</strong> <span>${s}</span></li>`).join('')}
+            ${m.steps.map((s, idx) => `<li><strong style="color:var(--sulfur-yellow);">#${idx + 1}</strong> <span>${escapeHtml(s)}</span></li>`).join('')}
           </ul>
           ${npcCheeseHtml}
         </div>
       `;
 
+      detailEl.querySelector('#monCopyCalloutBtn')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        await copyTextToClipboard(calloutString);
+        flashButtonFeedback(btn, '✓ Copied!');
+        showTacticalToast(`Copied callout: ${calloutString}`, 'ok');
+      });
+      detailEl.querySelectorAll('.mon-chain-jump-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const nextId = btn.getAttribute('data-mid');
+          if (!nextId) return;
+          selectedMonumentId = nextId;
+          renderMonumentAtlas();
+        });
+      });
       detailEl.querySelector('#monFocusMapBtn')?.addEventListener('click', () => {
         const rm = realMatches[0];
         if (!rm) return;
@@ -7852,14 +7951,308 @@
     }
   }
 
+  const FALLBACK_UPKEEP_CONFIG = {
+    brackets: [
+      { maxBlocks: 15, minBlocks: 1, rate: 0.10, label: '1–15 blocks', pctLabel: '10%' },
+      { maxBlocks: 50, minBlocks: 16, rate: 0.15, label: '16–50 blocks', pctLabel: '15%' },
+      { maxBlocks: 125, minBlocks: 51, rate: 0.20, label: '51–125 blocks', pctLabel: '20%' },
+      { maxBlocks: Infinity, minBlocks: 126, rate: 0.333, label: '126+ blocks', pctLabel: '33.3%' }
+    ],
+    tierMeta: {
+      wood: { label: 'Wood', color: '#d97706' },
+      stone: { label: 'Stone', color: '#94a3b8' },
+      metal: { label: 'Metal', color: '#38bdf8' },
+      armored: { label: 'HQM', color: '#a855f7' }
+    },
+    blocks: [
+      { id: 'foundation', name: 'Foundation (Sq / Tri)', icon: '🧱', countsAsBlock: true, defaultTier: 'stone', tiers: ['wood', 'stone', 'metal', 'armored'], costs: { wood: { wood: 200 }, stone: { stone: 300 }, metal: { metal: 200 }, armored: { hqm: 25 } } },
+      { id: 'wall', name: 'Wall / Doorframe', icon: '🪨', countsAsBlock: true, defaultTier: 'stone', tiers: ['wood', 'stone', 'metal', 'armored'], costs: { wood: { wood: 200 }, stone: { stone: 300 }, metal: { metal: 200 }, armored: { hqm: 25 } } },
+      { id: 'floor_roof', name: 'Floor / Roof', icon: '📐', countsAsBlock: true, defaultTier: 'stone', tiers: ['wood', 'stone', 'metal', 'armored'], costs: { wood: { wood: 100 }, stone: { stone: 150 }, metal: { metal: 100 }, armored: { hqm: 13 } } },
+      { id: 'door_single', name: 'Single Door', icon: '🚪', countsAsBlock: false, defaultTier: 'metal', tiers: ['wood', 'metal', 'armored'], costs: { wood: { wood: 300 }, metal: { metal: 150 }, armored: { hqm: 20, gears: 5 } } },
+      { id: 'door_double', name: 'Double Door', icon: '⛩️', countsAsBlock: false, defaultTier: 'metal', tiers: ['wood', 'metal', 'armored'], costs: { wood: { wood: 350 }, metal: { metal: 200 }, armored: { hqm: 25, gears: 5 } } },
+      { id: 'garage_door', name: 'Garage Door', icon: '🚧', countsAsBlock: false, defaultTier: 'metal', tiers: ['metal'], costs: { metal: { metal: 300, gears: 2 } } },
+      { id: 'armored_door', name: 'Armored Door', icon: '🔐', countsAsBlock: false, defaultTier: 'armored', tiers: ['armored'], costs: { armored: { hqm: 20, gears: 5 } } },
+      { id: 'high_ext_wall', name: 'High External Wall', icon: '🏰', countsAsBlock: false, defaultTier: 'stone', tiers: ['wood', 'stone'], costs: { wood: { wood: 1500 }, stone: { stone: 1500 } } }
+    ],
+    presets: {
+      starter_2x1: { label: 'Starter 2×1 + Airlock', blocks: { foundation: { qty: 3, tier: 'stone' }, wall: { qty: 8, tier: 'stone' }, floor_roof: { qty: 3, tier: 'stone' }, door_single: { qty: 2, tier: 'metal' }, door_double: { qty: 1, tier: 'metal' } } },
+      honeycomb_2x2: { label: 'Honeycomb 2×2', blocks: { foundation: { qty: 10, tier: 'stone' }, wall: { qty: 24, tier: 'stone' }, floor_roof: { qty: 10, tier: 'metal' }, door_single: { qty: 2, tier: 'metal' }, garage_door: { qty: 5, tier: 'metal' } } },
+      roof_bunker: { label: 'Solo/Duo Roof Bunker', blocks: { foundation: { qty: 9, tier: 'armored' }, wall: { qty: 20, tier: 'metal' }, floor_roof: { qty: 12, tier: 'armored' }, door_single: { qty: 2, tier: 'metal' }, garage_door: { qty: 4, tier: 'metal' }, armored_door: { qty: 1, tier: 'armored' } } },
+      clan_3x3: { label: 'Clan 3×3 Core + Compound', blocks: { foundation: { qty: 24, tier: 'metal' }, wall: { qty: 64, tier: 'metal' }, floor_roof: { qty: 42, tier: 'metal' }, door_single: { qty: 4, tier: 'metal' }, door_double: { qty: 2, tier: 'armored' }, garage_door: { qty: 12, tier: 'metal' }, armored_door: { qty: 4, tier: 'armored' }, high_ext_wall: { qty: 18, tier: 'stone' } } }
+    }
+  };
+
+  function getUpkeepConfig() {
+    const cfg = DATA.upkeepConfig;
+    if (cfg && Array.isArray(cfg.blocks) && cfg.blocks.length > 0) return cfg;
+    return FALLBACK_UPKEEP_CONFIG;
+  }
+
+  const upkeepPieceState = {};
+  (function initDefaultUpkeepState() {
+    const cfg = getUpkeepConfig();
+    const starter = cfg.presets?.starter_2x1?.blocks || FALLBACK_UPKEEP_CONFIG.presets.starter_2x1.blocks;
+    cfg.blocks.forEach((b) => {
+      const def = starter[b.id];
+      upkeepPieceState[b.id] = {
+        qty: def ? Math.max(0, Number(def.qty) || 0) : 0,
+        tier: def && (b.tiers || []).includes(def.tier) ? def.tier : (b.defaultTier || (b.tiers && b.tiers[0]) || 'stone')
+      };
+    });
+  })();
+
+  function computeBaseUpkeepSummary() {
+    const cfg = getUpkeepConfig();
+    const buildCost = { wood: 0, stone: 0, metal: 0, hqm: 0, gears: 0 };
+    const upkeepCostBase = { wood: 0, stone: 0, metal: 0, hqm: 0 };
+    let structuralBlocks = 0;
+    let totalPieces = 0;
+
+    (cfg.blocks || []).forEach((b) => {
+      const st = upkeepPieceState[b.id] || { qty: 0, tier: b.defaultTier || 'stone' };
+      const qty = Math.max(0, Math.floor(Number(st.qty) || 0));
+      if (qty <= 0) return;
+      totalPieces += qty;
+      if (b.countsAsBlock) structuralBlocks += qty;
+      const tier = (b.tiers || []).includes(st.tier) ? st.tier : (b.defaultTier || (b.tiers && b.tiers[0]) || 'stone');
+      const unitCost = (b.costs && b.costs[tier]) || {};
+      buildCost.wood += (Number(unitCost.wood) || 0) * qty;
+      buildCost.stone += (Number(unitCost.stone) || 0) * qty;
+      buildCost.metal += (Number(unitCost.metal) || 0) * qty;
+      buildCost.hqm += (Number(unitCost.hqm) || 0) * qty;
+      buildCost.gears += (Number(unitCost.gears) || 0) * qty;
+      upkeepCostBase.wood += (Number(unitCost.wood) || 0) * qty;
+      upkeepCostBase.stone += (Number(unitCost.stone) || 0) * qty;
+      upkeepCostBase.metal += (Number(unitCost.metal) || 0) * qty;
+      upkeepCostBase.hqm += (Number(unitCost.hqm) || 0) * qty;
+    });
+
+    const b1 = Math.min(structuralBlocks, 15);
+    const b2 = Math.max(0, Math.min(structuralBlocks, 50) - 15);
+    const b3 = Math.max(0, Math.min(structuralBlocks, 125) - 50);
+    const b4 = Math.max(0, structuralBlocks - 125);
+    const bracketBreakdown = [
+      { label: '1–15 (10%)', blocks: b1, rate: 0.10, active: structuralBlocks > 0 && structuralBlocks <= 15, reached: b1 > 0 },
+      { label: '16–50 (15%)', blocks: b2, rate: 0.15, active: structuralBlocks >= 16 && structuralBlocks <= 50, reached: b2 > 0 },
+      { label: '51–125 (20%)', blocks: b3, rate: 0.20, active: structuralBlocks >= 51 && structuralBlocks <= 125, reached: b3 > 0 },
+      { label: '126+ (33.3%)', blocks: b4, rate: 0.333, active: structuralBlocks >= 126, reached: b4 > 0 }
+    ];
+
+    const hasUpkeepRes = upkeepCostBase.wood + upkeepCostBase.stone + upkeepCostBase.metal + upkeepCostBase.hqm > 0;
+    const effectiveRate = structuralBlocks > 0
+      ? (b1 * 0.10 + b2 * 0.15 + b3 * 0.20 + b4 * 0.333) / structuralBlocks
+      : (hasUpkeepRes ? 0.10 : 0);
+
+    const upkeep24h = {
+      wood: upkeepCostBase.wood > 0 ? Math.ceil(upkeepCostBase.wood * effectiveRate) : 0,
+      stone: upkeepCostBase.stone > 0 ? Math.ceil(upkeepCostBase.stone * effectiveRate) : 0,
+      metal: upkeepCostBase.metal > 0 ? Math.ceil(upkeepCostBase.metal * effectiveRate) : 0,
+      hqm: upkeepCostBase.hqm > 0 ? Math.ceil(upkeepCostBase.hqm * effectiveRate) : 0
+    };
+    const buffer48h = {
+      wood: upkeep24h.wood * 2,
+      stone: upkeep24h.stone * 2,
+      metal: upkeep24h.metal * 2,
+      hqm: upkeep24h.hqm * 2
+    };
+
+    return {
+      structuralBlocks,
+      totalPieces,
+      effectiveRate,
+      bracketBreakdown,
+      buildCost,
+      upkeep24h,
+      buffer48h
+    };
+  }
+
+  function renderUpkeepCalculator() {
+    const gridEl = document.getElementById('upkeepBlocksGrid');
+    const sumEl = document.getElementById('upkeepSummaryBox');
+    if (!gridEl || !sumEl) return;
+
+    const cfg = getUpkeepConfig();
+    const tierMeta = cfg.tierMeta || FALLBACK_UPKEEP_CONFIG.tierMeta;
+    const formatUnitCost = (costObj) => {
+      const parts = [];
+      if (costObj.wood) parts.push(`${costObj.wood} Wood`);
+      if (costObj.stone) parts.push(`${costObj.stone} Stone`);
+      if (costObj.metal) parts.push(`${costObj.metal} Metal`);
+      if (costObj.hqm) parts.push(`${costObj.hqm} HQM`);
+      if (costObj.gears) parts.push(`${costObj.gears} Gears`);
+      return parts.join(' + ') || '0';
+    };
+
+    gridEl.innerHTML = (cfg.blocks || [])
+      .map((b) => {
+        if (!upkeepPieceState[b.id]) {
+          upkeepPieceState[b.id] = { qty: 0, tier: b.defaultTier || (b.tiers && b.tiers[0]) || 'stone' };
+        }
+        const st = upkeepPieceState[b.id];
+        const qty = Math.max(0, Math.floor(Number(st.qty) || 0));
+        const tiers = Array.isArray(b.tiers) && b.tiers.length ? b.tiers : ['stone'];
+        const activeTier = tiers.includes(st.tier) ? st.tier : tiers[0];
+        st.tier = activeTier;
+        const unitCost = (b.costs && b.costs[activeTier]) || {};
+        const tierPillsHtml = tiers.length > 1
+          ? `<div style="display:flex; gap:4px; flex-wrap:wrap;">
+              ${tiers.map((t) => {
+                const tm = tierMeta[t] || { label: t, color: '#94a3b8' };
+                const isAct = t === activeTier;
+                return `<button type="button" class="filter-pill upkeep-tier-btn ${isAct ? 'active' : ''}" data-piece="${escapeHtml(b.id)}" data-tier="${escapeHtml(t)}" style="padding:1px 6px; font-size:10px; ${isAct ? `border-color:${safeCssColor(tm.color)}; color:#fff;` : ''}">${escapeHtml(tm.label)}</button>`;
+              }).join('')}
+            </div>`
+          : `<span class="target-tier-tag" style="font-size:10px; border-color:${safeCssColor((tierMeta[activeTier] || {}).color)};">${escapeHtml((tierMeta[activeTier] || {}).label || activeTier)}</span>`;
+
+        return `
+          <div class="upkeep-block-card ${qty > 0 ? 'has-qty' : ''}">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <strong style="font-size:12.5px; color:#f8fafc;">${escapeHtml(b.icon || '🧱')} ${escapeHtml(b.name)}</strong>
+              <span style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted);">${b.countsAsBlock ? 'Block' : 'Deploy'}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+              ${tierPillsHtml}
+              <span style="font-family:var(--font-mono); font-size:10px; color:#cbd5e1;">${escapeHtml(formatUnitCost(unitCost))}/ea</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:auto;">
+              <span style="font-family:var(--font-mono); font-size:12px; font-weight:800; color:${qty > 0 ? 'var(--sulfur-yellow)' : 'var(--text-muted)'};">Qty: ${qty}</span>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button type="button" class="btn btn-sm upkeep-qty-btn" data-piece="${escapeHtml(b.id)}" data-delta="-1" style="padding:2px 7px;">−1</button>
+                <button type="button" class="btn btn-sm upkeep-qty-btn" data-piece="${escapeHtml(b.id)}" data-delta="1" style="padding:2px 7px;">+1</button>
+                <button type="button" class="btn btn-sm upkeep-qty-btn" data-piece="${escapeHtml(b.id)}" data-delta="5" style="padding:2px 7px;">+5</button>
+              </div>
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    gridEl.querySelectorAll('.upkeep-tier-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pid = btn.getAttribute('data-piece');
+        const tier = btn.getAttribute('data-tier');
+        if (!pid || !tier || !upkeepPieceState[pid]) return;
+        upkeepPieceState[pid].tier = tier;
+        renderUpkeepCalculator();
+      });
+    });
+
+    gridEl.querySelectorAll('.upkeep-qty-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pid = btn.getAttribute('data-piece');
+        const delta = parseInt(btn.getAttribute('data-delta'), 10) || 0;
+        if (!pid || !upkeepPieceState[pid]) return;
+        upkeepPieceState[pid].qty = Math.max(0, Math.min(999, Number(upkeepPieceState[pid].qty || 0) + delta));
+        renderUpkeepCalculator();
+      });
+    });
+
+    const summary = computeBaseUpkeepSummary();
+    const effPctText = (summary.effectiveRate * 100).toFixed(1);
+    const resTiles = (obj, includeGears = false) => {
+      const items = [
+        { key: 'wood', label: '🪵 Wood', color: '#f59e0b' },
+        { key: 'stone', label: '🪨 Stone', color: '#cbd5e1' },
+        { key: 'metal', label: '⚙️ Metal Frags', color: '#38bdf8' },
+        { key: 'hqm', label: '🔩 HQM', color: '#c084fc' }
+      ];
+      if (includeGears) items.push({ key: 'gears', label: '⚙️ Gears', color: '#fbbf24' });
+      return items
+        .map((it) => {
+          const val = Number(obj[it.key] || 0);
+          return `<div style="padding:7px 9px; border-radius:6px; background:rgba(15,23,42,0.72); border:1px solid ${val > 0 ? 'rgba(148,163,184,0.35)' : 'var(--border-subtle)'}; opacity:${val > 0 ? '1' : '0.55'};">
+            <div style="font-size:10px; font-family:var(--font-mono); color:var(--text-secondary);">${it.label}</div>
+            <div style="font-size:15px; font-weight:800; font-family:var(--font-mono); color:${val > 0 ? it.color : 'var(--text-muted)'};">${val.toLocaleString()}</div>
+          </div>`;
+        })
+        .join('');
+    };
+
+    sumEl.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        <span style="font-family:var(--font-mono); font-size:11.5px; color:#cbd5e1;">
+          Structural Blocks: <strong style="color:#fff;">${summary.structuralBlocks}</strong> • Total Pieces: <strong style="color:#fff;">${summary.totalPieces}</strong>
+        </span>
+        <span style="font-family:var(--font-mono); font-size:11.5px; color:var(--sulfur-yellow); font-weight:700;">
+          Effective Tax: ${effPctText}% / 24h
+        </span>
+      </div>
+
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        ${summary.bracketBreakdown.map((br) => `
+          <span class="upkeep-bracket-pill ${br.active ? 'active' : ''}" style="${!br.active && br.reached ? 'border-color:rgba(56,189,248,0.45); color:#bae6fd;' : ''}">
+            ${escapeHtml(br.label)}${br.blocks > 0 ? ` • <strong>${br.blocks}</strong>` : ''}
+          </span>
+        `).join('')}
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#bae6fd; margin-bottom:6px;">🏗️ TOTAL BUILD COST (ONE-TIME)</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:7px;">
+          ${resTiles(summary.buildCost, true)}
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#fde047; margin-bottom:6px;">🏛️ 24h TC UPKEEP COST</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:7px;">
+          ${resTiles(summary.upkeep24h, false)}
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px; padding:10px; border-radius:6px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.35);">
+        <div style="font-size:10.5px; font-family:var(--font-mono); font-weight:700; color:#86efac; margin-bottom:6px;">🛡️ 48h SAFE BUFFER (OFFLINE-PROOF TC STOCK)</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:7px;">
+          ${resTiles(summary.buffer48h, false)}
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:var(--text-muted);">Gears are craft-only and never consumed by Tool Cupboard upkeep.</span>
+        <button type="button" id="startUpkeepTimerBtn" class="btn btn-primary btn-sm">⏱️ Start 24h Upkeep Timer</button>
+      </div>
+    `;
+
+    sumEl.querySelector('#startUpkeepTimerBtn')?.addEventListener('click', (e) => {
+      startSquadTimer('🧱 TC 24h Upkeep Refill', 86400, '#f59e0b');
+      flashButtonFeedback(e.currentTarget, '✅ 24h Timer Started!');
+      showTacticalToast('Started 24h TC Upkeep Refill timer in Squad Timers', 'ok');
+    });
+  }
+
   function initRecyclerDieselDecayModule() {
     document.querySelectorAll('.rc-subtab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const sub = btn.getAttribute('data-rc-sub');
         document.querySelectorAll('.rc-subtab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-        const map = { main: 'rcSubMain', elec: 'rcSubElec', conveyor: 'rcSubConveyor' };
+        const map = { main: 'rcSubMain', elec: 'rcSubElec', conveyor: 'rcSubConveyor', upkeep: 'rcSubUpkeep' };
         document.querySelectorAll('.rc-subpanel').forEach((p) => p.classList.remove('active'));
         document.getElementById(map[sub])?.classList.add('active');
+      });
+    });
+
+    document.getElementById('upkeepResetBtn')?.addEventListener('click', () => {
+      Object.keys(upkeepPieceState).forEach((k) => {
+        if (upkeepPieceState[k]) upkeepPieceState[k].qty = 0;
+      });
+      renderUpkeepCalculator();
+      showTacticalToast('Reset Base Upkeep builder counts to 0', 'ok');
+    });
+    document.querySelectorAll('#upkeepPresetsBar .upkeep-tpl-btn[data-utpl]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-utpl');
+        const cfg = getUpkeepConfig();
+        const preset = cfg.presets?.[key] || FALLBACK_UPKEEP_CONFIG.presets?.[key];
+        if (!preset || !preset.blocks) return;
+        (cfg.blocks || []).forEach((b) => {
+          const pEntry = preset.blocks[b.id];
+          upkeepPieceState[b.id] = {
+            qty: pEntry ? Math.max(0, Number(pEntry.qty) || 0) : 0,
+            tier: pEntry && (b.tiers || []).includes(pEntry.tier) ? pEntry.tier : (b.defaultTier || (b.tiers && b.tiers[0]) || 'stone')
+          };
+        });
+        renderUpkeepCalculator();
+        showTacticalToast(`Loaded "${preset.label || btn.textContent.trim()}" base blueprint`, 'ok');
       });
     });
 
@@ -8045,6 +8438,7 @@
     renderDecayCalculator();
     renderElectricityPlanner();
     renderConveyorModule();
+    renderUpkeepCalculator();
   }
 
   // =========================================================================
@@ -8069,6 +8463,21 @@
   let bfCustomTargetMonument = null;
   let bfMeasureMode = false;
   let bfMeasurePoints = []; // max 2 [{ wx, wy, grid }]
+  let bfPinCategoryFilter = 'all';
+
+  function bfPinMatchesFilter(pin, filterKey = bfPinCategoryFilter) {
+    const key = String(filterKey || 'all').toLowerCase();
+    if (!key || key === 'all') return true;
+    const cat = String(pin?.category || '').toLowerCase();
+    if (cat === key) return true;
+    const ico = String(pin?.icon || '');
+    if (key === 'raid' && ico === '💥') return true;
+    if (key === 'stash' && ico === '🕳️') return true;
+    if (key === 'sulfur' && ico === '🟡') return true;
+    if (key === 'base' && ico === '🏠') return true;
+    if (key === 'danger' && ico === '⚠️') return true;
+    return false;
+  }
 
   function drawBfRulerOverlay(ctx, toPx) {
     if (!bfMeasurePoints || bfMeasurePoints.length === 0) return;
@@ -9875,6 +10284,14 @@
     return { label: 'HIGH', color: '#f87171' };
   }
 
+  function buildBfSpotCopyText(s, riskLabel) {
+    const grid = s.subGrid || s.grid || '?';
+    const targetPart = `${s.targetName || 'Target'}: ${s.targetDist < 99999 ? `${s.targetDist}m` : 'N/A'}`;
+    const biomePart = s.biome ? `Biome: ${s.biome}` : 'Biome: Mixed';
+    const oreTier = s.oreScore >= 65 ? 'HIGH' : s.oreScore >= 35 ? 'MED' : 'LOW';
+    return `[${grid}] Score ${s.score}/100 | ${targetPart} | ${biomePart} | Ore: ${oreTier} (${s.oreScore}%) | Coast: ${s.coastDist}m | Raid Risk: ${riskLabel}`;
+  }
+
   function renderBaseFinderResults() {
     const stealthSlot = document.getElementById('bfStealthBestSlot');
     const listEl = document.getElementById('bfResultsList');
@@ -9886,11 +10303,14 @@
         const biomeTag = s.biome ? `<span style="font-size:11px; color:#93c5fd; font-family:var(--font-mono);"> (${escapeHtml(s.biome)})</span>` : '';
         stealthSlot.innerHTML = `
           <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="-1" style="border-color: rgba(168, 85, 247, 0.55); background: linear-gradient(135deg, rgba(126, 34, 206, 0.16), rgba(15, 23, 42, 0.72));">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
               <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#e9d5ff;">
                 🥷 BEST OVERALL (UNDER THE RADAR) — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
               </div>
-              <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="-1" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
+                <span class="combo-badge" style="font-size:12px; background:rgba(168,85,247,0.28); border-color:#a855f7; color:#f3e8ff;">${s.score}/100</span>
+              </div>
             </div>
             <div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;">
               Tier 2 progression (1.5–3 grids off) + low raid risk, calculated <strong>regardless of your filter preferences</strong>.
@@ -9946,11 +10366,14 @@
             : `#${idx + 1} OPTION`;
           return `
             <div class="monument-item bf-spot-card ${isSel ? 'active' : ''}" data-bf-idx="${idx}">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
                 <div style="font-family:var(--font-display); font-size:15px; font-weight:700; color:#fff;">
                   ${rankBadge} — Grid <span style="color:var(--sulfur-yellow); font-family:var(--font-mono);">[${escapeHtml(s.subGrid || s.grid)}]</span>${biomeTag}
                 </div>
-                <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <button type="button" class="btn btn-sm bf-copy-spot-btn" data-bf-idx="${idx}" style="padding:2px 7px; font-size:10.5px;">📋 Copy Spot</button>
+                  <span class="combo-badge" style="font-size:12px;">${s.score}/100</span>
+                </div>
               </div>
               <div style="display:flex; gap:10px; flex-wrap:wrap; margin:8px 0; font-family:var(--font-mono); font-size:11px;">
                 <span style="color:#38bdf8;">⚡ ${escapeHtml(s.targetName)}: ${s.targetDist < 99999 ? s.targetDist + 'm' : 'N/A'}</span>
@@ -9969,6 +10392,20 @@
         })
         .join('');
     }
+
+    document.querySelectorAll('#tab-basefinder .bf-copy-spot-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-bf-idx'), 10);
+        const spot = idx === -1 ? bfStealthBest : bfTopSpots[idx];
+        if (!spot) return;
+        const risk = bfRiskBadge(spot.lowTrafficScore);
+        const intelText = buildBfSpotCopyText(spot, risk.label);
+        await copyTextToClipboard(intelText);
+        flashButtonFeedback(btn, '✓ Copied!');
+        showTacticalToast(`Copied Spot Intel: ${intelText}`, 'ok');
+      });
+    });
 
     document.querySelectorAll('#tab-basefinder .bf-spot-card').forEach((card) => {
       card.addEventListener('click', () => {
@@ -11420,6 +11857,7 @@
     if (showPins && Array.isArray(appState.squadPins)) {
       appState.squadPins.forEach((sp) => {
         if (!sp || !Number.isFinite(Number(sp.wx)) || !Number.isFinite(Number(sp.wy))) return;
+        if (!bfPinMatchesFilter(sp, bfPinCategoryFilter)) return;
         const wx = Number(sp.wx);
         const wy = Number(sp.wy);
         const { px, py } = toPx(wx, wy);
@@ -11485,20 +11923,43 @@
       stripEl.style.display = 'none';
       return;
     }
+    const filterDefs = [
+      { key: 'all', label: `All (${pins.length})` },
+      { key: 'raid', label: '💥 Raid' },
+      { key: 'stash', label: '🕳️ Stash' },
+      { key: 'sulfur', label: '🟡 Sulfur' },
+      { key: 'base', label: '🏠 Base' },
+      { key: 'danger', label: '⚠️ Danger' }
+    ];
+    const filteredPins = pins.filter((p) => bfPinMatchesFilter(p, bfPinCategoryFilter));
     stripEl.style.display = 'flex';
     stripEl.innerHTML =
-      `<span style="font-size:10.5px; font-family:var(--font-mono); color:#fde68a; font-weight:700;">📌 SQUAD PINS (${pins.length}):</span>` +
-      pins
-        .slice(0, 10)
-        .map((p) => {
-          const rpEntries = Object.entries(p.raidPreset || {}).filter(([, q]) => Number(q) > 0);
-          const rpCount = rpEntries.reduce((acc, [, q]) => acc + Number(q), 0);
-          const rpBtn = rpCount > 0
-            ? `<button type="button" class="filter-pill bf-pin-strip-raid-btn" data-pid="${escapeHtml(p.id)}" title="Queue raid breakdown in Raid Calc" style="border-color:#ef4444; color:#fca5a5;">💥 ${rpCount}</button>`
-            : '';
-          return `<span style="display:inline-flex; gap:3px; align-items:center;"><button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${Number(p.wx) || 0}" data-wy="${Number(p.wy) || 0}" style="border-color:${safeCssColor(p.color, '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>${rpBtn}</span>`;
-        })
-        .join('');
+      `<span style="font-size:10.5px; font-family:var(--font-mono); color:#fde68a; font-weight:700;">📌 SQUAD PINS (${filteredPins.length}/${pins.length}):</span>` +
+      `<div class="pin-filter-bar">${filterDefs.map((f) => {
+        const cnt = f.key === 'all' ? pins.length : pins.filter((p) => bfPinMatchesFilter(p, f.key)).length;
+        const suffix = f.key !== 'all' && cnt > 0 ? ` (${cnt})` : '';
+        return `<button type="button" class="pin-filter-pill ${bfPinCategoryFilter === f.key ? 'active' : ''}" data-pfilter="${escapeHtml(f.key)}">${escapeHtml(f.label + suffix)}</button>`;
+      }).join('')}</div>` +
+      (filteredPins.length > 0
+        ? filteredPins
+            .slice(0, 10)
+            .map((p) => {
+              const rpEntries = Object.entries(p.raidPreset || {}).filter(([, q]) => Number(q) > 0);
+              const rpCount = rpEntries.reduce((acc, [, q]) => acc + Number(q), 0);
+              const rpBtn = rpCount > 0
+                ? `<button type="button" class="filter-pill bf-pin-strip-raid-btn" data-pid="${escapeHtml(p.id)}" title="Queue raid breakdown in Raid Calc" style="border-color:#ef4444; color:#fca5a5;">💥 ${rpCount}</button>`
+                : '';
+              return `<span style="display:inline-flex; gap:3px; align-items:center;"><button type="button" class="filter-pill bf-shared-pin-pill" data-pid="${escapeHtml(p.id)}" data-wx="${Number(p.wx) || 0}" data-wy="${Number(p.wy) || 0}" style="border-color:${safeCssColor(p.color, '#38bdf8')}; color:#f8fafc;">${escapeHtml(p.icon || '📍')} ${escapeHtml(p.label || 'Pin')} [${escapeHtml(p.grid || '')}]</button>${rpBtn}</span>`;
+            })
+            .join('')
+        : `<span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">No pins in this category.</span>`);
+    stripEl.querySelectorAll('.pin-filter-pill[data-pfilter]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        bfPinCategoryFilter = btn.getAttribute('data-pfilter') || 'all';
+        renderSharedPinsStrip();
+        renderBaseFinderMap();
+      });
+    });
     stripEl.querySelectorAll('.bf-shared-pin-pill').forEach((btn) => {
       btn.addEventListener('click', () => {
         setBfMapView(parseFloat(btn.getAttribute('data-wx')) || 0, parseFloat(btn.getAttribute('data-wy')) || 0, 2.0);

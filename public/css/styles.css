@@ -283,6 +283,17 @@ body::before {
   border-bottom: 1px solid var(--border-subtle);
 }
 
+@media (min-width: 901px) {
+  .nav-bar {
+    position: sticky;
+    top: var(--header-sticky-offset, 62px);
+    z-index: 95;
+    background: rgba(19, 25, 35, 0.92);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.32);
+  }
+}
+
 .nav-inner {
   max-width: 1720px;
   margin: 0 auto;
@@ -410,9 +421,10 @@ body::before {
 }
 
 @media (min-width: 1151px) {
-  .bf-map-layout:not(.bf-map-expanded) > .panel:first-child {
+  .bf-map-layout:not(.bf-map-expanded) > .panel:first-child,
+  .monument-detail-sticky {
     position: sticky;
-    top: 76px;
+    top: var(--sticky-panel-top, 120px);
   }
 }
 
@@ -1355,22 +1367,63 @@ kbd, code {
 }
 
 .planter-cell {
+  position: relative;
   background: rgba(0, 0, 0, 0.45);
   border: 1px dashed rgba(255, 255, 255, 0.2);
   border-radius: 6px;
-  padding: 12px 6px;
+  padding: 14px 6px 10px;
   text-align: center;
-  min-height: 82px;
+  min-height: 86px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.planter-cell.donor-active {
+  border: 1px solid rgba(56, 189, 248, 0.48);
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.14), inset 0 0 10px rgba(34, 197, 94, 0.06);
+}
+
+.planter-cell.planter-empty {
+  opacity: 0.42;
+  border-style: dashed;
 }
 
 .planter-cell.center-target {
   border: 2px solid var(--sulfur-yellow);
-  background: rgba(234, 179, 8, 0.12);
+  background: rgba(234, 179, 8, 0.14);
+  box-shadow: 0 0 16px rgba(234, 179, 8, 0.24), inset 0 0 12px rgba(234, 179, 8, 0.1);
+}
+
+.planter-slot-num {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: var(--text-muted);
+}
+
+.planter-cell.center-target .planter-slot-num {
+  background: rgba(234, 179, 8, 0.2);
+  border-color: rgba(234, 179, 8, 0.65);
+  color: #fde047;
+}
+
+.planter-cell.donor-active .planter-slot-num {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #7dd3fc;
 }
 
 .rb-filter-bar {
@@ -2017,4 +2070,147 @@ details > summary:hover {
   background-size: 16px 2px, 2px 16px, 16px 2px, 2px 16px, 16px 2px, 2px 16px, 16px 2px, 2px 16px;
   background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
   background-repeat: no-repeat;
+}
+
+/* ==========================================================================
+   WAVE 3: RAID COMPARISON BARS, PIN FILTERS & BASE UPKEEP BUILDER
+   ========================================================================== */
+.raid-cost-bar-track {
+  width: 100%;
+  min-width: 78px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(9, 12, 17, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.raid-cost-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, var(--sulfur-yellow) 60%, var(--rust-orange-bright));
+  transition: width 0.25s ease;
+}
+
+.raid-cost-bar-fill.is-best {
+  background: linear-gradient(90deg, #16a34a, #4ade80);
+}
+
+.queue-mode-select {
+  width: auto;
+  min-width: 128px;
+  max-width: 210px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1.3;
+  border-radius: 5px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--sulfur-yellow);
+  cursor: pointer;
+}
+
+.queue-mode-select:hover,
+.queue-mode-select:focus {
+  border-color: var(--sulfur-yellow);
+}
+
+.pin-filter-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(14, 19, 27, 0.85);
+  border: 1px solid var(--border-subtle);
+}
+
+.pin-filter-pill {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pin-filter-pill:hover {
+  color: #fff;
+  border-color: var(--border-highlight);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pin-filter-pill.active {
+  color: #fff;
+  background: rgba(205, 65, 43, 0.25);
+  border-color: var(--rust-orange-bright);
+  box-shadow: 0 0 8px rgba(205, 65, 43, 0.22);
+}
+
+.upkeep-preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(14, 19, 27, 0.82);
+  border: 1px solid var(--border-subtle);
+}
+
+.upkeep-blocks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.upkeep-block-card {
+  background: linear-gradient(170deg, rgba(18, 25, 38, 0.94), rgba(12, 17, 26, 0.96));
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.upkeep-block-card:hover {
+  border-color: var(--border-highlight);
+}
+
+.upkeep-block-card.has-qty {
+  border-color: rgba(234, 179, 8, 0.52);
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.1);
+}
+
+.upkeep-bracket-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.upkeep-bracket-pill.active {
+  border-color: var(--sulfur-yellow);
+  color: #fde68a;
+  background: rgba(234, 179, 8, 0.15);
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.16);
 }

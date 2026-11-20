@@ -376,7 +376,7 @@
         </div>
         <div class="grid-2" style="align-items: start;">
           <div id="monumentAtlasList" class="monument-list" style="max-height: 75vh; overflow-y: auto;"></div>
-          <div id="selectedMonumentDetail" style="position: sticky; top: 76px;"></div>
+          <div id="selectedMonumentDetail" class="monument-detail-sticky"></div>
         </div>
         <div id="bossNpcCheesePanel" style="margin-top: 16px;"></div>
       </div>
@@ -731,6 +731,7 @@
         <button type="button" class="rc-subtab-btn active" data-rc-sub="main">♻️ Recycler, Diesel &amp; Decay</button>
         <button type="button" class="rc-subtab-btn" data-rc-sub="elec">⚡ Electricity &amp; Battery Planner</button>
         <button type="button" class="rc-subtab-btn" data-rc-sub="conveyor">📦 Conveyor Filters &amp; Pipelines</button>
+        <button type="button" class="rc-subtab-btn" data-rc-sub="upkeep">🧱 Base Cost &amp; TC Upkeep</button>
       </div>
 
       <div id="rcSubMain" class="rc-subpanel active">
@@ -958,6 +959,37 @@
                 <pre id="conveyorJsonPreview" style="margin:6px 0 0; max-height:140px; overflow:auto; padding:6px 8px; border-radius:4px; background:#05080f; color:#86efac; font-size:10px; font-family:var(--font-mono); white-space:pre-wrap; word-break:break-all;"></pre>
               </details>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="rcSubUpkeep" class="rc-subpanel">
+        <div class="grid-2" style="align-items:start;">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🧱 Base Structure &amp; Door Builder</div>
+                <div class="panel-subtitle">Add foundations, walls, floors &amp; doors with material tiers to compute build cost &amp; TC upkeep</div>
+              </div>
+              <button id="upkeepResetBtn" type="button" class="btn btn-sm">Reset</button>
+            </div>
+            <div id="upkeepPresetsBar" class="upkeep-preset-bar">
+              <span style="font-size:10.5px; color:var(--text-muted); font-family:var(--font-mono);">Base Presets:</span>
+              <button type="button" class="btn btn-sm upkeep-tpl-btn" data-utpl="starter_2x1">🏠 Starter 2×1</button>
+              <button type="button" class="btn btn-sm upkeep-tpl-btn" data-utpl="honeycomb_2x2">🛡️ Honeycomb 2×2</button>
+              <button type="button" class="btn btn-sm upkeep-tpl-btn" data-utpl="roof_bunker">🔐 Solo/Duo Bunker</button>
+              <button type="button" class="btn btn-sm upkeep-tpl-btn" data-utpl="clan_3x3">🏰 Clan 3×3 Core</button>
+            </div>
+            <div id="upkeepBlocksGrid" class="upkeep-blocks-grid"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">📊 Build Cost &amp; 24h TC Upkeep</div>
+                <div class="panel-subtitle">Accounts for Rust's progressive 10% → 15% → 20% → 33.3% block-count TC tax</div>
+              </div>
+            </div>
+            <div id="upkeepSummaryBox"></div>
           </div>
         </div>
       </div>
